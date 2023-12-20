@@ -121,6 +121,7 @@ int p8_init_file(char *file_name)
 
     lua_load_api();
     lua_init_script(m_lua_script);
+    clear_screen();
     lua_init();
 
     p8_init_lcd();
@@ -146,6 +147,7 @@ int p8_init_ram(uint8_t *buffer, int size)
 
     lua_load_api();
     lua_init_script(m_lua_script);
+    clear_screen();
     lua_init();
 
     p8_init_lcd();

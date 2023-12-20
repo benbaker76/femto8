@@ -11,6 +11,7 @@
 #include <stdint.h>
 #include <stdbool.h>
 
+void clear_screen();
 void draw_circ(int x, int y, int r, int col);
 void draw_circfill(int x, int y, int r, int col);
 void draw_sprite(int n, int left, int top, bool flip_x, bool flip_y);

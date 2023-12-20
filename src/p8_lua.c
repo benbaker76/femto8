@@ -89,7 +89,7 @@ int circfill(lua_State *L)
 int clip(lua_State *L)
 {
     if (lua_gettop(L) == 0)
-        clip_set(0, 0, SCREEN_WIDTH - 1, SCREEN_HEIGHT - 1);
+        clip_set(0, 0, P8_WIDTH - 1, P8_HEIGHT - 1);
     else
     {
         uint8_t x0 = lua_tonumber(L, 1);
@@ -97,7 +97,7 @@ int clip(lua_State *L)
         uint8_t w = lua_tonumber(L, 3);
         uint8_t h = lua_tonumber(L, 4);
 
-        clip_set(x0, y0, MIN(x0 + w, SCREEN_WIDTH - 1), MIN(y0 + h, SCREEN_HEIGHT - 1));
+        clip_set(x0, y0, MIN(x0 + w, P8_WIDTH - 1), MIN(y0 + h, P8_HEIGHT - 1));
     }
 
     return 0;
@@ -106,17 +106,7 @@ int clip(lua_State *L)
 // cls([color])
 int cls(lua_State *L)
 {
-    int color = lua_gettop(L) == 1 ? lua_tonumber(L, -1) : 0;
-
-    reset_color();
-    // memset(MEMORY_SCREEN, color, 0x2000);
-
-    for (int y = 0; y < 128; y++)
-        for (int x = 0; x < 128; x++)
-            gfx_set(x, y, m_memory, MEMORY_SCREEN, MEMORY_SCREEN_SIZE, color);
-
-    clip_set(0, 0, 128, 128);
-    cursor_set(0, 0, -1);
+    clear_screen();
 
     return 0;
 }
@@ -610,9 +600,9 @@ int mset(lua_State *L)
     int snum = lua_tonumber(L, 3);
 
     if (cely < 32)
-        m_memory[MEMORY_MAP + celx + cely * 128] = snum;
+        m_memory[MEMORY_MAP + celx + cely * P8_WIDTH] = snum;
     else
-        m_memory[MEMORY_SPRITES_MAP + celx + (cely - 32) * 128] = snum;
+        m_memory[MEMORY_SPRITES_MAP + celx + (cely - 32) * P8_WIDTH] = snum;
 
     return 0;
 }
@@ -1212,7 +1202,22 @@ int warning(lua_State *L)
     return 0;
 }
 
-int setfps(lua_State *L)
+void clear_screen()
+{
+    int color = lua_gettop(L) == 1 ? lua_tonumber(L, -1) : 0;
+
+    reset_color();
+    // memset(MEMORY_SCREEN, color, 0x2000);
+
+    for (int y = 0; y < P8_HEIGHT; y++)
+        for (int x = 0; x < P8_WIDTH; x++)
+            gfx_set(x, y, m_memory, MEMORY_SCREEN, MEMORY_SCREEN_SIZE, color);
+
+    clip_set(0, 0, P8_WIDTH, P8_HEIGHT);
+    cursor_set(0, 0, -1);
+}
+
+int set_fps(lua_State *L)
 {
     int fps = lua_tonumber(L, 1);
     m_fps = MAX(0, fps);
@@ -1220,14 +1225,14 @@ int setfps(lua_State *L)
     return 0;
 }
 
-int getmousex(lua_State *L)
+int get_mouse_x(lua_State *L)
 {
     lua_pushnumber(L, m_mouse_x);
 
     return 1;
 }
 
-int getmousey(lua_State *L)
+int get_mouse_y(lua_State *L)
 {
     lua_pushnumber(L, m_mouse_y);
 
@@ -1568,9 +1573,9 @@ void cursor_get(int *x, int *y)
 uint8_t map_get(int celx, int cely)
 {
     if (cely < 32)
-        return m_memory[MEMORY_MAP + celx + cely * 128];
+        return m_memory[MEMORY_MAP + celx + cely * P8_WIDTH];
     else
-        return m_memory[MEMORY_SPRITES_MAP + celx + (cely - 32) * 128];
+        return m_memory[MEMORY_SPRITES_MAP + celx + (cely - 32) * P8_WIDTH];
 }
 
 void reset_color()
