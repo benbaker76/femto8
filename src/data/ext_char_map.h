@@ -3,6 +3,7 @@
 
 #define EXT_CHAR_MAP1_OFFSET 0x00
 #define EXT_CHAR_MAP2_OFFSET 0x6F
+#define TYPEABLE_SYMBOL_OFFSET 0x70
 
 #include <stdint.h>
 
@@ -166,5 +167,26 @@ static const uint16_t ext_char_map2[] = {
     0x25DC,
     0x25DD,
 };
+
+typedef struct
+{
+    uint8_t encoding[7];
+    uint8_t length;
+    uint8_t index;
+} typeablesymbol_t;
+
+static const typeablesymbol_t typeable_symbols[12] = {
+    {{0xe2, 0xac, 0x85, 0xef, 0xb8, 0x8f}, 6, 11},       // left arrow
+    {{0xe2, 0x9e, 0xa1, 0xef, 0xb8, 0x8f}, 6, 17},       // right arrow
+    {{0xe2, 0xac, 0x86, 0xef, 0xb8, 0x8f}, 6, 20},       // up arrow
+    {{0xe2, 0xac, 0x87, 0xef, 0xb8, 0x8f}, 6, 3},        // down arrow
+    {{0xf0, 0x9f, 0x85, 0xbe, 0xef, 0xb8, 0x8f}, 7, 14}, // o button
+    {{0xe2, 0x9d, 0x8e}, 3, 23},                         // x button
+    {{0x8b}, 1, 11},                                     // left
+    {{0x91}, 1, 17},                                     // right
+    {{0x94}, 1, 20},                                     // up
+    {{0x83}, 1, 3},                                      // down
+    {{0x8e}, 1, 14},                                     // o
+    {{0x97}, 1, 23}};                                    // x
 
 #endif

@@ -399,7 +399,7 @@ int spr(lua_State *L)
     {
         for (int sx = 0; sx < w; sx++)
         {
-            int index = (int)floor(n == -1.0f ? 0 : n) + sx + sy * 16;
+            int index = (int)floor(n) + sx + sy * 16;
             int left = (int)floor(x + sx * 8);
             int top = (int)floor(y + sy * 8);
 
@@ -1408,27 +1408,26 @@ void draw_char(int n, int left, int top, int col)
     }
 }
 
-// TODO: Add utf-8 support for extended characters
-uint16_t get_ext_char_index(uint16_t character)
+int get_ext_char_index(uint16_t wide_char)
 {
     int index = -1;
 
-    for (int j = 0; j < sizeof(ext_char_map1); j++)
+    for (int i = 0; i < sizeof(ext_char_map1); i++)
     {
-        if (ext_char_map1[j] == character)
+        if (ext_char_map1[i] == wide_char)
         {
-            index = j + EXT_CHAR_MAP1_OFFSET;
+            index = i + EXT_CHAR_MAP1_OFFSET;
             break;
         }
     }
 
     if (index == -1)
     {
-        for (int j = 0; j < sizeof(ext_char_map2); j++)
+        for (int i = 0; i < sizeof(ext_char_map2); i++)
         {
-            if (ext_char_map2[j] == character)
+            if (ext_char_map2[i] == wide_char)
             {
-                index = j + EXT_CHAR_MAP2_OFFSET;
+                index = i + EXT_CHAR_MAP2_OFFSET;
                 break;
             }
         }
@@ -1437,19 +1436,46 @@ uint16_t get_ext_char_index(uint16_t character)
     return index;
 }
 
+int get_typeable_symbol(const char *str)
+{
+    int str_len = strlen(str);
+
+    for (int i = 0; i < 12; i++)
+    {
+        const uint8_t *encoding = typeable_symbols[i].encoding;
+        int encoding_len = typeable_symbols[i].length;
+
+        if (encoding_len > str_len)
+            continue;
+
+        if (memcmp(str, encoding, encoding_len) == 0)
+        {
+            return typeable_symbols[i].index + TYPEABLE_SYMBOL_OFFSET;
+        }
+    }
+
+    return 0;
+}
+
 int draw_text(const char *str, int x, int y, int col)
 {
     int left = 0;
+    int str_len = strlen(str);
 
-    for (int i = 0; i < strlen(str); i++)
+    for (int i = 0; i < str_len; i++)
     {
-        uint16_t character = str[i];
+        uint8_t character = str[i];
+        uint8_t next_character = (i < str_len - 1 ? str[i + 1] : 0);
+        uint16_t wide_char = (character << 8) | next_character;
+        uint8_t typeable_symbol = get_typeable_symbol(&str[i]);
         int index = -1;
 
-        if (character >= 0x20 && character < 0x7F)
+        if (typeable_symbol != 0)
+            index = typeable_symbol;
+        else if (character >= 0x20 && character < 0x7F)
             index = character - 0x10;
         else
-            index = get_ext_char_index(character);
+            index = get_ext_char_index(wide_char);
 
         if (index >= 0)
             draw_char(index, (int)x + left, (int)y, col);
