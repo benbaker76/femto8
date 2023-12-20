@@ -1397,18 +1397,19 @@ void draw_sprite(int n, int left, int top, bool flip_x, bool flip_y)
 
 void draw_char(int n, int left, int top, int col)
 {
-    int sx = n % 16 * 8;
-    int sy = n / 16 * 8;
+    int sx = n % 16;
+    int sy = n / 16 * 5;
 
     for (int y = 0; y < 8; y++)
     {
+        uint8_t x_byte = y >= 5 ? 0 : font_map[sx + (sy + y) * 16];
+
         for (int x = 0; x < 8; x++)
         {
             uint8_t background = gfx_get(left + x, top + y, m_memory, MEMORY_SCREEN, MEMORY_SCREEN_SIZE);
-            uint8_t index = gfx_get(sx + x, sy + y, (uint8_t *)font_map, 0, sizeof(font_map));
-            uint8_t color = color_get(PALTYPE_DRAW, index);
+            uint8_t x_bit = (x_byte >> (7 - x)) & 0x1;
 
-            pixel_set(left + x, top + y, color == 7 ? (col == -1 ? (int)pencolor_get() : col) : background);
+            pixel_set(left + x, top + y, x_bit ? (col == -1 ? (int)pencolor_get() : col) : background);
         }
     }
 }
@@ -1478,7 +1479,7 @@ int draw_text(const char *str, int x, int y, int col)
         if (typeable_symbol != 0)
             index = typeable_symbol;
         else if (character >= 0x20 && character < 0x7F)
-            index = character - 0x10;
+            index = character;
         else
             index = get_ext_char_index(wide_char);
 

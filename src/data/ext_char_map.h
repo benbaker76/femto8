@@ -1,13 +1,13 @@
 #ifndef EXT_CHAR_MAP_H
 #define EXT_CHAR_MAP_H
 
-#define EXT_CHAR_MAP1_OFFSET 0x00
-#define EXT_CHAR_MAP2_OFFSET 0x6F
-#define TYPEABLE_SYMBOL_OFFSET 0x70
+#define EXT_CHAR_MAP1_OFFSET 0x10
+#define EXT_CHAR_MAP2_OFFSET 0x77
+#define TYPEABLE_SYMBOL_OFFSET 0x78
 
 #include <stdint.h>
 
-// 0x00 - 0x0F
+// 0x10 - 0x1F
 static const uint16_t ext_char_map1[] = {
     0x25AE,
     0x25A0,
