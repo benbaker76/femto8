@@ -148,13 +148,18 @@ int cursor(lua_State *L)
 int fget(lua_State *L)
 {
     int n = lua_tonumber(L, 1);
-    int f = lua_gettop(L) == 2 ? lua_tonumber(L, 2) : -1;
     uint8_t flags = m_memory[MEMORY_SPRITEFLAGS + n];
 
-    if (f == -1)
-        lua_pushboolean(L, flags);
+    if (lua_gettop(L) == 2)
+    {
+        int f = lua_tonumber(L, 2);
 
-    lua_pushboolean(L, (flags & (1 << f)) != 0);
+        lua_pushboolean(L, (flags & (1 << f)) != 0);
+    }
+    else
+    {
+        lua_pushboolean(L, flags);
+    }
 
     return 0;
 }
@@ -262,7 +267,7 @@ int pget(lua_State *L)
     int x = lua_tonumber(L, 1);
     int y = lua_tonumber(L, 2);
 
-    lua_pushinteger(L, gfx_get(x, y, m_memory, MEMORY_SCREEN, MEMORY_SCREEN_SIZE));
+    lua_pushinteger(L, gfx_get(x, y, MEMORY_SCREEN, MEMORY_SCREEN_SIZE));
 
     return 1;
 }
@@ -354,7 +359,7 @@ int sget(lua_State *L)
     int x = lua_tonumber(L, 1);
     int y = lua_tonumber(L, 2);
 
-    lua_pushnumber(L, gfx_get(x, y, m_memory, MEMORY_SPRITES, MEMORY_SPRITES_SIZE));
+    lua_pushnumber(L, gfx_get(x, y, MEMORY_SPRITES, MEMORY_SPRITES_SIZE));
 
     return 1;
 }
@@ -407,7 +412,7 @@ int sset(lua_State *L)
     int y = lua_tonumber(L, 2);
     int c = lua_gettop(L) >= 3 ? lua_tonumber(L, 3) : pencolor_get() & 0xF;
 
-    gfx_set(x, y, m_memory, MEMORY_SPRITES, MEMORY_SPRITES_SIZE, c);
+    gfx_set(x, y, MEMORY_SPRITES, MEMORY_SPRITES_SIZE, c);
 
     return 0;
 }
@@ -443,8 +448,8 @@ int sspr(lua_State *L)
             float fy = flip_y ? (sh - y - 1) : y;
             int ratio_x = (int)floor(fx / scale_x);
             int ratio_y = (int)floor(fy / scale_y);
-            uint8_t background = gfx_get((int)floor(dx + fx), (int)floor(dy + fy), m_memory, MEMORY_SCREEN, MEMORY_SCREEN_SIZE);
-            uint8_t index = gfx_get((int)floor(sx + ratio_x), (int)floor(sy + ratio_y), m_memory, MEMORY_SPRITES, MEMORY_SPRITES_SIZE);
+            uint8_t background = gfx_get((int)floor(dx + fx), (int)floor(dy + fy), MEMORY_SCREEN, MEMORY_SCREEN_SIZE);
+            uint8_t index = gfx_get((int)floor(sx + ratio_x), (int)floor(sy + ratio_y), MEMORY_SPRITES, MEMORY_SPRITES_SIZE);
             uint8_t color = color_get(PALTYPE_DRAW, (int)index);
             // Debug.WriteLine("index: {0} color: {1} ratioX: {2} ratioY: {3}", index, color, ratioX, ratioY);
 
@@ -558,12 +563,12 @@ int sfx(lua_State *L)
 // map(celx, cely, sx, sy, celw, celh, [layer])
 int map(lua_State *L)
 {
-    int celx = lua_tonumber(L, 1);
-    int cely = lua_tonumber(L, 2);
-    int sx = lua_tonumber(L, 3);
-    int sy = lua_tonumber(L, 4);
-    int celw = lua_gettop(L) >= 5 ? lua_tonumber(L, 5) : SPRITE_WIDTH;
-    int celh = lua_gettop(L) >= 6 ? lua_tonumber(L, 6) : SPRITE_HEIGHT;
+    float celx = lua_tonumber(L, 1);
+    float cely = lua_tonumber(L, 2);
+    float sx = lua_tonumber(L, 3);
+    float sy = lua_tonumber(L, 4);
+    float celw = lua_gettop(L) >= 5 ? lua_tonumber(L, 5) : P8_WIDTH / SPRITE_WIDTH;
+    float celh = lua_gettop(L) >= 6 ? lua_tonumber(L, 6) : P8_HEIGHT / SPRITE_WIDTH;
     int layer = lua_gettop(L) >= 7 ? lua_tonumber(L, 7) : 0;
 
     for (int y = 0; y < celh; y++)
@@ -599,10 +604,7 @@ int mset(lua_State *L)
     int cely = lua_tonumber(L, 2);
     int snum = lua_tonumber(L, 3);
 
-    if (cely < 32)
-        m_memory[MEMORY_MAP + celx + cely * P8_WIDTH] = snum;
-    else
-        m_memory[MEMORY_SPRITES_MAP + celx + (cely - 32) * P8_WIDTH] = snum;
+    map_set(celx, cely, snum);
 
     return 0;
 }
@@ -1211,7 +1213,7 @@ void clear_screen()
 
     for (int y = 0; y < P8_HEIGHT; y++)
         for (int x = 0; x < P8_WIDTH; x++)
-            gfx_set(x, y, m_memory, MEMORY_SCREEN, MEMORY_SCREEN_SIZE, color);
+            gfx_set(x, y, MEMORY_SCREEN, MEMORY_SCREEN_SIZE, color);
 
     clip_set(0, 0, P8_WIDTH, P8_HEIGHT);
     cursor_set(0, 0, -1);
@@ -1370,7 +1372,7 @@ void pixel_set(int x, int y, int c)
     if (x >= x0 && x < x1 && y >= y0 && y < y1)
     {
         int col = color_get(PALTYPE_DRAW, c);
-        gfx_set(x, y, m_memory, MEMORY_SCREEN, MEMORY_SCREEN_SIZE, col);
+        gfx_set(x, y, MEMORY_SCREEN, MEMORY_SCREEN_SIZE, col);
     }
 }
 
@@ -1385,8 +1387,8 @@ void draw_sprite(int n, int left, int top, bool flip_x, bool flip_y)
         {
             int fx = flip_x ? (SPRITE_WIDTH - x - 1) : x;
             int fy = flip_y ? (SPRITE_HEIGHT - y - 1) : y;
-            uint8_t background = gfx_get(left + fx, top + fy, m_memory, MEMORY_SCREEN, MEMORY_SCREEN_SIZE);
-            uint8_t index = gfx_get(sx + x, sy + y, m_memory, MEMORY_SPRITES, MEMORY_SPRITES_SIZE);
+            uint8_t background = gfx_get(left + fx, top + fy, MEMORY_SCREEN, MEMORY_SCREEN_SIZE);
+            uint8_t index = gfx_get(sx + x, sy + y, MEMORY_SPRITES, MEMORY_SPRITES_SIZE);
             uint8_t color = color_get(PALTYPE_DRAW, index);
 
             if ((color & 0x10) == 0)
@@ -1406,7 +1408,7 @@ void draw_char(int n, int left, int top, int col)
 
         for (int x = 0; x < 8; x++)
         {
-            uint8_t background = gfx_get(left + x, top + y, m_memory, MEMORY_SCREEN, MEMORY_SCREEN_SIZE);
+            uint8_t background = gfx_get(left + x, top + y, MEMORY_SCREEN, MEMORY_SCREEN_SIZE);
             uint8_t x_bit = (x_byte >> (7 - x)) & 0x1;
 
             pixel_set(left + x, top + y, x_bit ? (col == -1 ? (int)pencolor_get() : col) : background);
@@ -1492,17 +1494,17 @@ int draw_text(const char *str, int x, int y, int col)
     return left;
 }
 
-uint8_t gfx_get(int x, int y, uint8_t *memory, int location, int size)
+uint8_t gfx_get(int x, int y, int location, int size)
 {
     int offset = location + (x >> 1) + y * 64;
 
     if (offset < 0 || offset >= location + size)
         return 0;
 
-    return IS_EVEN(x) ? memory[offset] & 0xF : memory[offset] >> 4;
+    return IS_EVEN(x) ? m_memory[offset] & 0xF : m_memory[offset] >> 4;
 }
 
-void gfx_set(int x, int y, uint8_t *memory, int location, int size, int col)
+void gfx_set(int x, int y, int location, int size, int col)
 {
     int offset = location + (x >> 1) + y * 64;
 
@@ -1511,7 +1513,7 @@ void gfx_set(int x, int y, uint8_t *memory, int location, int size, int col)
 
     uint8_t color = (col == -1 ? pencolor_get() : color_get(PALTYPE_DRAW, col));
 
-    memory[offset] = IS_EVEN(x) ? (memory[offset] & 0xF0) | (color & 0xF) : (color << 4) | (memory[offset] & 0xF);
+    m_memory[offset] = IS_EVEN(x) ? (m_memory[offset] & 0xF0) | (color & 0xF) : (color << 4) | (m_memory[offset] & 0xF);
 }
 
 void camera_get(int *x, int *y)
@@ -1577,6 +1579,14 @@ uint8_t map_get(int celx, int cely)
         return m_memory[MEMORY_MAP + celx + cely * P8_WIDTH];
     else
         return m_memory[MEMORY_SPRITES_MAP + celx + (cely - 32) * P8_WIDTH];
+}
+
+void map_set(int celx, int cely, int snum)
+{
+    if (cely < 32)
+        m_memory[MEMORY_MAP + celx + cely * P8_WIDTH] = snum;
+    else
+        m_memory[MEMORY_SPRITES_MAP + celx + (cely - 32) * P8_WIDTH] = snum;
 }
 
 void reset_color()

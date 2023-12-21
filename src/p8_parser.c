@@ -292,7 +292,12 @@ void parse_p8_ram(uint8_t *buffer, int size, uint8_t *memory, char **lua_script)
         }
     }
 
-    for (int i = MEMORY_SPRITES; i < MEMORY_SPRITES_SIZE; i++)
+    for (int i = MEMORY_SPRITES; i < MEMORY_SPRITES + MEMORY_SPRITES_SIZE; i++)
+    {
+        memory[i] = (memory[i] << 4) | (memory[i] >> 4);
+    }
+
+    for (int i = MEMORY_SPRITES_MAP; i < MEMORY_SPRITES_MAP + MEMORY_SPRITES_MAP_SIZE; i++)
     {
         memory[i] = (memory[i] << 4) | (memory[i] >> 4);
     }

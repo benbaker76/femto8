@@ -17,8 +17,8 @@ void draw_circfill(int x, int y, int r, int col);
 void draw_sprite(int n, int left, int top, bool flip_x, bool flip_y);
 void draw_line(int x0, int y0, int x1, int y1, int col);
 void print_char(int n, int left, int top, int col);
-uint8_t gfx_get(int x, int y, uint8_t *memory, int location, int size);
-void gfx_set(int x, int y, uint8_t *memory, int location, int size, int col);
+uint8_t gfx_get(int x, int y, int location, int size);
+void gfx_set(int x, int y, int location, int size, int col);
 void camera_get(int *x, int *y);
 void camera_set(int x, int y);
 uint8_t pencolor_get();
@@ -32,6 +32,7 @@ void pixel_set(int x, int y, int c);
 int draw_text(const char *str, int x, int y, int col);
 bool is_button_set(int index, int button, bool prev_buttons);
 void update_buttons(int index, int button, bool state);
+void map_set(int celx, int cely, int snum);
 uint8_t map_get(int celx, int cely);
 void reset_color();
 
