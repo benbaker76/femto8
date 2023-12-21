@@ -6,7 +6,7 @@
  */
 
 #include <assert.h>
-#include "ext_char_map.h"
+#include "p8_symbols.h"
 #include "lua_api.h"
 #include "pico_font.h"
 #include "lua.h"
@@ -1407,53 +1407,24 @@ void draw_char(int n, int left, int top, int col)
     }
 }
 
-int get_ext_char_index(uint16_t wide_char)
+int get_p8_symbol(const char *str, uint8_t *symbol_length)
 {
-    int index = -1;
-
-    for (int i = 0; i < sizeof(ext_char_map1); i++)
-    {
-        if (ext_char_map1[i] == wide_char)
-        {
-            index = i + EXT_CHAR_MAP1_OFFSET;
-            break;
-        }
-    }
-
-    if (index == -1)
-    {
-        for (int i = 0; i < sizeof(ext_char_map2); i++)
-        {
-            if (ext_char_map2[i] == wide_char)
-            {
-                index = i + EXT_CHAR_MAP2_OFFSET;
-                break;
-            }
-        }
-    }
-
-    return index;
-}
-
-int get_typeable_symbol(const char *str)
-{
+    int p8_symbols_len = sizeof(p8_symbols) / sizeof(p8_symbol_t);
     int str_len = strlen(str);
 
-    for (int i = 0; i < 12; i++)
+    for (int i = 0; i < p8_symbols_len; i++)
     {
-        const uint8_t *encoding = typeable_symbols[i].encoding;
-        int encoding_len = typeable_symbols[i].length;
+        const uint8_t *encoding = p8_symbols[i].encoding;
+        *symbol_length = p8_symbols[i].length;
 
-        if (encoding_len > str_len)
+        if (*symbol_length > str_len)
             continue;
 
-        if (memcmp(str, encoding, encoding_len) == 0)
-        {
-            return typeable_symbols[i].index + TYPEABLE_SYMBOL_OFFSET;
-        }
+        if (memcmp(str, encoding, *symbol_length) == 0)
+            return p8_symbols[i].index;
     }
 
-    return 0;
+    return -1;
 }
 
 int draw_text(const char *str, int x, int y, int col)
@@ -1464,20 +1435,19 @@ int draw_text(const char *str, int x, int y, int col)
     for (int i = 0; i < str_len; i++)
     {
         uint8_t character = str[i];
-        uint8_t next_character = (i < str_len - 1 ? str[i + 1] : 0);
-        uint16_t wide_char = (next_character << 8) | character;
-        uint8_t typeable_symbol = get_typeable_symbol(&str[i]);
         int index = -1;
 
-        if (typeable_symbol != 0)
-            index = typeable_symbol;
-        else if (character >= 0x20 && character < 0x7F)
+        if (character >= 0x20 && character < 0x7F)
+        {
             index = character;
+        }
         else
         {
-            index = get_ext_char_index(wide_char);
+            uint8_t symbol_length = 0;
+            index = get_p8_symbol(&str[i], &symbol_length);
+
             if (index != -1)
-                i++;
+                i += symbol_length - 1;
         }
 
         if (index >= 0)
