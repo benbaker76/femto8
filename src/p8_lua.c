@@ -153,15 +153,14 @@ int fget(lua_State *L)
     if (lua_gettop(L) == 2)
     {
         int f = lua_tonumber(L, 2);
-
         lua_pushboolean(L, (flags & (1 << f)) != 0);
     }
     else
     {
-        lua_pushboolean(L, flags);
+        lua_pushnumber(L, flags);
     }
 
-    return 0;
+    return 1;
 }
 
 // fillp([pat])
@@ -185,14 +184,14 @@ int fset(lua_State *L)
 
     if (lua_gettop(L) == 3)
     {
-        n = lua_tonumber(L, 2);
+        int f = lua_tonumber(L, 2);
         bool v = lua_toboolean(L, 3);
         assert(n >= 0 && n <= 7);
 
         if (v)
-            m_memory[MEMORY_SPRITEFLAGS + n] |= (1 << n);
+            m_memory[MEMORY_SPRITEFLAGS + n] |= (1 << f);
         else
-            m_memory[MEMORY_SPRITEFLAGS + n] &= ~(1 << n);
+            m_memory[MEMORY_SPRITEFLAGS + n] &= ~(1 << f);
     }
     else
     {
@@ -394,7 +393,7 @@ int spr(lua_State *L)
     {
         for (int sx = 0; sx < w; sx++)
         {
-            int index = (int)floor(n) + sx + sy * 16;
+            int index = (int)floor(n == -1.0f ? 0 : n) + sx + sy * 16;
             int left = (int)floor(x + sx * 8);
             int top = (int)floor(y + sy * 8);
 
@@ -431,14 +430,8 @@ int sspr(lua_State *L)
     bool flip_x = lua_to_or_default(L, boolean, 9, false);
     bool flip_y = lua_to_or_default(L, boolean, 10, false);
 
-    if (dw == -1)
-        dw = sw;
-
-    if (dh == -1)
-        dh = sh;
-
-    float scale_x = (float)dw / (float)sw;
-    float scale_y = (float)dh / (float)sh;
+    float scale_x = (float)dw / sw;
+    float scale_y = (float)dh / sh;
 
     for (int y = 0; y < sh * scale_y; y++)
     {
@@ -451,7 +444,6 @@ int sspr(lua_State *L)
             uint8_t background = gfx_get((int)floor(dx + fx), (int)floor(dy + fy), MEMORY_SCREEN, MEMORY_SCREEN_SIZE);
             uint8_t index = gfx_get((int)floor(sx + ratio_x), (int)floor(sy + ratio_y), MEMORY_SPRITES, MEMORY_SPRITES_SIZE);
             uint8_t color = color_get(PALTYPE_DRAW, (int)index);
-            // Debug.WriteLine("index: {0} color: {1} ratioX: {2} ratioY: {3}", index, color, ratioX, ratioY);
 
             if ((color & 0x10) == 0)
                 pixel_set((int)floor(dx + fx), (int)floor(dy + fy), color == 0 ? background : color);
@@ -563,12 +555,12 @@ int sfx(lua_State *L)
 // map(celx, cely, sx, sy, celw, celh, [layer])
 int map(lua_State *L)
 {
-    float celx = lua_tonumber(L, 1);
-    float cely = lua_tonumber(L, 2);
-    float sx = lua_tonumber(L, 3);
-    float sy = lua_tonumber(L, 4);
-    float celw = lua_gettop(L) >= 5 ? lua_tonumber(L, 5) : P8_WIDTH / SPRITE_WIDTH;
-    float celh = lua_gettop(L) >= 6 ? lua_tonumber(L, 6) : P8_HEIGHT / SPRITE_WIDTH;
+    int celx = lua_tonumber(L, 1);
+    int cely = lua_tonumber(L, 2);
+    int sx = lua_tonumber(L, 3);
+    int sy = lua_tonumber(L, 4);
+    int celw = lua_gettop(L) >= 5 ? lua_tonumber(L, 5) : P8_WIDTH / SPRITE_WIDTH;
+    int celh = lua_gettop(L) >= 6 ? lua_tonumber(L, 6) : P8_HEIGHT / SPRITE_WIDTH;
     int layer = lua_gettop(L) >= 7 ? lua_tonumber(L, 7) : 0;
 
     for (int y = 0; y < celh; y++)
@@ -725,7 +717,7 @@ int _abs(lua_State *L)
     if (lua_isnumber(L, 1))
     {
         float num = lua_tonumber(L, 1);
-        lua_pushnumber(L, abs(num));
+        lua_pushnumber(L, fabsf(num));
     }
     else
         lua_pushnumber(L, 0);
@@ -740,7 +732,7 @@ int _atan2(lua_State *L)
 
     float dx = lua_tonumber(L, 1);
     float dy = lua_tonumber(L, 2);
-    float value = (float)(atan2(dx, dy) / (2 * PI) - 0.25f);
+    float value = (float)(atan2f(dx, dy) / TWO_PI - 0.25f);
 
     if (value < 0.0f)
         value += 1.0f;
@@ -814,7 +806,7 @@ int bxor(lua_State *L)
 int _ceil(lua_State *L)
 {
     float num = lua_isnumber(L, 1) ? lua_tonumber(L, 1) : 0;
-    lua_pushnumber(L, num);
+    lua_pushnumber(L, ceilf(num));
 
     return 1;
 }
@@ -825,7 +817,7 @@ int _cos(lua_State *L)
     if (lua_isnumber(L, 1))
     {
         float angle = lua_tonumber(L, 1);
-        lua_pushnumber(L, cos((1.0f - angle) * TWO_PI));
+        lua_pushnumber(L, cosf((1.0f - angle) * TWO_PI));
     }
     else
         lua_pushnumber(L, 0);
@@ -837,7 +829,7 @@ int _cos(lua_State *L)
 int flr(lua_State *L)
 {
     float num = lua_isnumber(L, 1) ? lua_tonumber(L, 1) : 0;
-    lua_pushnumber(L, floor(num));
+    lua_pushnumber(L, floorf(num));
 
     return 1;
 }
@@ -866,7 +858,7 @@ int max(lua_State *L)
         float first = lua_tonumber(L, 1);
         float second = lua_tonumber(L, 2);
 
-        lua_pushnumber(L, fmax(first, second));
+        lua_pushnumber(L, fmaxf(first, second));
     }
     else
         lua_pushnumber(L, 0);
@@ -900,7 +892,7 @@ int min(lua_State *L)
     if (lua_gettop(L) == 2 && lua_isnumber(L, 2))
         second = lua_tonumber(L, 2);
 
-    lua_pushnumber(L, fmin(first, second));
+    lua_pushnumber(L, fminf(first, second));
 
     return 1;
 }
@@ -917,7 +909,6 @@ int rnd(lua_State *L)
 
 // rotl(num, bits)
 int rotl(lua_State *L)
-// int num, int bits)
 {
     if (lua_isnumber(L, 1) && lua_isnumber(L, 2))
     {
@@ -997,7 +988,7 @@ int _sin(lua_State *L)
     if (lua_isnumber(L, 1))
     {
         float angle = lua_tonumber(L, 1);
-        lua_pushnumber(L, sin((1.0f - angle) * TWO_PI));
+        lua_pushnumber(L, sinf((1.0f - angle) * TWO_PI));
     }
     else
         lua_pushnumber(L, 0);
@@ -1204,21 +1195,6 @@ int warning(lua_State *L)
     return 0;
 }
 
-void clear_screen()
-{
-    int color = lua_gettop(L) == 1 ? lua_tonumber(L, -1) : 0;
-
-    reset_color();
-    // memset(MEMORY_SCREEN, color, 0x2000);
-
-    for (int y = 0; y < P8_HEIGHT; y++)
-        for (int x = 0; x < P8_WIDTH; x++)
-            gfx_set(x, y, MEMORY_SCREEN, MEMORY_SCREEN_SIZE, color);
-
-    clip_set(0, 0, P8_WIDTH, P8_HEIGHT);
-    cursor_set(0, 0, -1);
-}
-
 int set_fps(lua_State *L)
 {
     int fps = lua_tonumber(L, 1);
@@ -1248,6 +1224,21 @@ int note_to_hz(lua_State *L)
     lua_pushnumber(L, 440 * 2 ^ ((note - 33) / 12));
 
     return 1;
+}
+
+void clear_screen()
+{
+    int color = lua_gettop(L) == 1 ? lua_tonumber(L, -1) : 0;
+
+    reset_color();
+    // memset(MEMORY_SCREEN, color, 0x2000);
+
+    for (int y = 0; y < P8_HEIGHT; y++)
+        for (int x = 0; x < P8_WIDTH; x++)
+            gfx_set(x, y, MEMORY_SCREEN, MEMORY_SCREEN_SIZE, color);
+
+    clip_set(0, 0, P8_WIDTH, P8_HEIGHT);
+    cursor_set(0, 0, -1);
 }
 
 int dash_direction_x(int facing)
@@ -1474,7 +1465,7 @@ int draw_text(const char *str, int x, int y, int col)
     {
         uint8_t character = str[i];
         uint8_t next_character = (i < str_len - 1 ? str[i + 1] : 0);
-        uint16_t wide_char = (character << 8) | next_character;
+        uint16_t wide_char = (next_character << 8) | character;
         uint8_t typeable_symbol = get_typeable_symbol(&str[i]);
         int index = -1;
 
@@ -1483,7 +1474,11 @@ int draw_text(const char *str, int x, int y, int col)
         else if (character >= 0x20 && character < 0x7F)
             index = character;
         else
+        {
             index = get_ext_char_index(wide_char);
+            if (index != -1)
+                i++;
+        }
 
         if (index >= 0)
             draw_char(index, (int)x + left, (int)y, col);
