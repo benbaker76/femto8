@@ -15,6 +15,8 @@ void clear_screen();
 void draw_circ(int x, int y, int r, int col);
 void draw_circfill(int x, int y, int r, int col);
 void draw_sprite(int n, int left, int top, bool flip_x, bool flip_y);
+void draw_scaled_sprite(int sx, int sy, int sw, int sh, int dx, int dy, float scale_x, float scale_y, bool flip_x, bool flip_y);
+void draw_sprites(int n, int x, int y, float w, float h, bool flip_x, bool flip_y);
 void draw_line(int x0, int y0, int x1, int y1, int col);
 void print_char(int n, int left, int top, int col);
 uint8_t gfx_get(int x, int y, int location, int size);

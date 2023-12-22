@@ -368,9 +368,9 @@ int spr(lua_State *L)
 {
     assert(lua_isnumber(L, 2) && lua_isnumber(L, 3));
 
-    float n = lua_tonumber(L, 1);
-    float x = lua_tonumber(L, 2);
-    float y = lua_tonumber(L, 3);
+    int n = lua_tonumber(L, 1);
+    int x = lua_tonumber(L, 2);
+    int y = lua_tonumber(L, 3);
     float w = 1.0f;
     float h = 1.0f;
     bool flip_x = false, flip_y = false;
@@ -393,10 +393,9 @@ int spr(lua_State *L)
     {
         for (int sx = 0; sx < w; sx++)
         {
-            int index = (int)floor(n == -1.0f ? 0 : n) + sx + sy * 16;
-            int left = (int)floor(x + sx * 8);
-            int top = (int)floor(y + sy * 8);
-
+            int index = (n == -1.0f ? 0 : n) + sx + sy * 16;
+            int left = x + sx * 8;
+            int top = y + sy * 8;
             draw_sprite(index, left, top, flip_x, flip_y);
         }
     }
@@ -429,26 +428,10 @@ int sspr(lua_State *L)
     int dh = lua_to_or_default(L, number, 8, sh);
     bool flip_x = lua_to_or_default(L, boolean, 9, false);
     bool flip_y = lua_to_or_default(L, boolean, 10, false);
-
     float scale_x = (float)dw / sw;
     float scale_y = (float)dh / sh;
 
-    for (int y = 0; y < sh * scale_y; y++)
-    {
-        for (int x = 0; x < sw * scale_x; x++)
-        {
-            float fx = flip_x ? (sw - x - 1) : x;
-            float fy = flip_y ? (sh - y - 1) : y;
-            int ratio_x = (int)floor(fx / scale_x);
-            int ratio_y = (int)floor(fy / scale_y);
-            uint8_t background = gfx_get((int)floor(dx + fx), (int)floor(dy + fy), MEMORY_SCREEN, MEMORY_SCREEN_SIZE);
-            uint8_t index = gfx_get((int)floor(sx + ratio_x), (int)floor(sy + ratio_y), MEMORY_SPRITES, MEMORY_SPRITES_SIZE);
-            uint8_t color = color_get(PALTYPE_DRAW, (int)index);
-
-            if ((color & 0x10) == 0)
-                pixel_set((int)floor(dx + fx), (int)floor(dy + fy), color == 0 ? background : color);
-        }
-    }
+    draw_scaled_sprite(sx, sy, sw, sh, dx, dy, scale_x, scale_y, flip_x, flip_y);
 
     return 0;
 }
@@ -560,7 +543,7 @@ int map(lua_State *L)
     int sx = lua_tonumber(L, 3);
     int sy = lua_tonumber(L, 4);
     int celw = lua_gettop(L) >= 5 ? lua_tonumber(L, 5) : P8_WIDTH / SPRITE_WIDTH;
-    int celh = lua_gettop(L) >= 6 ? lua_tonumber(L, 6) : P8_HEIGHT / SPRITE_WIDTH;
+    int celh = lua_gettop(L) >= 6 ? lua_tonumber(L, 6) : P8_HEIGHT / SPRITE_HEIGHT;
     int layer = lua_gettop(L) >= 7 ? lua_tonumber(L, 7) : 0;
 
     for (int y = 0; y < celh; y++)
@@ -571,7 +554,11 @@ int map(lua_State *L)
             uint8_t sprite_flags = m_memory[MEMORY_SPRITEFLAGS + index];
 
             if (index != 0 && (layer == 0 || ((layer & sprite_flags) == layer)))
-                draw_sprite(index, sx + x * 8, sy + y * 8, false, false);
+            {
+                int left = sx + x * SPRITE_WIDTH;
+                int top = sy + y * SPRITE_HEIGHT;
+                draw_sprite(index, left, top, false, false);
+            }
         }
     }
 
@@ -1367,6 +1354,24 @@ void pixel_set(int x, int y, int c)
     }
 }
 
+void draw_scaled_sprite(int sx, int sy, int sw, int sh, int dx, int dy, float scale_x, float scale_y, bool flip_x, bool flip_y)
+{
+    for (int y = 0; y < sh * scale_y; y++)
+    {
+        for (int x = 0; x < sw * scale_x; x++)
+        {
+            int src_x = flip_x ? sx + (sw - x / scale_x) : sx + x / scale_x;
+            int src_y = flip_y ? sy + (sh - y / scale_y) : sy + y / scale_y;
+            uint8_t index = gfx_get(src_x, src_y, MEMORY_SPRITES, MEMORY_SPRITES_SIZE);
+            uint8_t background = gfx_get(dx + x, dy + y, MEMORY_SCREEN, MEMORY_SCREEN_SIZE);
+            uint8_t color = color_get(PALTYPE_DRAW, (int)index);
+
+            if ((color & 0x10) == 0)
+                pixel_set(dx + x, dy + y, color == 0 ? background : color);
+        }
+    }
+}
+
 void draw_sprite(int n, int left, int top, bool flip_x, bool flip_y)
 {
     int sx = n % 16 * SPRITE_WIDTH;
@@ -1383,7 +1388,21 @@ void draw_sprite(int n, int left, int top, bool flip_x, bool flip_y)
             uint8_t color = color_get(PALTYPE_DRAW, index);
 
             if ((color & 0x10) == 0)
-                pixel_set(left + fx, top + fy, (n == 0 || color == 0 ? background : color));
+                pixel_set(left + fx, top + fy, (color == 0 ? background : color));
+        }
+    }
+}
+
+void draw_sprites(int n, int x, int y, float w, float h, bool flip_x, bool flip_y)
+{
+    for (int sy = 0; sy < h; sy++)
+    {
+        for (int sx = 0; sx < w; sx++)
+        {
+            int index = (n == -1.0f ? 0 : n) + sx + sy * 16;
+            int left = x + sx * 8;
+            int top = y + sy * 8;
+            draw_sprite(index, left, top, flip_x, flip_y);
         }
     }
 }
@@ -1463,18 +1482,12 @@ uint8_t gfx_get(int x, int y, int location, int size)
 {
     int offset = location + (x >> 1) + y * 64;
 
-    if (offset < 0 || offset >= location + size)
-        return 0;
-
     return IS_EVEN(x) ? m_memory[offset] & 0xF : m_memory[offset] >> 4;
 }
 
 void gfx_set(int x, int y, int location, int size, int col)
 {
     int offset = location + (x >> 1) + y * 64;
-
-    if (offset < 0 || offset >= location + size)
-        return;
 
     uint8_t color = (col == -1 ? pencolor_get() : color_get(PALTYPE_DRAW, col));
 

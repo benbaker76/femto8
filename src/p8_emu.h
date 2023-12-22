@@ -24,7 +24,7 @@
 #define MIN(a, b) ((a) < (b) ? a : b)
 #endif
 #define IS_EVEN(n) ((n ^ 1) == (n + 1))
-#define BYTE_SWAP16(n) (((n & 0xFF) << 8) | ((n & 0xFF00) >> 8))
+#define NIBBLE_SWAP(n) ((n << 4) | (n >> 4))
 #define ARGB_TO_RGB565(argb) (((argb >> 8) & 0xF800) | ((argb >> 5) & 0x07E0) | ((argb >> 3) & 0x001F))
 
 #ifdef __DA1470x__

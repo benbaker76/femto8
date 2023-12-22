@@ -117,8 +117,6 @@ int p8_init_file(char *file_name)
 
     parse_cart_file(file_name, m_memory, &m_lua_script);
 
-    // printf("%s", m_lua_script);
-
     lua_load_api();
     lua_init_script(m_lua_script);
     clear_screen();
@@ -179,6 +177,9 @@ int p8_shutdown()
 #ifdef SDL
 void p8_render()
 {
+    sprintf(m_str_buffer, "%d", (int)m_actual_fps);
+    draw_text(m_str_buffer, 0, 0, 1);
+
     uint32_t *output = m_output->pixels;
 
     for (int y = 0; y < P8_HEIGHT; y++)

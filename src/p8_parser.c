@@ -250,9 +250,9 @@ void parse_p8_ram(uint8_t *buffer, int size, uint8_t *memory, char **lua_script)
             break;
         }
         case P8TYPE_GFX_4BIT:
-        case P8TYPE_GFX_8BIT:
+        // case P8TYPE_GFX_8BIT:
         case P8TYPE_GFF:
-        case P8TYPE_LABEL:
+        // case P8TYPE_LABEL:
         case P8TYPE_MAP:
         {
             uint8_t *write_mem = memory + m_p8_mem_offset[p8_type] + write_offset;
@@ -293,14 +293,10 @@ void parse_p8_ram(uint8_t *buffer, int size, uint8_t *memory, char **lua_script)
     }
 
     for (int i = MEMORY_SPRITES; i < MEMORY_SPRITES + MEMORY_SPRITES_SIZE; i++)
-    {
-        memory[i] = (memory[i] << 4) | (memory[i] >> 4);
-    }
+        memory[i] = NIBBLE_SWAP(memory[i]);
 
     for (int i = MEMORY_SPRITES_MAP; i < MEMORY_SPRITES_MAP + MEMORY_SPRITES_MAP_SIZE; i++)
-    {
-        memory[i] = (memory[i] << 4) | (memory[i] >> 4);
-    }
+        memory[i] = NIBBLE_SWAP(memory[i]);
 }
 
 void parse_p8_file(char *file_name, uint8_t *memory, char **lua_script)
