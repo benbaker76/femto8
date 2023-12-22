@@ -11,6 +11,14 @@ This project has been significantly influenced by the work of [Jacopo Santoni](h
 - Written in C for optimal performance on embedded systems.
 - Compact and resource-efficient design, suitable for devices with smaller CPUs and limited memory.
 
+## Screenshots
+
+![](/images/screenshot1.png)
+
+![](/images/screenshot2.png)
+
+![](/images/screenshot3.png)
+
 ### Building
 
 To build femto8:
