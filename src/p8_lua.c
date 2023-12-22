@@ -97,7 +97,7 @@ int clip(lua_State *L)
         uint8_t w = lua_tonumber(L, 3);
         uint8_t h = lua_tonumber(L, 4);
 
-        clip_set(x0, y0, MIN(x0 + w, P8_WIDTH - 1), MIN(y0 + h, P8_HEIGHT - 1));
+        clip_set(x0, y0, MIN(w, P8_WIDTH - 1), MIN(h, P8_HEIGHT - 1));
     }
 
     return 0;
@@ -1224,7 +1224,7 @@ void clear_screen()
         for (int x = 0; x < P8_WIDTH; x++)
             gfx_set(x, y, MEMORY_SCREEN, MEMORY_SCREEN_SIZE, color);
 
-    clip_set(0, 0, P8_WIDTH, P8_HEIGHT);
+    clip_set(0, 0, P8_WIDTH - 1, P8_HEIGHT - 1);
     cursor_set(0, 0, -1);
 }
 
@@ -1362,8 +1362,8 @@ void draw_scaled_sprite(int sx, int sy, int sw, int sh, int dx, int dy, float sc
         {
             int src_x = flip_x ? sx + (sw - x / scale_x) : sx + x / scale_x;
             int src_y = flip_y ? sy + (sh - y / scale_y) : sy + y / scale_y;
-            uint8_t index = gfx_get(src_x, src_y, MEMORY_SPRITES, MEMORY_SPRITES_SIZE);
             uint8_t background = gfx_get(dx + x, dy + y, MEMORY_SCREEN, MEMORY_SCREEN_SIZE);
+            uint8_t index = gfx_get(src_x, src_y, MEMORY_SPRITES, MEMORY_SPRITES_SIZE);
             uint8_t color = color_get(PALTYPE_DRAW, (int)index);
 
             if ((color & 0x10) == 0)
@@ -1426,10 +1426,9 @@ void draw_char(int n, int left, int top, int col)
     }
 }
 
-int get_p8_symbol(const char *str, uint8_t *symbol_length)
+int get_p8_symbol(const char *str, int str_len, uint8_t *symbol_length)
 {
     int p8_symbols_len = sizeof(p8_symbols) / sizeof(p8_symbol_t);
-    int str_len = strlen(str);
 
     for (int i = 0; i < p8_symbols_len; i++)
     {
@@ -1463,7 +1462,7 @@ int draw_text(const char *str, int x, int y, int col)
         else
         {
             uint8_t symbol_length = 0;
-            index = get_p8_symbol(&str[i], &symbol_length);
+            index = get_p8_symbol(&str[i], str_len - i, &symbol_length);
 
             if (index != -1)
                 i += symbol_length - 1;
