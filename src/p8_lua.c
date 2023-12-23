@@ -26,10 +26,10 @@
 
 lua_State *L = NULL;
 
-const void *m_lua_init = NULL;
-const void *m_lua_update = NULL;
-const void *m_lua_update60 = NULL;
-const void *m_lua_draw = NULL;
+void *m_lua_init = NULL;
+void *m_lua_update = NULL;
+void *m_lua_update60 = NULL;
+void *m_lua_draw = NULL;
 
 char m_str_buffer[256] = {0};
 
@@ -451,8 +451,6 @@ int sspr(lua_State *L)
 // *** Input ***
 // ****************************************************************
 
-bool pressed = false;
-
 // btn([i,] [p])
 int btn(lua_State *L)
 {
@@ -466,15 +464,10 @@ int btn(lua_State *L)
     {
         int i = lua_tonumber(L, 1);
 
-        /* if (i < BUTTON_COUNT)
+        if (i < BUTTON_COUNT)
             lua_pushboolean(L, is_button_set(p, i, false));
         else
-            lua_pushboolean(L, false); */
-        if (i == 4 && !pressed)
-        {
-            pressed = true;
-            lua_pushboolean(L, true);
-        }
+            lua_pushboolean(L, false);
     }
     // mask
     else

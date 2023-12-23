@@ -56,26 +56,26 @@ static int m_p8_mem_offset[] = {
     MEMORY_MUSIC,
 };
 
-void parse_cart_ram(uint8_t *buffer, int size, uint8_t *memory, char **lua_script);
-void parse_cart_file(char *file_name, uint8_t *memory, char **lua_script);
-void parse_p8_ram(uint8_t *buffer, int size, uint8_t *memory, char **lua_script);
-void parse_p8_file(char *file_name, uint8_t *memory, char **lua_script);
-void parse_png(char *file_name, uint8_t *memory, char **lua_script);
+void parse_cart_ram(uint8_t *buffer, int size, uint8_t *memory, char **lua_script, int *lua_start, int *lua_end);
+void parse_cart_file(char *file_name, uint8_t *memory, char **lua_script, int *lua_start, int *lua_end);
+void parse_p8_ram(uint8_t *buffer, int size, uint8_t *memory, char **lua_script, int *lua_start, int *lua_end);
+void parse_p8_file(char *file_name, uint8_t *memory, char **lua_script, int *lua_start, int *lua_end);
+void parse_png(char *file_name, uint8_t *memory, char **lua_script, int *lua_start, int *lua_end);
 
-void parse_cart_ram(uint8_t *buffer, int size, uint8_t *memory, char **lua_script)
+void parse_cart_ram(uint8_t *buffer, int size, uint8_t *memory, char **lua_script, int *lua_start, int *lua_end)
 {
-    parse_p8_ram(buffer, size, memory, lua_script);
+    parse_p8_ram(buffer, size, memory, lua_script, lua_start, lua_end);
 }
 
-void parse_cart_file(char *file_name, uint8_t *memory, char **lua_script)
+void parse_cart_file(char *file_name, uint8_t *memory, char **lua_script, int *lua_start, int *lua_end)
 {
     char extension[5];
     strcpy(extension, strrchr(file_name, '.') + 1);
 
     if (strcasecmp(extension, "png") == 0)
-        parse_png(file_name, memory, lua_script);
+        parse_png(file_name, memory, lua_script, lua_start, lua_end);
     else
-        parse_p8_file(file_name, memory, lua_script);
+        parse_p8_file(file_name, memory, lua_script, lua_start, lua_end);
 }
 
 void hex_to_bytes(uint8_t *memory, char *value, int *write_length)
@@ -195,12 +195,13 @@ void read_music(uint8_t *dest, uint8_t *src, int read_length, int *write_length)
     *write_length = write_offset;
 }
 
-void parse_p8_ram(uint8_t *buffer, int size, uint8_t *memory, char **lua_script)
+void parse_p8_ram(uint8_t *buffer, int size, uint8_t *memory, char **lua_script, int *lua_start, int *lua_end)
 {
     char *line;
     char *rest = (char *)buffer;
     char *script = *lua_script;
     int p8_type = P8TYPE_HEADER;
+    int file_offset = 0;
     int read_offset = 0;
     int write_offset = 0;
     int read_length = 0;
@@ -209,6 +210,8 @@ void parse_p8_ram(uint8_t *buffer, int size, uint8_t *memory, char **lua_script)
     while ((line = strsep(&rest, "\n")) != NULL)
     {
         int token_found = 0;
+        int line_length = strlen(line) + 1;
+        file_offset += line_length;
 
         for (int i = P8TYPE_LUA; i < P8TYPE_COUNT; i++)
         {
@@ -224,6 +227,11 @@ void parse_p8_ram(uint8_t *buffer, int size, uint8_t *memory, char **lua_script)
 
         if (token_found)
         {
+            if (p8_type == P8TYPE_LUA)
+            {
+                *lua_start = file_offset;
+                *lua_end = file_offset;
+            }
             continue;
         }
 
@@ -233,20 +241,23 @@ void parse_p8_ram(uint8_t *buffer, int size, uint8_t *memory, char **lua_script)
             break;
         case P8TYPE_LUA:
         {
-            int line_length = strlen(line) + 1;
-            read_length += line_length;
-
-            if (read_length >= MEMORY_LUA_SIZE)
+            if (script != NULL)
             {
-                fprintf(stderr, "Lua code too long!\n");
-                exit(EXIT_FAILURE);
+                read_length += line_length;
+
+                if (read_length >= MEMORY_LUA_SIZE)
+                {
+                    fprintf(stderr, "Lua code too long!\n");
+                    exit(EXIT_FAILURE);
+                }
+
+                strcat(script, line);
+                strcat(script, "\n");
+
+                script += line_length;
             }
 
-            strcat(script, line);
-            strcat(script, "\n");
-
-            script += line_length;
-
+            *lua_end = line_length;
             break;
         }
         case P8TYPE_GFX_4BIT:
@@ -299,7 +310,7 @@ void parse_p8_ram(uint8_t *buffer, int size, uint8_t *memory, char **lua_script)
         memory[i] = NIBBLE_SWAP(memory[i]);
 }
 
-void parse_p8_file(char *file_name, uint8_t *memory, char **lua_script)
+void parse_p8_file(char *file_name, uint8_t *memory, char **lua_script, int *lua_start, int *lua_end)
 {
     FILE *file = fopen(file_name, "r");
 
@@ -317,12 +328,12 @@ void parse_p8_file(char *file_name, uint8_t *memory, char **lua_script)
 
     fread(source, 1, file_size, file);
 
-    parse_p8_ram((uint8_t *)source, (int)file_size, memory, lua_script);
+    parse_p8_ram((uint8_t *)source, (int)file_size, memory, lua_script, lua_start, lua_end);
 
     fclose(file);
 }
 
-void parse_png(char *file_name, uint8_t *memory, char **lua_script)
+void parse_png(char *file_name, uint8_t *memory, char **lua_script, int *lua_start, int *lua_end)
 {
     // TODO: Implement
 }

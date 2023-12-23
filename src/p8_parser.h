@@ -10,7 +10,7 @@
 
 #include <stdint.h>
 
-void parse_cart_ram(uint8_t *buffer, int size, uint8_t *memory, char **lua_script);
-void parse_cart_file(char *file_name, uint8_t *memory, char **lua_script);
+void parse_cart_ram(uint8_t *buffer, int size, uint8_t *memory, char **lua_script, int *lua_start, int *lua_end);
+void parse_cart_file(char *file_name, uint8_t *memory, char **lua_script, int *lua_start, int *lua_end);
 
 #endif

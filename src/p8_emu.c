@@ -115,7 +115,9 @@ int p8_init_file(char *file_name)
 
     memset(lua_script, 0, MEMORY_LUA_SIZE);
 
-    parse_cart_file(file_name, m_memory, &lua_script);
+    int lua_start, lua_end;
+
+    parse_cart_file(file_name, m_memory, &lua_script, &lua_start, &lua_end);
 
     lua_load_api();
     lua_init_script(lua_script);
@@ -141,13 +143,15 @@ int p8_init_ram(uint8_t *buffer, int size)
 {
     p8_init();
 
-#ifdef SDL
-    char *lua_script = (char *)malloc(MEMORY_LUA_SIZE);
-#else
-    char *lua_script = (char *)rh_malloc_psram(MEMORY_LUA_SIZE);
-#endif
+    /* #ifdef SDL
+        char *lua_script = (char *)malloc(MEMORY_LUA_SIZE);
+    #else
+        char *lua_script = (char *)rh_malloc_psram(MEMORY_LUA_SIZE);
+    #endif */
 
-    parse_cart_ram(buffer, size, m_memory, &lua_script);
+    int lua_start, lua_end;
+
+    parse_cart_ram(buffer, size, m_memory, NULL, &lua_start, &lua_end);
 
 #ifdef SDL
     free(buffer);
@@ -157,14 +161,16 @@ int p8_init_ram(uint8_t *buffer, int size)
 
     // printf("%s", m_lua_script);
 
-    lua_load_api();
-    lua_init_script(lua_script);
+    buffer[lua_end] = '\0';
 
-#ifdef SDL
-    free(lua_script);
-#else
-    rh_free(lua_script);
-#endif
+    lua_load_api();
+    lua_init_script(buffer + lua_start);
+
+    /* #ifdef SDL
+        free(lua_script);
+    #else
+        rh_free(lua_script);
+    #endif */
 
     clear_screen();
 
