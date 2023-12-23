@@ -78,30 +78,28 @@ void parse_cart_file(char *file_name, uint8_t *memory, char **lua_script, int *l
         parse_p8_file(file_name, memory, lua_script, lua_start, lua_end);
 }
 
-void hex_to_bytes(uint8_t *memory, char *value, int *write_length)
+void hex_to_bytes(uint8_t *memory, char *str, int str_len, int *write_length)
 {
     *write_length = 0;
 
-    if (value == NULL)
+    if (str == NULL)
         return;
 
-    int length = strlen(value);
-
-    if (length == 0)
+    if (str_len == 0)
         return;
 
     int read_offset = 0;
     int write_offset = 0;
 
-    while (read_offset < length)
+    while (read_offset < str_len)
     {
-        if (!isxdigit(value[read_offset]))
+        if (!isxdigit(str[read_offset]))
         {
             read_offset++;
             continue;
         }
         unsigned int v;
-        sscanf(value + read_offset, "%2x", &v);
+        sscanf(str + read_offset, "%2x", &v);
         memory[write_offset] = (uint8_t)v;
         read_offset += 2;
         write_offset++;
@@ -199,7 +197,7 @@ void parse_p8_ram(uint8_t *buffer, int size, uint8_t *memory, char **lua_script,
 {
     char *line;
     char *rest = (char *)buffer;
-    char *script = *lua_script;
+    char *script = (lua_script == NULL ? NULL : *lua_script);
     int p8_type = P8TYPE_HEADER;
     int file_offset = 0;
     int read_offset = 0;
@@ -211,6 +209,10 @@ void parse_p8_ram(uint8_t *buffer, int size, uint8_t *memory, char **lua_script,
     {
         int token_found = 0;
         int line_length = strlen(line) + 1;
+
+        if (file_offset > 0)
+            line[-1] = '\n';
+
         file_offset += line_length;
 
         for (int i = P8TYPE_LUA; i < P8TYPE_COUNT; i++)
@@ -257,7 +259,7 @@ void parse_p8_ram(uint8_t *buffer, int size, uint8_t *memory, char **lua_script,
                 script += line_length;
             }
 
-            *lua_end = line_length;
+            *lua_end += line_length;
             break;
         }
         case P8TYPE_GFX_4BIT:
@@ -267,7 +269,7 @@ void parse_p8_ram(uint8_t *buffer, int size, uint8_t *memory, char **lua_script,
         case P8TYPE_MAP:
         {
             uint8_t *write_mem = memory + m_p8_mem_offset[p8_type] + write_offset;
-            hex_to_bytes(write_mem, line, &write_length);
+            hex_to_bytes(write_mem, line, line_length-1, &write_length);
 
             write_offset += write_length;
             break;
@@ -277,7 +279,7 @@ void parse_p8_ram(uint8_t *buffer, int size, uint8_t *memory, char **lua_script,
             uint8_t *read_mem = memory + MEMORY_SFX + read_offset;
             uint8_t *write_mem = memory + MEMORY_SFX + write_offset;
 
-            hex_to_bytes(read_mem, line, &read_length);
+            hex_to_bytes(read_mem, line, line_length-1, &read_length);
 
             if (read_length > 0)
                 read_sfx(write_mem, read_mem, read_length, &write_length);
@@ -291,7 +293,7 @@ void parse_p8_ram(uint8_t *buffer, int size, uint8_t *memory, char **lua_script,
             uint8_t *read_mem = memory + MEMORY_MUSIC + read_offset;
             uint8_t *write_mem = memory + MEMORY_MUSIC + write_offset;
 
-            hex_to_bytes(read_mem, line, &read_length);
+            hex_to_bytes(read_mem, line, line_length-1, &read_length);
 
             if (read_length > 0)
                 read_music(write_mem, read_mem, read_length, &write_length);

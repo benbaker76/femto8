@@ -153,24 +153,32 @@ int p8_init_ram(uint8_t *buffer, int size)
 
     parse_cart_ram(buffer, size, m_memory, NULL, &lua_start, &lua_end);
 
-#ifdef SDL
-    free(buffer);
-#else
-    rh_free(buffer);
-#endif
+    /* #ifdef SDL
+        free(buffer);
+    #else
+        rh_free(buffer);
+    #endif */
 
     // printf("%s", m_lua_script);
 
     buffer[lua_end] = '\0';
 
+    //printf("%s\r\n", (char *)(buffer + lua_start));
+
     lua_load_api();
-    lua_init_script(buffer + lua_start);
+    lua_init_script((char *)(buffer + lua_start));
 
     /* #ifdef SDL
         free(lua_script);
     #else
         rh_free(lua_script);
     #endif */
+
+    #ifdef SDL
+        free(buffer);
+    #else
+        rh_free(buffer);
+    #endif
 
     clear_screen();
 
