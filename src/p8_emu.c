@@ -38,7 +38,6 @@ uint32_t m_colors[16] = {
 void p8_main_loop();
 
 uint8_t *m_memory = NULL;
-char *m_lua_script = NULL;
 
 float m_fps = 30;
 float m_actual_fps = 0;
@@ -61,11 +60,6 @@ int p8_init()
 
 #ifdef SDL
     m_memory = (uint8_t *)malloc(MEMORY_SIZE);
-    m_lua_script = (char *)malloc(MEMORY_LUA_SIZE);
-
-    memset(m_memory, 0, MEMORY_SIZE);
-    memset(m_lua_script, 0, MEMORY_LUA_SIZE);
-
     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO) != 0)
     {
         printf("Error on SDL_Init().\n");
@@ -83,11 +77,9 @@ int p8_init()
     SDL_WM_SetCaption("femto-8", NULL);
 #else
     m_memory = (uint8_t *)rh_malloc(MEMORY_SIZE);
-    m_lua_script = (char *)rh_malloc_psram(MEMORY_LUA_SIZE);
+#endif
 
     memset(m_memory, 0, MEMORY_SIZE);
-    memset(m_lua_script, 0, MEMORY_LUA_SIZE);
-#endif
 
 #ifdef ENABLE_AUDIO
     audio_init();
@@ -115,11 +107,27 @@ int p8_init_file(char *file_name)
 {
     p8_init();
 
-    parse_cart_file(file_name, m_memory, &m_lua_script);
+#ifdef SDL
+    char *lua_script = (char *)malloc(MEMORY_LUA_SIZE);
+#else
+    char *lua_script = (char *)rh_malloc_psram(MEMORY_LUA_SIZE);
+#endif
+
+    memset(lua_script, 0, MEMORY_LUA_SIZE);
+
+    parse_cart_file(file_name, m_memory, &lua_script);
 
     lua_load_api();
-    lua_init_script(m_lua_script);
+    lua_init_script(lua_script);
+
+#ifdef SDL
+    free(lua_script);
+#else
+    rh_free(lua_script);
+#endif
+
     clear_screen();
+
     lua_init();
 
     p8_init_lcd();
@@ -133,7 +141,13 @@ int p8_init_ram(uint8_t *buffer, int size)
 {
     p8_init();
 
-    parse_cart_ram(buffer, size, m_memory, &m_lua_script);
+#ifdef SDL
+    char *lua_script = (char *)malloc(MEMORY_LUA_SIZE);
+#else
+    char *lua_script = (char *)rh_malloc_psram(MEMORY_LUA_SIZE);
+#endif
+
+    parse_cart_ram(buffer, size, m_memory, &lua_script);
 
 #ifdef SDL
     free(buffer);
@@ -144,8 +158,16 @@ int p8_init_ram(uint8_t *buffer, int size)
     // printf("%s", m_lua_script);
 
     lua_load_api();
-    lua_init_script(m_lua_script);
+    lua_init_script(lua_script);
+
+#ifdef SDL
+    free(lua_script);
+#else
+    rh_free(lua_script);
+#endif
+
     clear_screen();
+
     lua_init();
 
     p8_init_lcd();
