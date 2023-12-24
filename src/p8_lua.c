@@ -26,10 +26,10 @@
 
 lua_State *L = NULL;
 
-void *m_lua_init = NULL;
-void *m_lua_update = NULL;
-void *m_lua_update60 = NULL;
-void *m_lua_draw = NULL;
+const void *m_lua_init = NULL;
+const void *m_lua_update = NULL;
+const void *m_lua_update60 = NULL;
+const void *m_lua_draw = NULL;
 
 char m_str_buffer[256] = {0};
 
@@ -468,6 +468,11 @@ int btn(lua_State *L)
             lua_pushboolean(L, is_button_set(p, i, false));
         else
             lua_pushboolean(L, false);
+
+        if (i == 4)
+        {
+            lua_pushboolean(L, true);
+        }
     }
     // mask
     else
