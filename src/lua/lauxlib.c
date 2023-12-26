@@ -1090,7 +1090,7 @@ static void *l_alloc(void *ud, void *ptr, size_t osize, size_t nsize)
     return NULL;
   }
   else
-    return rh_realloc_psram(ptr, nsize);
+    return rh_realloc(ptr, nsize);
 #else
   if (nsize == 0)
   {

@@ -110,7 +110,7 @@ int p8_init_file(char *file_name)
 #ifdef SDL
     char *lua_script = (char *)malloc(MEMORY_LUA_SIZE);
 #else
-    char *lua_script = (char *)rh_malloc_psram(MEMORY_LUA_SIZE);
+    char *lua_script = (char *)rh_malloc(MEMORY_LUA_SIZE);
 #endif
 
     memset(lua_script, 0, MEMORY_LUA_SIZE);
@@ -146,7 +146,7 @@ int p8_init_ram(uint8_t *buffer, int size)
     /* #ifdef SDL
         char *lua_script = (char *)malloc(MEMORY_LUA_SIZE);
     #else
-        char *lua_script = (char *)rh_malloc_psram(MEMORY_LUA_SIZE);
+        char *lua_script = (char *)rh_malloc(MEMORY_LUA_SIZE);
     #endif */
 
     int lua_start, lua_end;
