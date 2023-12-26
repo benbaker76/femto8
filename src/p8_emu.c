@@ -110,7 +110,7 @@ int p8_init_file(char *file_name)
 #ifdef SDL
     char *lua_script = (char *)malloc(MEMORY_LUA_SIZE);
 #else
-    char *lua_script = (char *)rh_malloc(MEMORY_LUA_SIZE);
+    char *lua_script = (char *)rh_malloc_psram(MEMORY_LUA_SIZE);
 #endif
 
     memset(lua_script, 0, MEMORY_LUA_SIZE);
@@ -146,7 +146,7 @@ int p8_init_ram(uint8_t *buffer, int size)
     /* #ifdef SDL
         char *lua_script = (char *)malloc(MEMORY_LUA_SIZE);
     #else
-        char *lua_script = (char *)rh_malloc(MEMORY_LUA_SIZE);
+        char *lua_script = (char *)rh_malloc_psram(MEMORY_LUA_SIZE);
     #endif */
 
     int lua_start, lua_end;
@@ -249,6 +249,10 @@ void p8_render()
 {
     uint16_t *output = gdi_get_frame_buffer_addr(HW_LCDC_LAYER_0);
 
+    uint16_t colors[16];
+
+
+
     if (!draw_done)
         return;
 
@@ -257,20 +261,187 @@ void p8_render()
     sprintf(m_str_buffer, "%d", (int)m_actual_fps);
     draw_text(m_str_buffer, 0, 0, 1);
 
-    for (int y = 0; y < SCREEN_HEIGHT; y++)
+    //lets precalc the palette so we are not doing it each pixel
+    for(int i = 0; i < 16; i++)
+            colors[i] = ARGB_TO_RGB565(m_colors[i]);
+
+    uint8_t* screen_mem =  &m_memory[MEMORY_SCREEN];
+
+    uint8_t* pal = &m_memory[MEMORY_PALETTES + PALTYPE_SCREEN * 16];
+
+    for (int y = 1; y <= 128; y++)
     {
-        for (int x = 0; x < SCREEN_WIDTH; x++)
+        if(y & 0x7)
         {
-            int s_x = x * P8_WIDTH / SCREEN_WIDTH;
-            int s_y = y * P8_HEIGHT / SCREEN_HEIGHT;
+                uint16_t * top = output;
+                uint16_t * bottom = output + 240;
 
-            uint8_t value = m_memory[MEMORY_SCREEN + (s_x >> 1) + s_y * 64];
-            uint8_t index = color_get(PALTYPE_SCREEN, IS_EVEN(s_x) ? value & 0xF : value >> 4);
-            uint32_t color = m_colors[index & 0xF];
+                for (int x = 0; x < 128; x+=8)
+                {
 
-            output[x + (y * SCREEN_WIDTH)] = ARGB_TO_RGB565(color);
+                        uint8_t left  = (*screen_mem) & 0xF;
+                        uint8_t right = (*screen_mem) >> 4;
+
+                        uint8_t index_left = pal[left];
+                        uint8_t index_right = pal[right];
+
+                        uint16_t c_left = colors[index_left];
+                        uint16_t c_right = colors[index_right];
+
+                        *top++ = c_left;
+                        *top++ = c_left;
+                        *top++ = c_right;
+                        *top++ = c_right;
+
+                        *bottom++ = c_left;
+                        *bottom++ = c_left;
+                        *bottom++ = c_right;
+                        *bottom++ = c_right;
+
+                        screen_mem++;
+
+                        left  = (*screen_mem) & 0xF;
+                        right = (*screen_mem) >> 4;
+
+                        index_left = pal[left];
+                        index_right = pal[right];
+
+                        c_left = colors[index_left];
+                        c_right = colors[index_right];
+
+                        *top++ = c_left;
+                        *top++ = c_left;
+                        *top++ = c_right;
+                        *top++ = c_right;
+
+                        *bottom++ = c_left;
+                        *bottom++ = c_left;
+                        *bottom++ = c_right;
+                        *bottom++ = c_right;
+
+                        screen_mem++;
+
+                        left  = (*screen_mem) & 0xF;
+                        right = (*screen_mem) >> 4;
+
+                        index_left = pal[left];
+                        index_right = pal[right];
+
+                        c_left = colors[index_left];
+                        c_right = colors[index_right];
+
+                        *top++ = c_left;
+                        *top++ = c_left;
+                        *top++ = c_right;
+                        *top++ = c_right;
+
+                        *bottom++ = c_left;
+                        *bottom++ = c_left;
+                        *bottom++ = c_right;
+                        *bottom++ = c_right;
+
+                        screen_mem++;
+
+                        left  = (*screen_mem) & 0xF;
+                        right = (*screen_mem) >> 4;
+
+                        index_left = pal[left];
+                        index_right = pal[right];
+
+                        c_left = colors[index_left];
+                        c_right = colors[index_right];
+
+                        *top++ = c_left;
+                        *top++ = c_left;
+                        *top++ = c_right;
+
+                        *bottom++ = c_left;
+                        *bottom++ = c_right;
+                        *bottom++ = c_right;
+
+                        screen_mem++;
+                }
+
+                output += 480;
+        }
+        else
+        {
+                uint16_t * top = output;
+
+                for (int x = 0; x < 128; x+=8)
+                {
+
+                        uint8_t left  = (*screen_mem) & 0xF;
+                        uint8_t right = (*screen_mem) >> 4;
+
+                        uint8_t index_left = pal[left];
+                        uint8_t index_right = pal[right];
+
+                        uint16_t c_left = colors[index_left];
+                        uint16_t c_right = colors[index_right];
+
+                        *top++ = c_left;
+                        *top++ = c_left;
+                        *top++ = c_right;
+                        *top++ = c_right;
+
+                        screen_mem++;
+
+                        left  = (*screen_mem) & 0xF;
+                        right = (*screen_mem) >> 4;
+
+                        index_left = pal[left];
+                        index_right = pal[right];
+
+                        c_left = colors[index_left];
+                        c_right = colors[index_right];
+
+                        *top++ = c_left;
+                        *top++ = c_left;
+                        *top++ = c_right;
+                        *top++ = c_right;
+
+                        screen_mem++;
+
+                        left  = (*screen_mem) & 0xF;
+                        right = (*screen_mem) >> 4;
+
+                        index_left = pal[left];
+                        index_right = pal[right];
+
+                        c_left = colors[index_left];
+                        c_right = colors[index_right];
+
+                        *top++ = c_left;
+                        *top++ = c_left;
+                        *top++ = c_right;
+                        *top++ = c_right;
+
+
+                        screen_mem++;
+
+                        left  = (*screen_mem) & 0xF;
+                        right = (*screen_mem) >> 4;
+
+                        index_left = pal[left];
+                        index_right = pal[right];
+
+                        c_left = colors[index_left];
+                        c_right = colors[index_right];
+
+                        *top++ = c_left;
+                        *top++ = c_left;
+                        *top++ = c_right;
+
+
+                        screen_mem++;
+                }
+
+                output += 240;
         }
     }
+
+
 
     gdi_display_update_async(draw_complete, NULL);
 }
