@@ -22,6 +22,7 @@
 #include "p8_audio.h"
 #include "p8_emu.h"
 #include "p8_lua.h"
+#include "p8_lua_helper.h"
 #include "p8_parser.h"
 
 #ifdef SDL
@@ -116,7 +117,7 @@ int p8_init_file(char *file_name)
 #ifdef SDL
     char *lua_script = (char *)malloc(MEMORY_LUA_SIZE);
 #else
-    char *lua_script = (char *)rh_malloc_psram(MEMORY_LUA_SIZE);
+    char *lua_script = (char *)rh_malloc(MEMORY_LUA_SIZE);
 #endif
 
     memset(lua_script, 0, MEMORY_LUA_SIZE);
@@ -134,7 +135,7 @@ int p8_init_file(char *file_name)
     rh_free(lua_script);
 #endif
 
-    clear_screen();
+    clear_screen(0);
 
     lua_init();
 
@@ -186,7 +187,7 @@ int p8_init_ram(uint8_t *buffer, int size)
     rh_free(buffer);
 #endif
 
-    clear_screen();
+    clear_screen(0);
 
     lua_init();
 
