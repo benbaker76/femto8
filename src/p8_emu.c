@@ -18,6 +18,7 @@
 #include <FreeRTOS.h>
 #include <task.h>
 #include "retro_heap.h"
+#include "ble_controller.h"
 #endif
 #include "p8_audio.h"
 #include "p8_emu.h"
@@ -441,6 +442,49 @@ void p8_render()
 }
 #endif
 
+void p8_update_input()
+{
+#ifdef OS_FREERTOS
+    uint8_t mask = 0;
+
+    if (gamepad & AXIS_L_LEFT)
+        mask |= BUTTON_LEFT;
+    if (gamepad & AXIS_L_RIGHT)
+        mask |= BUTTON_RIGHT;
+    if (gamepad & AXIS_L_UP)
+        mask |= BUTTON_UP;
+    if (gamepad & AXIS_L_DOWN)
+        mask |= BUTTON_DOWN;
+    if (gamepad & AXIS_L_TRIGGER)
+        mask |= BUTTON_ACTION1;
+    if (gamepad & AXIS_R_LEFT)
+        mask |= BUTTON_LEFT;
+    if (gamepad & AXIS_R_RIGHT)
+        mask |= BUTTON_RIGHT;
+    if (gamepad & AXIS_R_UP)
+        mask |= BUTTON_UP;
+    if (gamepad & AXIS_R_DOWN)
+        mask |= BUTTON_DOWN;
+    if (gamepad & AXIS_R_TRIGGER)
+        mask |= BUTTON_ACTION2;
+    if (gamepad & DPAD_UP)
+        mask |= BUTTON_UP;
+    if (gamepad & DPAD_RIGHT)
+        mask |= BUTTON_RIGHT;
+    if (gamepad & DPAD_DOWN)
+        mask |= BUTTON_DOWN;
+    if (gamepad & DPAD_LEFT)
+        mask |= BUTTON_LEFT;
+    if (gamepad & BUTTON_1)
+        mask |= BUTTON_ACTION1;
+    if (gamepad & BUTTON_2)
+        mask |= BUTTON_ACTION2;
+
+    m_buttons[0] = mask;
+
+#endif
+}
+
 void p8_main_loop()
 {
     long start_time, end_time;
@@ -525,6 +569,7 @@ void p8_main_loop()
             }
         }
 #endif
+        p8_update_input();
 
         lua_update();
         lua_draw();
