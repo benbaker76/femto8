@@ -55,6 +55,8 @@ float m_time = 0.0;
 SDL_Surface *m_screen = NULL;
 SDL_Surface *m_output = NULL;
 SDL_PixelFormat *m_format = NULL;
+#else
+SemaphoreHandle_t m_drawSemaphore;
 #endif
 
 int m_mouse_x, m_mouse_y;
@@ -84,6 +86,10 @@ int p8_init()
 
     SDL_WM_SetCaption("femto-8", NULL);
 #else
+    m_drawSemaphore = xSemaphoreCreateBinary();
+
+    xSemaphoreGive(m_drawSemaphore);
+    
     m_memory = (uint8_t *)rh_malloc(MEMORY_SIZE);
 #endif
 
@@ -246,25 +252,20 @@ void p8_render()
 }
 #else
 
-bool draw_done = true;
-
 void draw_complete(bool underflow, void *user_data)
 {
-    draw_done = true;
+    xSemaphoreGive(m_drawSemaphore);
 }
 
 void p8_render()
 {
-    uint16_t *output = gdi_get_frame_buffer_addr(HW_LCDC_LAYER_0);
-
-    if (!draw_done)
+    if (xSemaphoreTake(m_drawSemaphore, portMAX_DELAY) != pdTRUE)
         return;
-
-    draw_done = false;
 
     sprintf(m_str_buffer, "%d", (int)m_actual_fps);
     draw_text(m_str_buffer, 0, 0, 1);
 
+    uint16_t *output = gdi_get_frame_buffer_addr(HW_LCDC_LAYER_0);
     uint8_t *screen_mem = &m_memory[MEMORY_SCREEN];
     uint8_t *pal = &m_memory[MEMORY_PALETTES + PALTYPE_SCREEN * 16];
 
