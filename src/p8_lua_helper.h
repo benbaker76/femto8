@@ -21,6 +21,7 @@ static inline void draw_scaled_sprite(int sx, int sy, int sw, int sh, int dx, in
 static inline void draw_sprites(int n, int x, int y, float w, float h, bool flip_x, bool flip_y);
 static inline void draw_line(int x0, int y0, int x1, int y1, int col);
 static inline void draw_char(int n, int left, int top, int col);
+static inline uint8_t gfx_addr_get(int x, int y, uint8_t *memory, int location, int size);
 static inline uint8_t gfx_get(int x, int y, int location, int size);
 static inline void gfx_set(int x, int y, int location, int size, int col);
 static inline void camera_get(int *x, int *y);
@@ -234,19 +235,18 @@ static inline void draw_sprites(int n, int x, int y, float w, float h, bool flip
 
 static inline void draw_char(int n, int left, int top, int col)
 {
-    int sx = n & 0xF;
-    int sy = (n >> 4) * 5;
+    int sx = n % 16 * 8;
+    int sy = n / 16 * 8;
 
     for (int y = 0; y < 8; y++)
     {
-        uint8_t x_byte = y >= 5 ? 0 : font_map[sx + (sy + y) * 16];
-
         for (int x = 0; x < 8; x++)
         {
             uint8_t background = gfx_get(left + x, top + y, MEMORY_SCREEN, MEMORY_SCREEN_SIZE);
-            uint8_t x_bit = (x_byte >> (7 - x)) & 0x1;
+            uint8_t index = gfx_addr_get(sx + x, sy + y, (uint8_t *)font_map, 0, sizeof(font_map));
+            uint8_t color = color_get(PALTYPE_DRAW, index);
 
-            pixel_set(left + x, top + y, x_bit ? (col == -1 ? (int)pencolor_get() : col) : background);
+            pixel_set(left + x, top + y, color == 7 ? (col == -1 ? (int)pencolor_get() : col) : background);
         }
     }
 }
@@ -302,11 +302,16 @@ static inline int draw_text(const char *str, int x, int y, int col)
     return left;
 }
 
-static inline uint8_t gfx_get(int x, int y, int location, int size)
+static inline uint8_t gfx_addr_get(int x, int y, uint8_t *memory, int location, int size)
 {
     int offset = location + (x >> 1) + y * 64;
 
-    return IS_EVEN(x) ? m_memory[offset] & 0xF : m_memory[offset] >> 4;
+    return IS_EVEN(x) ? memory[offset] & 0xF : memory[offset] >> 4;
+}
+
+static inline uint8_t gfx_get(int x, int y, int location, int size)
+{
+    return gfx_addr_get(x, y, m_memory, location, size);
 }
 
 static inline void gfx_set(int x, int y, int location, int size, int col)

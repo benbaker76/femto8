@@ -72,7 +72,7 @@ void parse_cart_file(char *file_name, uint8_t *memory, char **lua_script, int *l
     char extension[5];
     strcpy(extension, strrchr(file_name, '.') + 1);
 
-    if (strcasecmp(extension, "png") == 0)
+    if (strncasecmp(extension, "png", 3) == 0)
         parse_png(file_name, memory, lua_script, lua_start, lua_end);
     else
         parse_p8_file(file_name, memory, lua_script, lua_start, lua_end);

@@ -12,10 +12,11 @@ def write_to_file(hex_values, width):
     """Write hex values to a text file with newlines based on width."""
     with open("pico_font.h", 'w') as file:
         file.write(f"static const uint8_t font_map[] = {{\n")
+        file.write('    ')
         for index, hex_val in enumerate(hex_values, start=1):
             file.write(hex_val)
-            if index % (width // 8) == 0 and index != len(hex_values):
-                file.write('\n')
+            if index % (width // 2) == 0 and index != len(hex_values):
+                file.write('\n    ')
         file.write("\n};")
 
 def main(input_png_path):
@@ -31,20 +32,13 @@ def main(input_png_path):
         # Get the pixel data (indexed values)
         pixel_data = extract_pixel_data(img)
         
-        # Convert pixel data to binary format (1 bit per pixel)
-        binary_data = []
-        for pixel in pixel_data:
-            binary_data.append(0 if pixel == 0 else 1)
-        
-        # Convert binary data (1-bit pixels) to hex (8-bit bytes)
         hex_values = []
-        for i in range(0, len(binary_data), 8):
-            # Pack 8 bits into a single byte
-            byte_data = 0
-            for j in range(8):
-                byte_data |= (binary_data[i + j] << (7 - j))
+        for i in range(0, len(pixel_data), 2):  # Process two pixels at a time
+            # Extract two pixel values (4 bits each) and pack them into a single byte (8 bits)
+            byte_data = pixel_data[i] | (pixel_data[i + 1] << 4)
+
             hex_values.append(convert_to_hex(byte_data))
-        
+
         # Write to the specified output file path
         write_to_file(hex_values, width)
         
