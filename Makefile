@@ -16,21 +16,28 @@ SRC_DIRS := src src/lua src/data src/lodepng src/lexaloffle
 $(shell mkdir -p build/lua build/lexaloffle build/lodepng)
 
 # Collect all source files
-SOURCES_C := $(wildcard $(addsuffix /*.c, $(SRC_DIRS)))
+SOURCES_LUA := $(wildcard src/lua/*.c) src/p8_lua.c
+SOURCES_C := $(filter-out $(SOURCES_LUA),$(wildcard $(addsuffix /*.c, $(SRC_DIRS))))
 SOURCES_CXX := $(wildcard $(addsuffix /*.cpp, $(SRC_DIRS)))
 
 # Generate object file paths
-OBJECTS := $(patsubst src/%.c,build/%.o,$(SOURCES_C)) $(patsubst src/%.cpp,build/%.o,$(SOURCES_CXX))
+OBJECTS_C := $(patsubst src/%.c,build/%.o,$(SOURCES_C))
+OBJECTX_CXX := $(patsubst src/%.cpp,build/%.o,$(SOURCES_CXX))
+OBJECTS_LUA := $(patsubst src/%.c,build/%.o,$(SOURCES_LUA))
+OBJECTS := $(OBJECTS_C) $(OBJECTS_CXX) $(OBJECTS_LUA)
 
 all: $(TARGET)
 
 $(TARGET): $(OBJECTS)
 	$(CXX) $(CFLAGS) $(LDFLAGS) $(OBJECTS) -o $@ $(LIBS)
 
-build/%.o: src/%.c
+$(OBJECTS_C): build/%.o: src/%.c
 	$(CC) $(CFLAGS) -c $< -o $@
 
-build/%.o: src/%.cpp
+$(OBJECTS_CXX): build/%.o: src/%.cpp
+	$(CXX) $(CXXFLAGS) -c $< -o $@
+
+$(OBJECTS_LUA): build/%.o: src/%.c
 	$(CXX) $(CXXFLAGS) -c $< -o $@
 
 clean:

@@ -1,11 +1,10 @@
 /*
-** $Id: llex.h,v 1.79.1.1 2017/04/19 17:20:42 roberto Exp $
+** $Id: llex.h,v 1.72 2011/11/30 12:43:51 roberto Exp $
 ** Lexical Analyzer
 ** See Copyright Notice in lua.h
 */
 
 #ifndef llex_h
-
 #define llex_h
 
 #include "lobject.h"
@@ -14,10 +13,6 @@
 
 #define FIRST_RESERVED	257
 
-
-#if !defined(LUA_ENV)
-#define LUA_ENV		"_ENV"
-#endif
 
 
 /*
@@ -31,11 +26,13 @@ enum RESERVED {
   TK_GOTO, TK_IF, TK_IN, TK_LOCAL, TK_NIL, TK_NOT, TK_OR, TK_REPEAT,
   TK_RETURN, TK_THEN, TK_TRUE, TK_UNTIL, TK_WHILE,
   /* other terminal symbols */
-  TK_IDIV, TK_CONCAT, TK_DOTS, TK_EQ, TK_GE, TK_LE, TK_NE, TK_NE2,
-  TK_ASSADD, TK_ASSSUB, TK_ASSMUL, TK_ASSDIV, TK_ASSMOD,
-  TK_SHL, TK_SHR,
-  TK_DBCOLON, TK_EOS, TK_EOL,
-  TK_FLT, TK_INT, TK_NAME, TK_STRING
+  TK_CONCAT, TK_DOTS, TK_EQ, TK_GE, TK_LE, TK_NE, TK_NE2, TK_DBCOLON,
+  TK_EOS, TK_NUMBER, TK_NAME, TK_STRING, TK_PRINT, TK_EOL,
+  TK_BXOR, TK_SHL, TK_SHR, TK_LSHR, TK_ROTL, TK_ROTR,
+  /* these must be last and match "ORDER OPR" */
+  TK_ADDE, TK_SUBE, TK_MULE, TK_DIVE, TK_MODE, TK_POWE, TK_IDIVE,
+  TK_BANDE, TK_BORE, TK_BXORE, TK_SHLE, TK_SHRE, TK_LSHRE, TK_ROTLE,
+  TK_ROTRE, TK_CONCATE,
 };
 
 /* number of reserved words */
@@ -44,7 +41,6 @@ enum RESERVED {
 
 typedef union {
   lua_Number r;
-  lua_Integer i;
   TString *ts;
 } SemInfo;  /* semantics information */
 
@@ -58,20 +54,22 @@ typedef struct Token {
 /* state of the lexer plus state of the parser when shared by all
    functions */
 typedef struct LexState {
-  int ignorenewline;
   int current;  /* current character (charint) */
   int linenumber;  /* input line counter */
-  int lastline;  /* line of last token 'consumed' */
+  int atsol;  /* are we at start of line? */
+  int emiteol;  /* should EOL be emitted? */
+  int lastline;  /* line of last token `consumed' */
+  int braces;  /* braces context */
   Token t;  /* current token */
   Token lookahead;  /* look ahead token */
   struct FuncState *fs;  /* current function (parser) */
   struct lua_State *L;
   ZIO *z;  /* input stream */
   Mbuffer *buff;  /* buffer for tokens */
-  Table *h;  /* to avoid collection/reuse strings */
   struct Dyndata *dyd;  /* dynamic structures used by the parser */
   TString *source;  /* current source name */
   TString *envn;  /* environment variable name */
+  char decpoint;  /* locale decimal point */
 } LexState;
 
 
@@ -83,6 +81,7 @@ LUAI_FUNC void luaX_next (LexState *ls);
 LUAI_FUNC int luaX_lookahead (LexState *ls);
 LUAI_FUNC l_noret luaX_syntaxerror (LexState *ls, const char *s);
 LUAI_FUNC const char *luaX_token2str (LexState *ls, int token);
+LUAI_FUNC void luaX_trackbraces (LexState *ls);
 
 
 #endif

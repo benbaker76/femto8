@@ -1,5 +1,5 @@
 /*
-** $Id: lctype.h,v 1.12.1.1 2013/04/12 18:48:47 roberto Exp $
+** $Id: lctype.h,v 1.12 2011/07/15 12:50:29 roberto Exp $
 ** 'ctype' functions for Lua
 ** See Copyright Notice in lua.h
 */
@@ -80,8 +80,9 @@ LUAI_DDEC const lu_byte luai_ctype_[UCHAR_MAX + 2];
 #include <ctype.h>
 
 
-#define lislalpha(c)	(isalpha(c) || (c) == '_')
-#define lislalnum(c)	(isalnum(c) || (c) == '_')
+#define lisspecial(c)	(((int)(c) >= 0x10 && (int)(c) < 0x20) || (int)(c) >= 0x7f)
+#define lislalpha(c)	(isalpha(c) || (c) == '_' || lisspecial(c))
+#define lislalnum(c)	(isalnum(c) || (c) == '_' || lisspecial(c))
 #define lisdigit(c)	(isdigit(c))
 #define lisspace(c)	(isspace(c))
 #define lisprint(c)	(isprint(c))
