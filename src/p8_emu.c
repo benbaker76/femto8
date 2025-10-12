@@ -121,26 +121,13 @@ int p8_init_file(char *file_name)
 {
     p8_init();
 
-#ifdef SDL
-    char *lua_script = (char *)malloc(MEMORY_LUA_SIZE);
-#else
-    char *lua_script = (char *)rh_malloc(MEMORY_LUA_SIZE);
-#endif
+    const char *lua_script = NULL;
+    uint8_t *file_buffer = NULL;
 
-    memset(lua_script, 0, MEMORY_LUA_SIZE);
-
-    int lua_start, lua_end;
-
-    parse_cart_file(file_name, m_memory, &lua_script, &lua_start, &lua_end);
+    parse_cart_file(file_name, m_memory, &lua_script, &file_buffer);
 
     lua_load_api();
     lua_init_script(lua_script);
-
-#ifdef SDL
-    free(lua_script);
-#else
-    rh_free(lua_script);
-#endif
 
     clear_screen(0);
 
@@ -149,6 +136,12 @@ int p8_init_file(char *file_name)
     p8_init_lcd();
 
     p8_main_loop();
+
+#ifdef OS_FREERTOS
+    rh_free(file_buffer);
+#else
+    free(file_buffer);
+#endif
 
     return 0;
 }
@@ -157,42 +150,15 @@ int p8_init_ram(uint8_t *buffer, int size)
 {
     p8_init();
 
-    /* #ifdef SDL
-        char *lua_script = (char *)malloc(MEMORY_LUA_SIZE);
-    #else
-        char *lua_script = (char *)rh_malloc_psram(MEMORY_LUA_SIZE);
-    #endif */
+    const char *lua_script = NULL;
+    uint8_t *decompression_buffer = NULL;
 
-    int lua_start, lua_end;
-
-    parse_cart_ram(buffer, size, m_memory, NULL, &lua_start, &lua_end);
-
-    /* #ifdef SDL
-        free(buffer);
-    #else
-        rh_free(buffer);
-    #endif */
+    parse_cart_ram(buffer, size, m_memory, &lua_script, &decompression_buffer);
 
     // printf("%s", m_lua_script);
 
-    buffer[lua_end] = '\0';
-
-    // printf("%s\r\n", (char *)(buffer + lua_start));
-
     lua_load_api();
-    lua_init_script((char *)(buffer + lua_start));
-
-    /* #ifdef SDL
-        free(lua_script);
-    #else
-        rh_free(lua_script);
-    #endif */
-
-#ifdef SDL
-    free(buffer);
-#else
-    rh_free(buffer);
-#endif
+    lua_init_script(lua_script);
 
     clear_screen(0);
 
@@ -201,6 +167,12 @@ int p8_init_ram(uint8_t *buffer, int size)
     p8_init_lcd();
 
     p8_main_loop();
+
+#ifdef OS_FREERTOS
+    rh_free(decompression_buffer);
+#else
+    free(decompression_buffer);
+#endif
 
     return 0;
 }
