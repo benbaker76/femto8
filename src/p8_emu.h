@@ -131,5 +131,6 @@ int p8_init_file(char *file_name);
 int p8_init_ram(uint8_t *buffer, int size);
 int p8_shutdown(void);
 void p8_render();
+void p8_reset(void);
 
 #endif

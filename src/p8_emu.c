@@ -138,6 +138,9 @@ int p8_init_file(char *file_name)
     parse_cart_file(file_name, m_memory, &lua_script, &file_buffer);
 
     lua_load_api();
+
+    p8_reset();
+
     lua_init_script(lua_script);
 
     clear_screen(0);
@@ -169,6 +172,9 @@ int p8_init_ram(uint8_t *buffer, int size)
     // printf("%s", m_lua_script);
 
     lua_load_api();
+
+    p8_reset();
+
     lua_init_script(lua_script);
 
     clear_screen(0);
@@ -594,4 +600,13 @@ unsigned p8_elapsed_time(void)
         elapsed_time = ((now - m_start_time) + ((now < m_start_time) ? CLOCKS_PER_CLOCK_T : 0)) * (clock_t)1000 / CLOCKS_PER_SEC;
 #endif
     return elapsed_time;
+}
+
+void p8_reset(void)
+{
+    memset(m_memory + MEMORY_DRAWSTATE, 0, MEMORY_DRAWSTATE_SIZE);
+    memset(m_memory + MEMORY_HARDWARESTATE, 0, MEMORY_HARDWARESTATE_SIZE);
+    pencolor_set(6);
+    reset_color();
+    clip_set(0, 0, P8_WIDTH, P8_HEIGHT);
 }
