@@ -222,11 +222,25 @@ int line(lua_State *L)
 }
 
 // pal(c0, c1, [p])
+// pal(tbl, [p])
 int pal(lua_State *L)
 {
     if (lua_gettop(L) == 0)
     {
         reset_color();
+    }
+    else if (lua_istable(L, 1))
+    {
+        int p = lua_gettop(L) == 2 ? lua_tointeger(L, 2) : PALTYPE_DRAW;
+        lua_pushnil(L);
+        while (lua_next(L, 1))
+        {
+            int c0 = lua_tointeger(L, -2);
+            int c1 = lua_tointeger(L, -1);
+            color_set(p, c0, c1);
+            lua_pop(L, 1);
+        }
+        lua_pop(L, 1);
     }
     else
     {

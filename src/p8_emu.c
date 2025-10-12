@@ -34,14 +34,23 @@
 
 #ifdef SDL
 // ARGB
-uint32_t m_colors[16] = {
+uint32_t m_colors[32] = {
     0x00000000, 0x001d2b53, 0x007e2553, 0x00008751, 0x00ab5236, 0x005f574f, 0x00c2c3c7, 0x00fff1e8,
-    0x00ff004d, 0x00ffa300, 0x00ffec27, 0x0000e436, 0x0029adff, 0x0083769c, 0x00ff77a8, 0x00ffccaa};
+    0x00ff004d, 0x00ffa300, 0x00ffec27, 0x0000e436, 0x0029adff, 0x0083769c, 0x00ff77a8, 0x00ffccaa,
+    0x00291814, 0x00111D35, 0x00422136, 0x00125359, 0x00742F29, 0x0049333B, 0x00A28879, 0x00F3EF7D,
+    0x00BE1250, 0x00FF6C24, 0x00A8E72E, 0x0000B54E, 0x00065AB5, 0x00754665, 0x00FF6E59, 0x00FF9D81};
 #else
 // RGB565
-uint16_t m_colors[16] = {
-    0x0000, 0x194a, 0x792a, 0x042a, 0xaa86, 0x5aa9, 0xc618, 0xff9d, 0xf809, 0xfd00, 0xff64, 0x0726, 0x2d7f, 0x83b3, 0xfbb5, 0xfe75};
+uint16_t m_colors[32] = {
+    0x0000, 0x194a, 0x792a, 0x042a, 0xaa86, 0x5aa9, 0xc618, 0xff9d, 0xf809, 0xfd00, 0xff64, 0x0726, 0x2d7f, 0x83b3, 0xfbb5, 0xfe75,
+    0x28c2, 0x10e6, 0x4106, 0x128b, 0x7165, 0x4987, 0xa44f, 0xf76f, 0xb88a, 0xfb64, 0xaf25, 0x05a9, 0x02d6, 0x722c, 0xfb6b, 0xfcf0};
 #endif
+
+// Convert 8-bit screen palette value to 5-bit color index.
+static inline int color_index(uint8_t c)
+{
+    return ((c >> 3) & 0x10) | (c & 0xf);
+}
 
 void p8_main_loop();
 
@@ -211,7 +220,7 @@ void p8_render()
             int screen_offset = MEMORY_SCREEN + (x >> 1) + y * 64;
             uint8_t value = m_memory[screen_offset];
             uint8_t index = color_get(PALTYPE_SCREEN, IS_EVEN(x) ? value & 0xF : value >> 4);
-            uint32_t color = m_colors[index & 0xF];
+            uint32_t color = m_colors[color_index(index)];
 
             output[x + (y * P8_WIDTH)] = color;
         }
@@ -254,32 +263,11 @@ void p8_render()
                 uint8_t left = (*screen_mem) & 0xF;
                 uint8_t right = (*screen_mem) >> 4;
 
-                uint8_t index_left = pal[left] & 0xF;
-                uint8_t index_right = pal[right] & 0xF;
+                uint8_t index_left = pal[left];
+                uint8_t index_right = color_pal[right];
 
-                uint16_t c_left = m_colors[index_left];
-                uint16_t c_right = m_colors[index_right];
-
-                *top++ = c_left;
-                *top++ = c_left;
-                *top++ = c_right;
-                *top++ = c_right;
-
-                *bottom++ = c_left;
-                *bottom++ = c_left;
-                *bottom++ = c_right;
-                *bottom++ = c_right;
-
-                screen_mem++;
-
-                left = (*screen_mem) & 0xF;
-                right = (*screen_mem) >> 4;
-
-                index_left = pal[left] & 0xF;
-                index_right = pal[right] & 0xF;
-
-                c_left = m_colors[index_left];
-                c_right = m_colors[index_right];
+                uint16_t c_left = m_colors[color_index(index_left)];
+                uint16_t c_right = m_colors[color_index(index_right)];
 
                 *top++ = c_left;
                 *top++ = c_left;
@@ -296,11 +284,11 @@ void p8_render()
                 left = (*screen_mem) & 0xF;
                 right = (*screen_mem) >> 4;
 
-                index_left = pal[left] & 0xF;
-                index_right = pal[right] & 0xF;
+                index_left = pal[left];
+                index_right = pal[right];
 
-                c_left = m_colors[index_left];
-                c_right = m_colors[index_right];
+                c_left = m_colors[color_index(index_left)];
+                c_right = m_colors[color_index(index_right)];
 
                 *top++ = c_left;
                 *top++ = c_left;
@@ -317,11 +305,32 @@ void p8_render()
                 left = (*screen_mem) & 0xF;
                 right = (*screen_mem) >> 4;
 
-                index_left = pal[left] & 0xF;
-                index_right = pal[right] & 0xF;
+                index_left = pal[left];
+                index_right = pal[right];
 
-                c_left = m_colors[index_left];
-                c_right = m_colors[index_right];
+                c_left = m_colors[color_index(index_left)];
+                c_right = m_colors[color_index(index_right)];
+
+                *top++ = c_left;
+                *top++ = c_left;
+                *top++ = c_right;
+                *top++ = c_right;
+
+                *bottom++ = c_left;
+                *bottom++ = c_left;
+                *bottom++ = c_right;
+                *bottom++ = c_right;
+
+                screen_mem++;
+
+                left = (*screen_mem) & 0xF;
+                right = (*screen_mem) >> 4;
+
+                index_left = pal[left];
+                index_right = pal[right];
+
+                c_left = m_colors[color_index(index_left)];
+                c_right = m_colors[color_index(index_right)];
 
                 *top++ = c_left;
                 *top++ = c_left;
@@ -346,27 +355,11 @@ void p8_render()
                 uint8_t left = (*screen_mem) & 0xF;
                 uint8_t right = (*screen_mem) >> 4;
 
-                uint8_t index_left = pal[left] & 0xF;
-                uint8_t index_right = pal[right] & 0xF;
+                uint8_t index_left = pal[left];
+                uint8_t index_right = pal[right];
 
-                uint16_t c_left = m_colors[index_left];
-                uint16_t c_right = m_colors[index_right];
-
-                *top++ = c_left;
-                *top++ = c_left;
-                *top++ = c_right;
-                *top++ = c_right;
-
-                screen_mem++;
-
-                left = (*screen_mem) & 0xF;
-                right = (*screen_mem) >> 4;
-
-                index_left = pal[left] & 0xF;
-                index_right = pal[right] & 0xF;
-
-                c_left = m_colors[index_left];
-                c_right = m_colors[index_right];
+                uint16_t c_left = m_colors[color_index(index_left)];
+                uint16_t c_right = m_colors[color_index(index_right)];
 
                 *top++ = c_left;
                 *top++ = c_left;
@@ -378,11 +371,11 @@ void p8_render()
                 left = (*screen_mem) & 0xF;
                 right = (*screen_mem) >> 4;
 
-                index_left = pal[left] & 0xF;
-                index_right = pal[right] & 0xF;
+                index_left = pal[left];
+                index_right = pal[right];
 
-                c_left = m_colors[index_left];
-                c_right = m_colors[index_right];
+                c_left = m_colors[color_index(index_left)];
+                c_right = m_colors[color_index(index_right)];
 
                 *top++ = c_left;
                 *top++ = c_left;
@@ -394,11 +387,27 @@ void p8_render()
                 left = (*screen_mem) & 0xF;
                 right = (*screen_mem) >> 4;
 
-                index_left = pal[left] & 0xF;
-                index_right = pal[right] & 0xF;
+                index_left = pal[left];
+                index_right = pal[right];
 
-                c_left = m_colors[index_left];
-                c_right = m_colors[index_right];
+                c_left = m_colors[color_index(index_left)];
+                c_right = m_colors[color_index(index_right)];
+
+                *top++ = c_left;
+                *top++ = c_left;
+                *top++ = c_right;
+                *top++ = c_right;
+
+                screen_mem++;
+
+                left = (*screen_mem) & 0xF;
+                right = (*screen_mem) >> 4;
+
+                index_left = pal[left];
+                index_right = pal[right];
+
+                c_left = m_colors[color_index(index_left)];
+                c_right = m_colors[color_index(index_right)];
 
                 *top++ = c_left;
                 *top++ = c_left;
