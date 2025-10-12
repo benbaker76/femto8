@@ -703,298 +703,12 @@ int poke4(lua_State *L)
 // *** Math ***
 // ****************************************************************
 
-// abs(num)
-int _abs(lua_State *L)
-{
-    if (lua_isnumber(L, 1))
-    {
-        float num = lua_tonumber(L, 1);
-        lua_pushnumber(L, fabsf(num));
-    }
-    else
-        lua_pushnumber(L, 0);
-
-    return 1;
-}
-
-// atan2(dx, dy)
-int _atan2(lua_State *L)
-{
-    assert(lua_isnumber(L, 1));
-
-    float dx = lua_tonumber(L, 1);
-    float dy = lua_tonumber(L, 2);
-    float value = (float)(atan2f(dx, dy) / TWO_PI - 0.25f);
-
-    if (value < 0.0f)
-        value += 1.0f;
-
-    lua_pushnumber(L, value);
-
-    return 1;
-}
-
-// band(first, second)
-int band(lua_State *L)
-{
-    if (lua_isnumber(L, 1) && lua_isnumber(L, 2))
-    {
-        int first = lua_tointeger(L, 1);
-        int second = lua_tointeger(L, 2);
-
-        lua_pushnumber(L, first & second);
-    }
-    else
-        lua_pushnumber(L, 0);
-
-    return 1;
-}
-
-// bnot(num)
-int bnot(lua_State *L)
-{
-    assert(lua_isnumber(L, 1));
-
-    int num = lua_tointeger(L, 1);
-
-    lua_pushnumber(L, ~num);
-
-    return 1;
-}
-
-// bor(first, second)
-int bor(lua_State *L)
-{
-    if (lua_isnumber(L, 1) && lua_isnumber(L, 2))
-    {
-        int first = lua_tointeger(L, 1);
-        int second = lua_tointeger(L, 2);
-
-        lua_pushnumber(L, first | second);
-    }
-    else
-        lua_pushnumber(L, 0);
-
-    return 1;
-}
-
-// bxor(first, second)
-int bxor(lua_State *L)
-{
-    if (lua_isnumber(L, 1) && lua_isnumber(L, 2))
-    {
-        int first = lua_tointeger(L, 1);
-        int second = lua_tointeger(L, 2);
-
-        lua_pushnumber(L, first ^ second);
-    }
-    else
-        lua_pushnumber(L, 0);
-
-    return 1;
-}
-
-// ceil(num)
-int _ceil(lua_State *L)
-{
-    float num = lua_isnumber(L, 1) ? (float)lua_tonumber(L, 1) : 0.0f;
-    lua_pushnumber(L, ceilf(num));
-
-    return 1;
-}
-
-// cos(angle)
-int _cos(lua_State *L)
-{
-    if (lua_isnumber(L, 1))
-    {
-        float angle = lua_tonumber(L, 1);
-        lua_pushnumber(L, cosf((1.0f - angle) * TWO_PI));
-    }
-    else
-        lua_pushnumber(L, 0);
-
-    return 1;
-}
-
-// flr(num)
-int flr(lua_State *L)
-{
-    float num = lua_isnumber(L, 1) ? (float)lua_tonumber(L, 1) : 0.0f;
-    lua_pushnumber(L, floorf(num));
-
-    return 1;
-}
-
-// lshr(num, bits)
-int lshr(lua_State *L)
-{
-    if (lua_isnumber(L, 1) && lua_isnumber(L, 2))
-    {
-        int num = lua_tointeger(L, 1);
-        int bits = lua_tointeger(L, 2);
-
-        lua_pushnumber(L, (num >> bits) ^ (num & 0xFFFFFF));
-    }
-    else
-        lua_pushnumber(L, 0);
-
-    return 1;
-}
-
-// max(first, [second])
-int max(lua_State *L)
-{
-    if (lua_isnumber(L, 1) && lua_isnumber(L, 2))
-    {
-        float first = lua_tonumber(L, 1);
-        float second = lua_tonumber(L, 2);
-
-        lua_pushnumber(L, fmaxf(first, second));
-    }
-    else
-        lua_pushnumber(L, 0);
-
-    return 1;
-}
-
-// mid(first, second, third)
-int mid(lua_State *L)
-{
-    float first = lua_tonumber(L, 1);
-    float second = lua_tonumber(L, 2);
-    float third = lua_gettop(L) >= 3 ? (float)lua_tonumber(L, 3) : 0.0f;
-
-    if ((first < second && second < third) || (third < second && second < first))
-        lua_pushnumber(L, second);
-    else if ((second < first && first < third) || (third < first && first < second))
-        lua_pushnumber(L, first);
-    else
-        lua_pushnumber(L, third);
-
-    return 1;
-}
-
-// min(first, [second])
-int min(lua_State *L)
-{
-    float first = lua_isnumber(L, 1) ? (float)lua_tonumber(L, 1) : 0.0f;
-    float second = 0;
-
-    if (lua_gettop(L) == 2 && lua_isnumber(L, 2))
-        second = lua_tointeger(L, 2);
-
-    lua_pushnumber(L, fminf(first, second));
-
-    return 1;
-}
-
 // rnd(max)
 int rnd(lua_State *L)
 {
     float max = lua_gettop(L) >= 1 ? (float)lua_tonumber(L, 1) : 1.0f;
 
     lua_pushnumber(L, ((float)rand() / RAND_MAX) * max);
-
-    return 1;
-}
-
-// rotl(num, bits)
-int rotl(lua_State *L)
-{
-    if (lua_isnumber(L, 1) && lua_isnumber(L, 2))
-    {
-        int num = lua_tointeger(L, 1);
-        int bits = lua_tointeger(L, 2);
-
-        lua_pushnumber(L, (num << bits) | (num >> (32 - bits)));
-    }
-    else
-        lua_pushnumber(L, 0);
-
-    return 1;
-}
-
-// rotr(num, bits)
-int rotr(lua_State *L)
-{
-    if (lua_isnumber(L, 1) && lua_isnumber(L, 2))
-    {
-        int num = lua_tointeger(L, 1);
-        int bits = lua_tointeger(L, 2);
-
-        lua_pushnumber(L, (num >> bits) | (num << (32 - bits)));
-    }
-    else
-        lua_pushnumber(L, 0);
-
-    return 1;
-}
-
-// sgn([number])
-int sgn(lua_State *L)
-{
-    assert(lua_isnumber(L, 1));
-
-    float number = lua_tonumber(L, 1);
-    lua_pushnumber(L, number > 0 ? 1.0f : -1.0f);
-
-    return 1;
-}
-
-// shl(num, bits)
-int shl(lua_State *L)
-{
-    if (lua_isnumber(L, 1) && lua_isnumber(L, 2))
-    {
-        int num = lua_tointeger(L, 1);
-        int bits = lua_tointeger(L, 2);
-
-        lua_pushnumber(L, num << bits);
-    }
-    else
-        lua_pushnumber(L, 0);
-
-    return 1;
-}
-
-// shr(num, bits)
-int shr(lua_State *L)
-{
-    if (lua_isnumber(L, 1) && lua_isnumber(L, 2))
-    {
-        int num = lua_tointeger(L, 1);
-        int bits = lua_tointeger(L, 2);
-
-        lua_pushnumber(L, num >> bits);
-    }
-    else
-        lua_pushnumber(L, 0);
-
-    return 1;
-}
-
-// sin(angle)
-int _sin(lua_State *L)
-{
-    if (lua_isnumber(L, 1))
-    {
-        float angle = lua_tonumber(L, 1);
-        lua_pushnumber(L, sinf((1.0f - angle) * TWO_PI));
-    }
-    else
-        lua_pushnumber(L, 0);
-
-    return 1;
-}
-
-// sqrt(num)
-int _sqrt(lua_State *L)
-{
-    assert(lua_isnumber(L, 1));
-
-    float num = lua_tonumber(L, 1);
-    lua_pushnumber(L, sqrtf(num));
 
     return 1;
 }
@@ -1045,16 +759,6 @@ int dset(lua_State *L)
 // *** Values and objects ***
 // ****************************************************************
 
-// chr(ord)
-int chr(lua_State *L)
-{
-    int ord = lua_tointeger(L, 1);
-
-    lua_pushnumber(L, ord);
-
-    return 1;
-}
-
 // setmetatable(tbl, metatbl)
 // getmetatable(tbl)
 // type(v)
@@ -1077,36 +781,6 @@ int sub(lua_State *L)
     strncpy(m_str_buffer, str + start, end - start);
 
     lua_pushstring(L, m_str_buffer);
-
-    return 1;
-}
-
-// tonum(str)
-// tostr(val, [usehex])
-int tostr(lua_State *L)
-{
-    switch (lua_type(L, 1))
-    {
-    case LUA_TBOOLEAN:
-        lua_pushstring(L, lua_toboolean(L, 1) ? "true" : "false");
-        break;
-    case LUA_TNUMBER:
-    {
-        bool usehex = lua_gettop(L) >= 2 ? lua_toboolean(L, 2) : false;
-        if (usehex)
-            sprintf(m_str_buffer, "%x", lua_tointeger(L, 1));
-        else
-            sprintf(m_str_buffer, "%4.4f", (double)lua_tonumber(L, 1));
-        lua_pushstring(L, m_str_buffer);
-        break;
-    }
-    case LUA_TSTRING:
-        lua_pushstring(L, lua_tostring(L, 1));
-        break;
-    default:
-        lua_pushstring(L, "");
-        break;
-    }
 
     return 1;
 }
@@ -1287,27 +961,27 @@ void lua_register_functions(lua_State *L)
     // ****************************************************************
     // *** Math ***
     // ****************************************************************
-    lua_register(L, "abs", _abs);
-    lua_register(L, "atan2", _atan2);
-    lua_register(L, "band", band);
-    lua_register(L, "bnot", bnot);
-    lua_register(L, "bor", bor);
-    lua_register(L, "bxor", bxor);
-    lua_register(L, "ceil", _ceil);
-    lua_register(L, "cos", _cos);
-    lua_register(L, "flr", flr);
-    lua_register(L, "lshr", lshr);
-    lua_register(L, "max", max);
-    lua_register(L, "mid", mid);
-    lua_register(L, "min", min);
+    // lua_register(L, "abs", _abs); // in lpico8lib.c
+    // lua_register(L, "atan2", _atan2); // in lpico8lib.c
+    // lua_register(L, "band", band); // in lpico8lib.c
+    // lua_register(L, "bnot", bnot); // in lpico8lib.c
+    // lua_register(L, "bor", bor); // in lpico8lib.c
+    // lua_register(L, "bxor", bxor); // in lpico8lib.c
+    // lua_register(L, "ceil", _ceil); // in lpico8lib.c
+    // lua_register(L, "cos", _cos); // in lpico8lib.c
+    // lua_register(L, "flr", flr); // in lpico8lib.c
+    // lua_register(L, "lshr", lshr); // in lpico8lib.c
+    // lua_register(L, "max", max); // in lpico8lib.c
+    // lua_register(L, "mid", mid); // in lpico8lib.c
+    // lua_register(L, "min", min); // in lpico8lib.c
     lua_register(L, "rnd", rnd);
-    lua_register(L, "rotl", rotl);
-    lua_register(L, "rotr", rotr);
-    lua_register(L, "sgn", sgn);
-    lua_register(L, "shl", shl);
-    lua_register(L, "shr", shr);
-    lua_register(L, "sin", _sin);
-    lua_register(L, "sqrt", _sqrt);
+    // lua_register(L, "rotl", rotl); // in lpico8lib.c
+    // lua_register(L, "rotr", rotr); // in lpico8lib.c
+    // lua_register(L, "sgn", sgn); // in lpico8lib.c
+    // lua_register(L, "shl", shl); // in lpico8lib.c
+    // lua_register(L, "shr", shr); // in lpico8lib.c
+    // lua_register(L, "sin", _sin); // in lpico8lib.c
+    // lua_register(L, "sqrt", _sqrt); // in lpico8lib.c
     // lua_register(L, "srand", srand);
     // ****************************************************************
     // *** Cartridge data ***
@@ -1325,13 +999,14 @@ void lua_register_functions(lua_State *L)
     // ****************************************************************
     // *** Values and objects ***
     // ****************************************************************
-    lua_register(L, "chr", chr);
+    // lua_register(L, "chr", chr); // in lpico8lib.c
+    // lua_register(L, "ord", ord); // in lpico8lib.c
     // lua_register(L, "setmetatable", setmetatable);
     // lua_register(L, "getmetatable", getmetatable);
     // lua_register(L, "type", type);
     lua_register(L, "sub", sub);
     // lua_register(L, "tonum", tonum);
-    lua_register(L, "tostr", tostr);
+    // lua_register(L, "tostr", tostr); // in lpico8lib.c
     // ****************************************************************
     // *** Time ***
     // ****************************************************************
