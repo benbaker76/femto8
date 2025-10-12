@@ -126,6 +126,7 @@ extern uint8_t m_buttons[2];
 extern uint8_t m_prev_buttons[2];
 
 unsigned p8_elapsed_time(void);
+void p8_flip(void);
 int p8_init_file(char *file_name);
 int p8_init_ram(uint8_t *buffer, int size);
 int p8_shutdown(void);

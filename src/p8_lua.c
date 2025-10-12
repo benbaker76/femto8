@@ -177,7 +177,7 @@ int fillp(lua_State *L)
 // flip()
 int flip(lua_State *L)
 {
-    // p8_render();
+    p8_flip();
 
     return 0;
 }

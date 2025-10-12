@@ -51,7 +51,8 @@ static inline int color_index(uint8_t c)
     return ((c >> 3) & 0x10) | (c & 0xf);
 }
 
-void p8_main_loop();
+static void p8_main_loop();
+static int done = 0;
 
 uint8_t *m_memory = NULL;
 
@@ -427,7 +428,74 @@ void p8_render()
 
 void p8_update_input()
 {
-#ifdef OS_FREERTOS
+#ifdef SDL
+    SDL_Event event;
+    while (SDL_PollEvent(&event))
+    {
+        switch (event.type)
+        {
+        case SDL_MOUSEMOTION:
+            break;
+        case SDL_MOUSEBUTTONDOWN:
+            break;
+        case SDL_KEYDOWN:
+            switch (event.key.keysym.sym)
+            {
+            case INPUT_LEFT:
+                update_buttons(0, 0, true);
+                break;
+            case INPUT_RIGHT:
+                update_buttons(0, 1, true);
+                break;
+            case INPUT_UP:
+                update_buttons(0, 2, true);
+                break;
+            case INPUT_DOWN:
+                update_buttons(0, 3, true);
+                break;
+            case INPUT_ACTION1:
+                update_buttons(0, 4, true);
+                break;
+            case INPUT_ACTION2:
+                update_buttons(0, 5, true);
+                break;
+            default:
+                break;
+            }
+            break;
+        case SDL_KEYUP:
+            switch (event.key.keysym.sym)
+            {
+            case INPUT_LEFT:
+                update_buttons(0, 0, false);
+                break;
+            case INPUT_RIGHT:
+                update_buttons(0, 1, false);
+                break;
+            case INPUT_UP:
+                update_buttons(0, 2, false);
+                break;
+            case INPUT_DOWN:
+                update_buttons(0, 3, false);
+                break;
+            case INPUT_ACTION1:
+                update_buttons(0, 4, false);
+                break;
+            case INPUT_ACTION2:
+                update_buttons(0, 5, false);
+                break;
+            default:
+                break;
+            }
+            break;
+        case SDL_QUIT:
+            done = 1;
+            break;
+        default:
+            break;
+        }
+    }
+#else
     uint8_t mask = 0;
 
     if (gamepad & AXIS_L_LEFT)
@@ -468,111 +536,44 @@ void p8_update_input()
 #endif
 }
 
-void p8_main_loop()
+void p8_flip()
 {
-#ifdef SDL
-    SDL_Event event;
-#endif
-    bool done = 0;
+    p8_update_input();
 
+    p8_render();
+
+    unsigned elapsed_time = p8_elapsed_time();
+    const unsigned target_frame_time = 1000 / m_fps;
+    int sleep_time = target_frame_time - elapsed_time;
+    if (sleep_time < 0)
+        sleep_time = 0;
+    m_actual_fps = 1000 / (elapsed_time + sleep_time);
+    m_frames++;
+
+    if (sleep_time > 0)
+    {
+#ifdef OS_FREERTOS
+        vTaskDelay(pdMS_TO_TICKS(sleep_time));
+#else
+        usleep(sleep_time * 1000);
+#endif
+    }
+
+#ifdef OS_FREERTOS
+    m_start_time = xTaskGetTickCount();
+#else
+    m_start_time = clock();
+#endif
+}
+
+static void p8_main_loop()
+{
     while (!done)
     {
-#ifdef SDL
-        while (SDL_PollEvent(&event))
-        {
-            switch (event.type)
-            {
-            case SDL_MOUSEMOTION:
-                break;
-            case SDL_MOUSEBUTTONDOWN:
-                break;
-            case SDL_KEYDOWN:
-                switch (event.key.keysym.sym)
-                {
-                case INPUT_LEFT:
-                    update_buttons(0, 0, true);
-                    break;
-                case INPUT_RIGHT:
-                    update_buttons(0, 1, true);
-                    break;
-                case INPUT_UP:
-                    update_buttons(0, 2, true);
-                    break;
-                case INPUT_DOWN:
-                    update_buttons(0, 3, true);
-                    break;
-                case INPUT_ACTION1:
-                    update_buttons(0, 4, true);
-                    break;
-                case INPUT_ACTION2:
-                    update_buttons(0, 5, true);
-                    break;
-                default:
-                    break;
-                }
-                break;
-            case SDL_KEYUP:
-                switch (event.key.keysym.sym)
-                {
-                case INPUT_LEFT:
-                    update_buttons(0, 0, false);
-                    break;
-                case INPUT_RIGHT:
-                    update_buttons(0, 1, false);
-                    break;
-                case INPUT_UP:
-                    update_buttons(0, 2, false);
-                    break;
-                case INPUT_DOWN:
-                    update_buttons(0, 3, false);
-                    break;
-                case INPUT_ACTION1:
-                    update_buttons(0, 4, false);
-                    break;
-                case INPUT_ACTION2:
-                    update_buttons(0, 5, false);
-                    break;
-                default:
-                    break;
-                }
-                break;
-            case SDL_QUIT:
-                done = 1;
-                break;
-            default:
-                break;
-            }
-        }
-#endif
-        p8_update_input();
-
         lua_update();
         lua_draw();
 
-        p8_render();
-
-        unsigned elapsed_time = p8_elapsed_time();
-        const unsigned target_frame_time = 1000 / m_fps;
-        int sleep_time = target_frame_time - elapsed_time;
-        if (sleep_time < 0)
-            sleep_time = 0;
-        m_actual_fps = 1000 / (elapsed_time + sleep_time);
-        m_frames++;
-
-        if (sleep_time > 0)
-        {
-#ifdef OS_FREERTOS
-            vTaskDelay(pdMS_TO_TICKS(sleep_time));
-#else
-            usleep(sleep_time * 1000);
-#endif
-        }
-
-#ifdef OS_FREERTOS
-        m_start_time = xTaskGetTickCount();
-#else
-        m_start_time = clock();
-#endif
+        p8_flip();
     }
 }
 
@@ -584,7 +585,7 @@ unsigned p8_elapsed_time(void)
     if (start_time == 0)
         elapsed_time = 0;
     else
-        elapsed_time = (end_time - m_start_time) * portTICK_PERIOD_MS;
+        elapsed_time = (now - m_start_time) * portTICK_PERIOD_MS;
 #else
     clock_t now = clock();
     if (m_start_time == 0)
