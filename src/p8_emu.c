@@ -128,15 +128,8 @@ int p8_init_lcd()
     return 0;
 }
 
-int p8_init_file(char *file_name)
+static void p8_init_common(const char *lua_script)
 {
-    p8_init();
-
-    const char *lua_script = NULL;
-    uint8_t *file_buffer = NULL;
-
-    parse_cart_file(file_name, m_memory, &lua_script, &file_buffer);
-
     lua_load_api();
 
     p8_reset();
@@ -150,6 +143,18 @@ int p8_init_file(char *file_name)
     p8_init_lcd();
 
     p8_main_loop();
+}
+
+int p8_init_file(char *file_name)
+{
+    p8_init();
+
+    const char *lua_script = NULL;
+    uint8_t *file_buffer = NULL;
+
+    parse_cart_file(file_name, m_memory, &lua_script, &file_buffer);
+
+    p8_init_common(lua_script);
 
 #ifdef OS_FREERTOS
     rh_free(file_buffer);
@@ -171,19 +176,7 @@ int p8_init_ram(uint8_t *buffer, int size)
 
     // printf("%s", m_lua_script);
 
-    lua_load_api();
-
-    p8_reset();
-
-    lua_init_script(lua_script);
-
-    clear_screen(0);
-
-    lua_init();
-
-    p8_init_lcd();
-
-    p8_main_loop();
+    p8_init_common(lua_script);
 
 #ifdef OS_FREERTOS
     rh_free(decompression_buffer);
