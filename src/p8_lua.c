@@ -806,7 +806,7 @@ int sub(lua_State *L)
 // time()
 int _time(lua_State *L)
 {
-    lua_pushnumber(L, m_time);
+    lua_pushnumber(L, (float)m_frames / (float)m_fps);
 
     return 1;
 }
@@ -846,7 +846,7 @@ int _stat(lua_State *L)
     switch (n)
     {
     case STAT_FRAMERATE:
-        lua_pushnumber(L, m_fps);
+        lua_pushinteger(L, m_fps);
         break;
     default:
         lua_pushnumber(L, 0);

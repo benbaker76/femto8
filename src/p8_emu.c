@@ -11,7 +11,6 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
-#include <time.h>
 #include <math.h>
 #include <assert.h>
 #ifdef OS_FREERTOS
@@ -56,9 +55,11 @@ void p8_main_loop();
 
 uint8_t *m_memory = NULL;
 
-float m_fps = 30;
-float m_actual_fps = 0;
-float m_time = 0.0;
+unsigned m_fps = 30;
+unsigned m_actual_fps = 0;
+unsigned m_frames = 0;
+
+clock_t m_start_time;
 
 #ifdef SDL
 SDL_Surface *m_screen = NULL;
@@ -469,18 +470,10 @@ void p8_update_input()
 
 void p8_main_loop()
 {
-    long start_time, end_time;
-    float elapsed_time;
 #ifdef SDL
     SDL_Event event;
 #endif
     bool done = 0;
-
-#ifdef OS_FREERTOS
-    start_time = xTaskGetTickCount();
-#else
-    start_time = clock();
-#endif
 
     while (!done)
     {
@@ -558,36 +551,46 @@ void p8_main_loop()
 
         p8_render();
 
+        unsigned elapsed_time = p8_elapsed_time();
+        const unsigned target_frame_time = 1000 / m_fps;
+        int sleep_time = target_frame_time - elapsed_time;
+        if (sleep_time < 0)
+            sleep_time = 0;
+        m_actual_fps = 1000 / (elapsed_time + sleep_time);
+        m_frames++;
+
+        if (sleep_time > 0)
+        {
 #ifdef OS_FREERTOS
-        end_time = xTaskGetTickCount();
-        elapsed_time = (float)(end_time - start_time) * portTICK_PERIOD_MS;
-        m_time += elapsed_time;
-
-        const float target_frame_time = 1000.0f / m_fps;
-        float sleep_time = target_frame_time - elapsed_time;
-        m_actual_fps = 1000.0f / (elapsed_time + sleep_time);
-
-        if (sleep_time > 0)
-        {
             vTaskDelay(pdMS_TO_TICKS(sleep_time));
-        }
-
-        start_time = xTaskGetTickCount();
 #else
-        end_time = clock();
-        elapsed_time = (float)(end_time - start_time) / CLOCKS_PER_SEC * 1000.0f;
-        m_time += elapsed_time;
-
-        const float target_frame_time = 1000.0f / m_fps;
-        float sleep_time = target_frame_time - elapsed_time;
-        m_actual_fps = 1000.0f / (elapsed_time + sleep_time);
-
-        if (sleep_time > 0)
-        {
             usleep(sleep_time * 1000);
+#endif
         }
 
-        start_time = clock();
+#ifdef OS_FREERTOS
+        m_start_time = xTaskGetTickCount();
+#else
+        m_start_time = clock();
 #endif
     }
+}
+
+unsigned p8_elapsed_time(void)
+{
+    unsigned elapsed_time;
+#ifdef OS_FREERTOS
+    long now = xTaskGetTickCount();
+    if (start_time == 0)
+        elapsed_time = 0;
+    else
+        elapsed_time = (end_time - m_start_time) * portTICK_PERIOD_MS;
+#else
+    clock_t now = clock();
+    if (m_start_time == 0)
+        elapsed_time = 0;
+    else
+        elapsed_time = ((now - m_start_time) + ((now < m_start_time) ? CLOCKS_PER_CLOCK_T : 0)) * (clock_t)1000 / CLOCKS_PER_SEC;
+#endif
+    return elapsed_time;
 }

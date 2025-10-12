@@ -8,6 +8,9 @@
 #ifndef P8_EMU_H
 #define P8_EMU_H
 
+#include <limits.h>
+#include <time.h>
+
 #ifdef __DA1470x__
 #define OS_FREERTOS
 #else
@@ -106,9 +109,13 @@ enum
     BUTTON_ACTION2 = 0x0020,
 };
 
-extern float m_fps;
-extern float m_actual_fps;
-extern float m_time;
+extern unsigned m_fps;
+extern unsigned m_actual_fps;
+extern unsigned m_frames;
+
+extern clock_t m_start_time;
+
+#define CLOCKS_PER_CLOCK_T (((clock_t)1) << (CHAR_BIT * sizeof(clock_t) - 1))
 
 extern unsigned char *m_memory;
 extern char *m_font;
@@ -118,6 +125,7 @@ extern int m_mouse_x, m_mouse_y;
 extern uint8_t m_buttons[2];
 extern uint8_t m_prev_buttons[2];
 
+unsigned p8_elapsed_time(void);
 int p8_init_file(char *file_name);
 int p8_init_ram(uint8_t *buffer, int size);
 int p8_shutdown(void);
