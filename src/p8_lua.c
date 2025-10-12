@@ -682,6 +682,9 @@ int poke(lua_State *L)
 
     m_memory[addr] = val;
 
+    if (addr >= MEMORY_CARTDATA && addr + 1 <= MEMORY_CARTDATA + MEMORY_CARTDATA_SIZE)
+        p8_delayed_flush_cartdata();
+
     return 0;
 }
 
@@ -693,6 +696,9 @@ int poke2(lua_State *L)
 
     m_memory[addr] = val;
     m_memory[addr + 1] = val >> 8;
+
+    if (addr >= MEMORY_CARTDATA && addr + 2 <= MEMORY_CARTDATA + MEMORY_CARTDATA_SIZE)
+        p8_delayed_flush_cartdata();
 
     return 0;
 }
@@ -707,6 +713,9 @@ int poke4(lua_State *L)
     m_memory[addr + 1] = val >> 8;
     m_memory[addr + 2] = val >> 16;
     m_memory[addr + 3] = val >> 24;
+
+    if (addr >= MEMORY_CARTDATA && addr + 4 <= MEMORY_CARTDATA + MEMORY_CARTDATA_SIZE)
+        p8_delayed_flush_cartdata();
 
     return 0;
 }
@@ -736,15 +745,18 @@ int rnd(lua_State *L)
 // cartdata(id)
 int cartdata(lua_State *L)
 {
-    return 0;
+    const char *id = lua_tostring(L, 1);
+    bool success = p8_open_cartdata(id);
+    lua_pushboolean(L, success);
+    return 1;
 }
 
 // dget(index)
 int dget(lua_State *L)
 {
-    int index = lua_tointeger(L, 1);
+    unsigned index = lua_tounsigned(L, 1);
 
-    lua_pushnumber(L, m_memory[MEMORY_CARTDATA + index]);
+    lua_pushnumber(L, z8::fix32::frombits((m_memory[MEMORY_CARTDATA + index*4 + 3] << 24) | (m_memory[MEMORY_CARTDATA + index*4 + 2] << 16) | (m_memory[MEMORY_CARTDATA + index*4 + 1] << 8) | m_memory[MEMORY_CARTDATA + index*4]));
 
     return 1;
 }
@@ -752,10 +764,15 @@ int dget(lua_State *L)
 // dset(index, value)
 int dset(lua_State *L)
 {
-    int index = lua_tointeger(L, 1);
-    int value = lua_tointeger(L, 2);
+    unsigned index = lua_tounsigned(L, 1);
+    uint32_t value = lua_tonumber(L, 2).bits();
 
-    m_memory[MEMORY_CARTDATA + index] = value;
+    m_memory[MEMORY_CARTDATA + index*4] = value;
+    m_memory[MEMORY_CARTDATA + index*4 + 1] = value >> 8;
+    m_memory[MEMORY_CARTDATA + index*4 + 2] = value >> 16;
+    m_memory[MEMORY_CARTDATA + index*4 + 3] = value >> 24;
+
+    p8_delayed_flush_cartdata();
 
     return 0;
 }

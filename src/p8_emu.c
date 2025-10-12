@@ -5,12 +5,15 @@
  *      Author: bbaker
  */
 
+#include <errno.h>
+#include <fcntl.h>
 #include <setjmp.h>
 #include <stdio.h>
 #include <stdint.h>
 #include <stdbool.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
 #include <unistd.h>
 #include <math.h>
 #include <assert.h>
@@ -85,6 +88,9 @@ uint8_t m_button_first_repeat[2];
 unsigned m_button_down_time[2][6];
 
 static bool m_prev_pointer_lock;
+
+static FILE *cartdata = NULL;
+static bool cartdata_needs_flush = false;
 
 int p8_init()
 {
@@ -214,6 +220,8 @@ int p8_shutdown()
     audio_close();
 
     lua_shutdown_api();
+
+    p8_close_cartdata();
 
 #ifdef SDL
     SDL_FreeSurface(m_output);
@@ -613,6 +621,8 @@ void p8_flip()
 
     p8_render();
 
+    p8_flush_cartdata();
+
     unsigned elapsed_time = p8_elapsed_time();
     const unsigned target_frame_time = 1000 / m_fps;
     int sleep_time = target_frame_time - elapsed_time;
@@ -685,4 +695,48 @@ void __attribute__ ((noreturn)) p8_restart()
 {
     restart = true;
     p8_abort();
+}
+
+bool p8_open_cartdata(const char *id)
+{
+    if (cartdata)
+        return false;
+    int ret = mkdir(CARTDATA_PATH, 0777);
+    if (ret == 0 && errno != EEXIST) {
+        return false;
+    } else {
+        char *path = alloca(strlen(CARTDATA_PATH) + 1 + strlen(id) + 1);
+        sprintf(path, "%s/%s", CARTDATA_PATH, id);
+        cartdata = fopen(path, "w+");
+        if (cartdata == NULL) {
+            return false;
+        } else {
+            fread(m_memory + MEMORY_CARTDATA, 0x100, 1, cartdata);
+            return true;
+        }
+    }
+}
+
+void p8_flush_cartdata(void)
+{
+    if (cartdata && cartdata_needs_flush) {
+        cartdata_needs_flush = false;
+        fseek(cartdata, 0, SEEK_SET);
+        fwrite(m_memory + MEMORY_CARTDATA, 0x100, 1, cartdata);
+        fflush(cartdata);
+    }
+}
+
+void p8_delayed_flush_cartdata(void)
+{
+    cartdata_needs_flush = true;
+}
+
+void p8_close_cartdata(void)
+{
+    if (cartdata) {
+        p8_flush_cartdata();
+        fclose(cartdata);
+        cartdata = NULL;
+    }
 }
