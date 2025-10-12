@@ -70,10 +70,17 @@ SDL_PixelFormat *m_format = NULL;
 SemaphoreHandle_t m_drawSemaphore;
 #endif
 
-int m_mouse_x, m_mouse_y;
+int16_t m_mouse_x, m_mouse_y;
+int16_t m_mouse_xrel, m_mouse_yrel;
+uint8_t m_mouse_buttons;
+uint8_t m_keypress;
 
-uint8_t m_buttons[2] = {0};
-uint8_t m_prev_buttons[2] = {0};
+uint8_t m_buttons[2];
+uint8_t m_buttonsp[2];
+uint8_t m_button_first_repeat[2];
+unsigned m_button_down_time[2][6];
+
+static bool m_prev_pointer_lock;
 
 int p8_init()
 {
@@ -139,6 +146,7 @@ static void p8_init_common(const char *file_name, const char *lua_script)
     lua_load_api();
 
     p8_reset();
+    p8_update_input();
 
     lua_init_script(lua_script);
 
@@ -433,6 +441,14 @@ void p8_render()
 
 void p8_update_input()
 {
+    bool pointer_lock = (m_memory[MEMORY_DEVKIT_MODE] & 0x4) != 0;
+    if (pointer_lock != m_prev_pointer_lock) {
+        m_prev_pointer_lock  = pointer_lock;
+#ifdef SDL
+        SDL_WM_GrabInput(pointer_lock ? SDL_GRAB_ON : SDL_GRAB_OFF);
+#endif
+    }
+
 #ifdef SDL
     SDL_Event event;
     while (SDL_PollEvent(&event))
@@ -440,8 +456,16 @@ void p8_update_input()
         switch (event.type)
         {
         case SDL_MOUSEMOTION:
+            m_mouse_x = event.motion.x;
+            m_mouse_y = event.motion.y;
+            m_mouse_xrel += event.motion.xrel;
+            m_mouse_yrel += event.motion.yrel;
             break;
         case SDL_MOUSEBUTTONDOWN:
+            m_mouse_buttons |= 1 << event.button.button;
+            break;
+        case SDL_MOUSEBUTTONUP:
+            m_mouse_buttons &= ~(1 << event.button.button);
             break;
         case SDL_KEYDOWN:
             switch (event.key.keysym.sym)
@@ -467,6 +491,7 @@ void p8_update_input()
             default:
                 break;
             }
+            m_keypress = (event.key.keysym.sym < 256) ? event.key.keysym.sym : 0;
             break;
         case SDL_KEYUP:
             switch (event.key.keysym.sym)
@@ -539,6 +564,39 @@ void p8_update_input()
     m_buttons[0] = mask;
 
 #endif
+
+    if (m_memory[MEMORY_DEVKIT_MODE] & 0x2)
+        m_buttons[0] |= (((m_mouse_buttons >> 0) & 1) << 4) | (((m_mouse_buttons >> 1) & 1) << 5) | (((m_mouse_buttons >> 2) & 1) << 6);
+
+    uint8_t delay = m_memory[MEMORY_AUTO_REPEAT_DELAY];
+    if (delay == 0)
+        delay = DEFAULT_AUTO_REPEAT_DELAY;
+    uint8_t interval = m_memory[MEMORY_AUTO_REPEAT_INTERVAL];
+    if (interval == 0)
+        interval = DEFAULT_AUTO_REPEAT_INTERVAL;
+    for (unsigned p=0;p<2;++p) {
+        m_buttonsp[p] = 0;
+        for (unsigned i=0;i<6;++i) {
+            if (m_buttons[p] & (1 << i)) {
+                if (!m_button_down_time[p][i]) {
+                    m_button_down_time[p][i] = m_frames;
+                    m_buttonsp[p] |= 1 << i;
+                } else if (delay != 255 && !(m_button_first_repeat[p] & (1 << i)) && m_frames - m_button_down_time[p][i] >= delay) {
+                    m_button_down_time[p][i] = m_frames;
+                    m_button_first_repeat[p] |= 1 << i;
+                    m_buttonsp[p] |= 1 << i;
+                } else if ((m_button_first_repeat[p] & (1 << i)) && m_frames - m_button_down_time[p][i] >= interval) {
+                    m_button_down_time[p][i] = m_frames;
+                    m_buttonsp[p] |= 1 << i;
+                }
+            } else  {
+                if (m_button_down_time[p][i]) {
+                    m_button_down_time[p][i] = 0;
+                    m_button_first_repeat[p] &= ~(1 << i);
+                }
+            }
+        }
+    }
 }
 
 void p8_flip()

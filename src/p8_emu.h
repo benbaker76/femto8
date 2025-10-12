@@ -75,6 +75,9 @@
 #define MEMORY_PENCOLOR 0x5f25
 #define MEMORY_CURSOR 0x5f26
 #define MEMORY_CAMERA 0x5f28
+#define MEMORY_DEVKIT_MODE 0x5f2d
+#define MEMORY_AUTO_REPEAT_DELAY 0x5f5c
+#define MEMORY_AUTO_REPEAT_INTERVAL 0x5f5d
 
 #define TICKS_PER_SECOND 128
 #define SCREEN_SIZE 128 * 128 * 4
@@ -84,7 +87,15 @@
 #define SPRITE_HEIGHT 8
 #define BUTTON_COUNT 6
 #define PLAYER_COUNT 2
+
 #define STAT_FRAMERATE 7
+#define STAT_KEY_PRESSED 30
+#define STAT_KEY_NAME 31
+#define STAT_MOUSE_X 32
+#define STAT_MOUSE_Y 33
+#define STAT_MOUSE_BUTTONS 34
+#define STAT_MOUSE_XREL 38
+#define STAT_MOUSE_YREL 39
 
 #define INPUT_LEFT SDLK_LEFT
 #define INPUT_RIGHT SDLK_RIGHT
@@ -92,6 +103,9 @@
 #define INPUT_DOWN SDLK_DOWN
 #define INPUT_ACTION1 SDLK_z
 #define INPUT_ACTION2 SDLK_x
+
+#define DEFAULT_AUTO_REPEAT_DELAY 15
+#define DEFAULT_AUTO_REPEAT_INTERVAL 4
 
 enum
 {
@@ -120,10 +134,15 @@ extern clock_t m_start_time;
 extern unsigned char *m_memory;
 extern char *m_font;
 
-extern int m_mouse_x, m_mouse_y;
+extern int16_t m_mouse_x, m_mouse_y;
+extern int16_t m_mouse_xrel, m_mouse_yrel;
+extern uint8_t m_mouse_buttons;
+extern uint8_t m_keypress;
 
 extern uint8_t m_buttons[2];
-extern uint8_t m_prev_buttons[2];
+extern uint8_t m_buttonsp[2];
+extern uint8_t m_button_first_repeat[2];
+extern unsigned m_button_down_time[2][6];
 
 unsigned p8_elapsed_time(void);
 void p8_flip(void);
@@ -132,5 +151,6 @@ int p8_init_ram(uint8_t *buffer, int size);
 int p8_shutdown(void);
 void p8_render();
 void p8_reset(void);
+void p8_update_input(void);
 
 #endif

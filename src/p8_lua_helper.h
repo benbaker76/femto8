@@ -405,9 +405,9 @@ static inline void reset_color()
     }
 }
 
-static inline bool is_button_set(int index, int button, bool prev_buttons)
+static inline bool is_button_set(int index, int button, bool btnp)
 {
-    uint8_t mask = prev_buttons ? m_prev_buttons[index] : m_buttons[index];
+    uint8_t mask = (btnp?m_buttonsp:m_buttons)[index];
 
     if (mask == 0)
         return false;
@@ -459,7 +459,6 @@ static inline void update_buttons(int index, int button, bool state)
         break;
     }
 
-    m_prev_buttons[index] = m_buttons[index];
     m_buttons[index] = mask;
 }
 

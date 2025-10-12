@@ -511,7 +511,7 @@ int btnp(lua_State *L)
     // mask
     else
     {
-        lua_pushnumber(L, m_prev_buttons[p]);
+        lua_pushinteger(L, m_buttonsp[0] | (m_buttons[1] << 8));
     }
 
     return 1;
@@ -854,6 +854,30 @@ int _stat(lua_State *L)
     {
     case STAT_FRAMERATE:
         lua_pushinteger(L, m_fps);
+        break;
+    case STAT_KEY_PRESSED:
+        lua_pushboolean(L, m_keypress != 0);
+        break;
+    case STAT_KEY_NAME: {
+        char s[2] = {(char)m_keypress, '\0'};
+        lua_pushstring(L, s);
+        m_keypress = 0;
+        break;
+    }
+    case STAT_MOUSE_X:
+        lua_pushinteger(L, m_mouse_x);
+        break;
+    case STAT_MOUSE_Y:
+        lua_pushinteger(L, m_mouse_y);
+        break;
+    case STAT_MOUSE_BUTTONS:
+        lua_pushinteger(L, m_mouse_buttons);
+        break;
+    case STAT_MOUSE_XREL:
+        lua_pushinteger(L, m_mouse_xrel);
+        break;
+    case STAT_MOUSE_YREL:
+        lua_pushinteger(L, m_mouse_yrel);
         break;
     default:
         lua_pushnumber(L, 0);
