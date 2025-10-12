@@ -5,6 +5,7 @@
  *      Author: bbaker
  */
 
+#include <setjmp.h>
 #include <stdio.h>
 #include <stdint.h>
 #include <stdbool.h>
@@ -51,8 +52,8 @@ static inline int color_index(uint8_t c)
     return ((c >> 3) & 0x10) | (c & 0xf);
 }
 
+static void p8_abort();
 static void p8_main_loop();
-static int done = 0;
 
 uint8_t *m_memory = NULL;
 
@@ -61,6 +62,8 @@ unsigned m_actual_fps = 0;
 unsigned m_frames = 0;
 
 clock_t m_start_time;
+
+static jmp_buf jmpbuf;
 
 #ifdef SDL
 SDL_Surface *m_screen = NULL;
@@ -144,6 +147,9 @@ static void p8_init_common(const char *file_name, const char *lua_script)
     }
 
     lua_load_api();
+
+    if (setjmp(jmpbuf))
+        return;
 
     p8_reset();
     p8_update_input();
@@ -519,7 +525,7 @@ void p8_update_input()
             }
             break;
         case SDL_QUIT:
-            done = 1;
+            p8_abort();
             break;
         default:
             break;
@@ -631,7 +637,7 @@ void p8_flip()
 
 static void p8_main_loop()
 {
-    while (!done)
+    for (;;)
     {
         lua_update();
         lua_draw();
@@ -666,4 +672,9 @@ void p8_reset(void)
     pencolor_set(6);
     reset_color();
     clip_set(0, 0, P8_WIDTH, P8_HEIGHT);
+}
+
+static void __attribute__ ((noreturn)) p8_abort()
+{
+    longjmp(jmpbuf, 1);
 }
