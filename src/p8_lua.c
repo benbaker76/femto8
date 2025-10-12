@@ -1042,6 +1042,8 @@ void lua_load_api()
 
     if (luaL_dostring(L, lua_api_string))
         lua_print_error("Error loading extended PICO-8 Api");
+
+    lua_setpico8memory(L, m_memory);
 }
 
 void lua_shutdown_api()
