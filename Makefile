@@ -1,18 +1,19 @@
 TARGET_NAME := femto8
 TARGET := build/$(TARGET_NAME)
-INCFLAGS += -ISDL-1.2/include -Isrc -Isrc/data -Isrc/lua
+INCFLAGS += -ISDL-1.2/include -Isrc -Isrc/data -Isrc/lua -Isrc/lodepng -Isrc/lexaloffle
 LDFLAGS += -LSDL-1.2/build/.libs
 LIBS += -Wl,-Bstatic -lSDL -lSDLmain -Wl,-Bdynamic -lpthread
 fpic := -fPIC
+DEFINES += -DLUA_USE_POSIX -DLODEPNG_NO_COMPILE_ENCODER -DLODEPNG_NO_COMPILE_DISK -DLODEPNG_NO_COMPILE_ANCILLARY_CHUNKS -DLODEPNG_NO_COLOR_CONVERT
 
-CFLAGS   += -Wall -DLUA_USE_POSIX $(fpic) $(INCFLAGS) -g
-CXXFLAGS += -Wall -DLUA_USE_POSIX $(fpic) $(INCFLAGS) -g
+CFLAGS   += -Wall $(DEFINES) $(fpic) $(INCFLAGS) -g
+CXXFLAGS += -Wall $(DEFINES) $(fpic) $(INCFLAGS) -g -fno-threadsafe-statics
 
 # Source directories
-SRC_DIRS := src src/lua src/data
+SRC_DIRS := src src/lua src/data src/lodepng src/lexaloffle
 
 # Create build directories
-$(shell mkdir -p build/lua)
+$(shell mkdir -p build/lua build/lexaloffle build/lodepng)
 
 # Collect all source files
 SOURCES_C := $(wildcard $(addsuffix /*.c, $(SRC_DIRS)))
