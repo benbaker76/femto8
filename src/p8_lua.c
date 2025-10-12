@@ -830,6 +830,11 @@ int reset(lua_State *L)
     return 0;
 }
 
+int __attribute__ ((noreturn)) run(lua_State *L)
+{
+    p8_restart();
+}
+
 // ****************************************************************
 // *** Debugging ***
 // ****************************************************************
@@ -1062,6 +1067,7 @@ void lua_register_functions(lua_State *L)
     lua_register(L, "menuitem", menuitem);
     // lua_register(L, "extcmd", extcmd);
     lua_register(L, "reset", reset);
+    lua_register(L, "run", run);
     // ****************************************************************
     // *** Debugging ***
     // ****************************************************************

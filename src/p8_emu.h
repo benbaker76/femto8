@@ -151,6 +151,7 @@ int p8_init_ram(uint8_t *buffer, int size);
 int p8_shutdown(void);
 void p8_render();
 void p8_reset(void);
+void __attribute__ ((noreturn)) p8_restart(void);
 void p8_update_input(void);
 
 #endif

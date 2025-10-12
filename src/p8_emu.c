@@ -64,6 +64,7 @@ unsigned m_frames = 0;
 clock_t m_start_time;
 
 static jmp_buf jmpbuf;
+static bool restart;
 
 #ifdef SDL
 SDL_Surface *m_screen = NULL;
@@ -148,8 +149,9 @@ static void p8_init_common(const char *file_name, const char *lua_script)
 
     lua_load_api();
 
-    if (setjmp(jmpbuf))
+    if (setjmp(jmpbuf) && !restart)
         return;
+    restart = false;
 
     p8_reset();
     p8_update_input();
@@ -677,4 +679,10 @@ void p8_reset(void)
 static void __attribute__ ((noreturn)) p8_abort()
 {
     longjmp(jmpbuf, 1);
+}
+
+void __attribute__ ((noreturn)) p8_restart()
+{
+    restart = true;
+    p8_abort();
 }
