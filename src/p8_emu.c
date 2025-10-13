@@ -59,6 +59,7 @@ static void p8_abort();
 static void p8_main_loop();
 
 uint8_t *m_memory = NULL;
+uint8_t *m_cart_memory = NULL;
 
 unsigned m_fps = 30;
 unsigned m_actual_fps = 0;
@@ -98,6 +99,7 @@ int p8_init()
 
 #ifdef SDL
     m_memory = (uint8_t *)malloc(MEMORY_SIZE);
+    m_cart_memory = (uint8_t *)malloc(CART_MEMORY_SIZE);
     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO) != 0)
     {
         printf("Error on SDL_Init().\n");
@@ -119,9 +121,11 @@ int p8_init()
     xSemaphoreGive(m_drawSemaphore);
     
     m_memory = (uint8_t *)rh_malloc(MEMORY_SIZE);
+    m_cart_memory = (uint8_t *)rh_malloc(CART_MEMORY_SIZE);
 #endif
 
     memset(m_memory, 0, MEMORY_SIZE);
+    memset(m_cart_memory, 0, CART_MEMORY_SIZE);
 
 #ifdef ENABLE_AUDIO
     audio_init();
@@ -159,6 +163,8 @@ static void p8_init_common(const char *file_name, const char *lua_script)
         return;
     restart = false;
 
+    memcpy(m_memory, m_cart_memory, CART_MEMORY_SIZE);
+
     p8_reset();
     p8_update_input();
 
@@ -180,7 +186,7 @@ int p8_init_file(char *file_name)
     const char *lua_script = NULL;
     uint8_t *file_buffer = NULL;
 
-    parse_cart_file(file_name, m_memory, &lua_script, &file_buffer);
+    parse_cart_file(file_name, m_cart_memory, &lua_script, &file_buffer);
 
     p8_init_common(file_name, lua_script);
 
@@ -200,7 +206,7 @@ int p8_init_ram(uint8_t *buffer, int size)
     const char *lua_script = NULL;
     uint8_t *decompression_buffer = NULL;
 
-    parse_cart_ram(buffer, size, m_memory, &lua_script, &decompression_buffer);
+    parse_cart_ram(buffer, size, m_cart_memory, &lua_script, &decompression_buffer);
 
     // printf("%s", m_lua_script);
 
@@ -228,8 +234,10 @@ int p8_shutdown()
     SDL_FreeSurface(m_screen);
     SDL_Quit();
 
+    free(m_cart_memory);
     free(m_memory);
 #else
+    rh_free(m_cart_memory);
     rh_free(m_memory);
 #endif
 

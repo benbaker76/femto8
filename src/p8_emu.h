@@ -137,6 +137,7 @@ extern clock_t m_start_time;
 #define CLOCKS_PER_CLOCK_T (((clock_t)1) << (CHAR_BIT * sizeof(clock_t) - 1))
 
 extern unsigned char *m_memory;
+extern unsigned char *m_cart_memory;
 extern char *m_font;
 
 extern int16_t m_mouse_x, m_mouse_y;

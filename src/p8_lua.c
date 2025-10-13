@@ -21,6 +21,7 @@ extern "C" {
 #include <string.h>
 #include "p8_lua_helper.h"
 #include "pico_font.h"
+#include "p8_parser.h"
 }
 #include "lua_api.h"
 #include "lua.h"
@@ -721,6 +722,27 @@ int poke4(lua_State *L)
 }
 
 // reload(destaddr, sourceaddr, len, [filename])
+int reload(lua_State *L)
+{
+    unsigned destaddr = lua_tounsigned(L, 1);
+    unsigned srcaddr = lua_tounsigned(L, 2);
+    unsigned len = lua_tounsigned(L, 3);
+    const char *file_name = lua_gettop(L) >= 4 ? lua_tostring(L, 4) : NULL;
+    uint8_t *src_mem = NULL;
+    if (file_name != NULL) {
+        uint8_t *buffer = NULL;
+        src_mem = (uint8_t *)malloc(CART_MEMORY_SIZE);
+        parse_cart_file(file_name, src_mem, NULL, &buffer);
+        free(buffer);
+    } else {
+        src_mem = m_cart_memory;
+    }
+    if (destaddr >= 0 && destaddr + len <= CART_MEMORY_SIZE && srcaddr >= 0 && srcaddr + len <= CART_MEMORY_SIZE)
+        memcpy(m_memory + destaddr, src_mem + srcaddr, len);
+    if (file_name != NULL)
+        free(src_mem);
+    return 0;
+}
 
 // ****************************************************************
 // *** Math ***
