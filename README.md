@@ -25,4 +25,6 @@ To build femto8:
 
 1. Clone the repository: `git clone https://github.com/benbaker76/femto8.git`
 2. Navigate to the femto8 directory: `cd femto8`
-3. Build a local binary: `make`
+3. Download SDL: `git submodule update --init`
+3. Configure SDL: `cd SDL-1.2 && ./configure && cd ..`
+4. Build a local binary: `make`
