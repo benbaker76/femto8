@@ -24,6 +24,7 @@
 #include "ble_controller.h"
 #endif
 #include "p8_audio.h"
+#include "p8_compat.h"
 #include "p8_emu.h"
 #include "p8_lua.h"
 #include "p8_lua_helper.h"
@@ -57,6 +58,7 @@ static inline int color_index(uint8_t c)
 
 static void p8_abort();
 static void p8_main_loop();
+static void p8_show_compatibility_error(int severity);
 
 uint8_t *m_memory = NULL;
 uint8_t *m_cart_memory = NULL;
@@ -161,6 +163,13 @@ static void p8_init_common(const char *file_name, const char *lua_script)
 
     if (setjmp(jmpbuf) && !restart)
         return;
+    if (!restart) {
+        int ret = check_compatibility(file_name, lua_script);
+        if (ret != COMPAT_OK)
+            p8_show_compatibility_error(ret);
+        if (ret == COMPAT_NONE)
+            return;
+    }
     restart = false;
 
     memcpy(m_memory, m_cart_memory, CART_MEMORY_SIZE);
@@ -747,4 +756,26 @@ void p8_close_cartdata(void)
         fclose(cartdata);
         cartdata = NULL;
     }
+}
+
+static void p8_show_compatibility_error(int severity)
+{
+    p8_reset();
+    clear_screen(0);
+    draw_rect(10, 51, 118, 78, 7, 0);
+    if (severity <= COMPAT_SOME) {
+        draw_text("this cart may not be", 24, 55, 7);
+        draw_text("fully compatible with", 22, 62, 7);
+        draw_text(PROGNAME, 64-strlen(PROGNAME)*GLYPH_WIDTH/2, 69, 7);
+    } else {
+        draw_text("this cart is not", 32, 55, 7);
+        draw_text("compatible with", 34, 62, 7);
+        draw_text(PROGNAME, 64-strlen(PROGNAME)*GLYPH_WIDTH/2, 69, 7);
+    }
+    p8_flip();
+    p8_update_input();
+    while ((m_buttons[0] & BUTTON_ACTION1)) { p8_update_input(); }
+    while (!(m_buttons[0] & BUTTON_ACTION1)) { p8_update_input(); }
+    while ((m_buttons[0] & BUTTON_ACTION1)) { p8_update_input(); }
+    clear_screen(0);
 }
