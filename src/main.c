@@ -6,20 +6,19 @@
  */
 
 #include <stdio.h>
+#include "p8_browse.h"
 #include "p8_parser.h"
 #include "p8_emu.h"
 
 int main(int argc, char *argv[])
 {
-    if (argc < 2)
-    {
-        printf("Usage: %s <p8_file>\n", argv[0]);
-        return 1;
-    }
-
-    char *file_name = argv[1];
-
-    p8_init_file(file_name);
+    const char *file_name;
+    if (argc >= 2)
+        file_name = argv[1];
+    else
+        file_name = browse_for_cart();
+    if (file_name != NULL)
+        p8_init_file(file_name);
     p8_shutdown();
 
     return 0;
