@@ -34,14 +34,19 @@ $(TARGET): $(OBJECTS)
 
 $(OBJECTS_C): $(BUILD_DIR)/%.o: src/%.c
 	$(CC) $(CFLAGS) -c $< -o $@
+	$(CC) -MM $(CFLAGS) -MT $@ -MF $(BUILD_DIR)/$*.d $<
 
 $(OBJECTS_CXX): $(BUILD_DIR)/%.o: src/%.cpp
 	$(CXX) $(CXXFLAGS) -c $< -o $@
+	$(CXX) -MM $(CFLAGS) -MT $@ -MF $(BUILD_DIR)/$*.d $<
 
 $(OBJECTS_LUA): $(BUILD_DIR)/%.o: src/%.c
 	$(CXX) $(CXXFLAGS) -c $< -o $@
+	$(CXX) -MM $(CFLAGS) -MT $@ -MF $(BUILD_DIR)/$*.d $<
 
 clean:
-	rm -f $(OBJECTS) $(TARGET)
+	rm -f $(OBJECTS) $(OBJECTS:.o=.d) $(TARGET)
 
 .PHONY: clean
+
+-include $(OBJECTS:.o=.d)
