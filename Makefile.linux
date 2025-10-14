@@ -1,0 +1,5 @@
+INCFLAGS += -ISDL-1.2/include
+LDFLAGS += -LSDL-1.2/build/.libs
+LIBS += -Wl,-Bstatic -lSDL -lSDLmain -Wl,-Bdynamic -lpthread
+DEFINES += -DLUA_USE_POSIX
+fpic := -fPIC
