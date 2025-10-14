@@ -128,8 +128,14 @@ int p8_init_lcd()
     return 0;
 }
 
-static void p8_init_common(const char *lua_script)
+static void p8_init_common(const char *file_name, const char *lua_script)
 {
+    if (lua_script == NULL) {
+        if (file_name) fprintf(stderr, "%s: ", file_name);
+        fprintf(stderr, "invalid cart\n");
+        exit(1);
+    }
+
     lua_load_api();
 
     p8_reset();
@@ -154,7 +160,7 @@ int p8_init_file(char *file_name)
 
     parse_cart_file(file_name, m_memory, &lua_script, &file_buffer);
 
-    p8_init_common(lua_script);
+    p8_init_common(file_name, lua_script);
 
 #ifdef OS_FREERTOS
     rh_free(file_buffer);
@@ -176,7 +182,7 @@ int p8_init_ram(uint8_t *buffer, int size)
 
     // printf("%s", m_lua_script);
 
-    p8_init_common(lua_script);
+    p8_init_common(NULL, lua_script);
 
 #ifdef OS_FREERTOS
     rh_free(decompression_buffer);
