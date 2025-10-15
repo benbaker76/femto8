@@ -1,38 +1,52 @@
-TARGET_NAME := femto8
-TARGET := build/$(TARGET_NAME)
-INCFLAGS += -ISDL-1.2/include -Isrc -Isrc/data -Isrc/lua
-LDFLAGS += -LSDL-1.2/build/.libs
-LIBS += -Wl,-Bstatic -lSDL -lSDLmain -Wl,-Bdynamic -lpthread
-fpic := -fPIC
+PLATFORM ?= linux
+include Makefile.$(PLATFORM)
 
-CFLAGS   += -Wall -DLUA_USE_POSIX $(fpic) $(INCFLAGS) -g
-CXXFLAGS += -Wall -DLUA_USE_POSIX $(fpic) $(INCFLAGS) -g
+BUILD_DIR := build-$(PLATFORM)
+TARGET_NAME := femto8
+TARGET := $(BUILD_DIR)/$(TARGET_NAME)
+INCFLAGS += -Isrc -Isrc/data -Isrc/lua -Isrc/lodepng -Isrc/lexaloffle
+DEFINES += -DLODEPNG_NO_COMPILE_ENCODER -DLODEPNG_NO_COMPILE_DISK -DLODEPNG_NO_COMPILE_ANCILLARY_CHUNKS -DLODEPNG_NO_COLOR_CONVERT
+
+CFLAGS   += -Wall $(DEFINES) $(fpic) $(INCFLAGS) -g
+CXXFLAGS += -Wall $(DEFINES) $(fpic) $(INCFLAGS) -g -fno-threadsafe-statics
 
 # Source directories
-SRC_DIRS := src src/lua src/data
+SRC_DIRS := src src/lua src/data src/lodepng src/lexaloffle
 
 # Create build directories
-$(shell mkdir -p build/lua)
+$(shell mkdir -p $(BUILD_DIR)/lua $(BUILD_DIR)/lexaloffle $(BUILD_DIR)/lodepng)
 
 # Collect all source files
-SOURCES_C := $(wildcard $(addsuffix /*.c, $(SRC_DIRS)))
+SOURCES_LUA := $(wildcard src/lua/*.c) src/p8_lua.c
+SOURCES_C := $(filter-out $(SOURCES_LUA),$(wildcard $(addsuffix /*.c, $(SRC_DIRS))))
 SOURCES_CXX := $(wildcard $(addsuffix /*.cpp, $(SRC_DIRS)))
 
 # Generate object file paths
-OBJECTS := $(patsubst src/%.c,build/%.o,$(SOURCES_C)) $(patsubst src/%.cpp,build/%.o,$(SOURCES_CXX))
+OBJECTS_C := $(patsubst src/%.c,$(BUILD_DIR)/%.o,$(SOURCES_C))
+OBJECTX_CXX := $(patsubst src/%.cpp,$(BUILD_DIR)/%.o,$(SOURCES_CXX))
+OBJECTS_LUA := $(patsubst src/%.c,$(BUILD_DIR)/%.o,$(SOURCES_LUA))
+OBJECTS := $(OBJECTS_C) $(OBJECTS_CXX) $(OBJECTS_LUA)
 
 all: $(TARGET)
 
 $(TARGET): $(OBJECTS)
 	$(CXX) $(CFLAGS) $(LDFLAGS) $(OBJECTS) -o $@ $(LIBS)
 
-build/%.o: src/%.c
+$(OBJECTS_C): $(BUILD_DIR)/%.o: src/%.c
 	$(CC) $(CFLAGS) -c $< -o $@
+	$(CC) -MM $(CFLAGS) -MT $@ -MF $(BUILD_DIR)/$*.d $<
 
-build/%.o: src/%.cpp
+$(OBJECTS_CXX): $(BUILD_DIR)/%.o: src/%.cpp
 	$(CXX) $(CXXFLAGS) -c $< -o $@
+	$(CXX) -MM $(CFLAGS) -MT $@ -MF $(BUILD_DIR)/$*.d $<
+
+$(OBJECTS_LUA): $(BUILD_DIR)/%.o: src/%.c
+	$(CXX) $(CXXFLAGS) -c $< -o $@
+	$(CXX) -MM $(CFLAGS) -MT $@ -MF $(BUILD_DIR)/$*.d $<
 
 clean:
-	rm -f $(OBJECTS) $(TARGET)
+	rm -f $(OBJECTS) $(OBJECTS:.o=.d) $(TARGET)
 
 .PHONY: clean
+
+-include $(OBJECTS:.o=.d)

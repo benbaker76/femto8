@@ -8,11 +8,19 @@
 #ifndef P8_EMU_H
 #define P8_EMU_H
 
+#include <limits.h>
+#include <stdbool.h>
+#include <time.h>
+
 #ifdef __DA1470x__
 #define OS_FREERTOS
 #else
 #define SDL
 #define ENABLE_AUDIO
+#endif
+
+#ifndef CARTDATA_PATH
+#define CARTDATA_PATH "cdata"
 #endif
 
 // #define BOOL_NULL -1
@@ -64,14 +72,30 @@
 #define MEMORY_SCREEN 0x6000
 #define MEMORY_SCREEN_SIZE 0x2000
 
-#define MEMORY_SIZE 1024 * 32
-#define MEMORY_LUA_SIZE 1024 * 32
+#define MEMORY_SIZE 1024 * 64
+#define CART_MEMORY_SIZE 0x4300
 
 #define MEMORY_PALETTES 0x5f00
 #define MEMORY_CLIPRECT 0x5f20
+#define MEMORY_LEFT_MARGIN 0x5f24
 #define MEMORY_PENCOLOR 0x5f25
 #define MEMORY_CURSOR 0x5f26
 #define MEMORY_CAMERA 0x5f28
+#define MEMORY_DEVKIT_MODE 0x5f2d
+#define MEMORY_FILLP 0x5f31
+#define MEMORY_FILLP_ATTR 0x5f33
+#define MEMORY_COLOR_FILLP 0x5f34
+#define MEMORY_LINE_VALID 0x5f35
+#define MEMORY_MISCFLAGS 0x5f36
+#define MEMORY_TLINE_MASK_X 0x5f38
+#define MEMORY_TLINE_MASK_Y 0x5f39
+#define MEMORY_TLINE_OFFSET_X 0x5f3a
+#define MEMORY_TLINE_OFFSET_Y 0x5f3b
+#define MEMORY_LINE_X 0x5f3c
+#define MEMORY_LINE_Y 0x5f3e
+#define MEMORY_AUTO_REPEAT_DELAY 0x5f5c
+#define MEMORY_AUTO_REPEAT_INTERVAL 0x5f5d
+#define MEMORY_PALETTE_SECONDARY 0x5f60
 
 #define TICKS_PER_SECOND 128
 #define SCREEN_SIZE 128 * 128 * 4
@@ -81,7 +105,19 @@
 #define SPRITE_HEIGHT 8
 #define BUTTON_COUNT 6
 #define PLAYER_COUNT 2
+
+#define STAT_MEM_USAGE 0
+#define STAT_CPU_USAGE 1
+#define STAT_SYSTEM_CPU_USAGE 2
 #define STAT_FRAMERATE 7
+#define STAT_TARGET_FRAMERATE 8
+#define STAT_KEY_PRESSED 30
+#define STAT_KEY_NAME 31
+#define STAT_MOUSE_X 32
+#define STAT_MOUSE_Y 33
+#define STAT_MOUSE_BUTTONS 34
+#define STAT_MOUSE_XREL 38
+#define STAT_MOUSE_YREL 39
 
 #define INPUT_LEFT SDLK_LEFT
 #define INPUT_RIGHT SDLK_RIGHT
@@ -90,10 +126,21 @@
 #define INPUT_ACTION1 SDLK_z
 #define INPUT_ACTION2 SDLK_x
 
+#define DEFAULT_AUTO_REPEAT_DELAY 15
+#define DEFAULT_AUTO_REPEAT_INTERVAL 4
+
 enum
 {
     PALTYPE_DRAW,
-    PALTYPE_SCREEN
+    PALTYPE_SCREEN,
+    PALTYPE_SECONDARY
+};
+
+enum
+{
+    DRAWTYPE_DEFAULT,
+    DRAWTYPE_GRAPHIC,
+    DRAWTYPE_SPRITE
 };
 
 enum
@@ -106,21 +153,40 @@ enum
     BUTTON_ACTION2 = 0x0020,
 };
 
-extern float m_fps;
-extern float m_actual_fps;
-extern float m_time;
+extern unsigned m_fps;
+extern unsigned m_actual_fps;
+extern unsigned m_frames;
+
+extern clock_t m_start_time;
+
+#define CLOCKS_PER_CLOCK_T (((clock_t)1) << (CHAR_BIT * sizeof(clock_t) - 1))
 
 extern unsigned char *m_memory;
+extern unsigned char *m_cart_memory;
 extern char *m_font;
 
-extern int m_mouse_x, m_mouse_y;
+extern int16_t m_mouse_x, m_mouse_y;
+extern int16_t m_mouse_xrel, m_mouse_yrel;
+extern uint8_t m_mouse_buttons;
+extern uint8_t m_keypress;
 
 extern uint8_t m_buttons[2];
-extern uint8_t m_prev_buttons[2];
+extern uint8_t m_buttonsp[2];
+extern uint8_t m_button_first_repeat[2];
+extern unsigned m_button_down_time[2][6];
 
+void p8_close_cartdata(void);
+void p8_delayed_flush_cartdata(void);
+unsigned p8_elapsed_time(void);
+void p8_flip(void);
+void p8_flush_cartdata(void);
 int p8_init_file(char *file_name);
 int p8_init_ram(uint8_t *buffer, int size);
+bool p8_open_cartdata(const char *id);
 int p8_shutdown(void);
 void p8_render();
+void p8_reset(void);
+void __attribute__ ((noreturn)) p8_restart(void);
+void p8_update_input(void);
 
 #endif

@@ -5,13 +5,16 @@
  *      Author: bbaker
  */
 
+#include <errno.h>
+#include <fcntl.h>
+#include <setjmp.h>
 #include <stdio.h>
 #include <stdint.h>
 #include <stdbool.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
 #include <unistd.h>
-#include <time.h>
 #include <math.h>
 #include <assert.h>
 #ifdef OS_FREERTOS
@@ -34,22 +37,38 @@
 
 #ifdef SDL
 // ARGB
-uint32_t m_colors[16] = {
+uint32_t m_colors[32] = {
     0x00000000, 0x001d2b53, 0x007e2553, 0x00008751, 0x00ab5236, 0x005f574f, 0x00c2c3c7, 0x00fff1e8,
-    0x00ff004d, 0x00ffa300, 0x00ffec27, 0x0000e436, 0x0029adff, 0x0083769c, 0x00ff77a8, 0x00ffccaa};
+    0x00ff004d, 0x00ffa300, 0x00ffec27, 0x0000e436, 0x0029adff, 0x0083769c, 0x00ff77a8, 0x00ffccaa,
+    0x00291814, 0x00111D35, 0x00422136, 0x00125359, 0x00742F29, 0x0049333B, 0x00A28879, 0x00F3EF7D,
+    0x00BE1250, 0x00FF6C24, 0x00A8E72E, 0x0000B54E, 0x00065AB5, 0x00754665, 0x00FF6E59, 0x00FF9D81};
 #else
 // RGB565
-uint16_t m_colors[16] = {
-    0x0000, 0x194a, 0x792a, 0x042a, 0xaa86, 0x5aa9, 0xc618, 0xff9d, 0xf809, 0xfd00, 0xff64, 0x0726, 0x2d7f, 0x83b3, 0xfbb5, 0xfe75};
+uint16_t m_colors[32] = {
+    0x0000, 0x194a, 0x792a, 0x042a, 0xaa86, 0x5aa9, 0xc618, 0xff9d, 0xf809, 0xfd00, 0xff64, 0x0726, 0x2d7f, 0x83b3, 0xfbb5, 0xfe75,
+    0x28c2, 0x10e6, 0x4106, 0x128b, 0x7165, 0x4987, 0xa44f, 0xf76f, 0xb88a, 0xfb64, 0xaf25, 0x05a9, 0x02d6, 0x722c, 0xfb6b, 0xfcf0};
 #endif
 
-void p8_main_loop();
+// Convert 8-bit screen palette value to 5-bit color index.
+static inline int color_index(uint8_t c)
+{
+    return ((c >> 3) & 0x10) | (c & 0xf);
+}
+
+static void p8_abort();
+static void p8_main_loop();
 
 uint8_t *m_memory = NULL;
+uint8_t *m_cart_memory = NULL;
 
-float m_fps = 30;
-float m_actual_fps = 0;
-float m_time = 0.0;
+unsigned m_fps = 30;
+unsigned m_actual_fps = 0;
+unsigned m_frames = 0;
+
+clock_t m_start_time;
+
+static jmp_buf jmpbuf;
+static bool restart;
 
 #ifdef SDL
 SDL_Surface *m_screen = NULL;
@@ -59,10 +78,20 @@ SDL_PixelFormat *m_format = NULL;
 SemaphoreHandle_t m_drawSemaphore;
 #endif
 
-int m_mouse_x, m_mouse_y;
+int16_t m_mouse_x, m_mouse_y;
+int16_t m_mouse_xrel, m_mouse_yrel;
+uint8_t m_mouse_buttons;
+uint8_t m_keypress;
 
-uint8_t m_buttons[2] = {0};
-uint8_t m_prev_buttons[2] = {0};
+uint8_t m_buttons[2];
+uint8_t m_buttonsp[2];
+uint8_t m_button_first_repeat[2];
+unsigned m_button_down_time[2][6];
+
+static bool m_prev_pointer_lock;
+
+static FILE *cartdata = NULL;
+static bool cartdata_needs_flush = false;
 
 int p8_init()
 {
@@ -70,6 +99,7 @@ int p8_init()
 
 #ifdef SDL
     m_memory = (uint8_t *)malloc(MEMORY_SIZE);
+    m_cart_memory = (uint8_t *)malloc(CART_MEMORY_SIZE);
     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO) != 0)
     {
         printf("Error on SDL_Init().\n");
@@ -91,9 +121,11 @@ int p8_init()
     xSemaphoreGive(m_drawSemaphore);
     
     m_memory = (uint8_t *)rh_malloc(MEMORY_SIZE);
+    m_cart_memory = (uint8_t *)rh_malloc(CART_MEMORY_SIZE);
 #endif
 
     memset(m_memory, 0, MEMORY_SIZE);
+    memset(m_cart_memory, 0, CART_MEMORY_SIZE);
 
 #ifdef ENABLE_AUDIO
     audio_init();
@@ -117,30 +149,26 @@ int p8_init_lcd()
     return 0;
 }
 
-int p8_init_file(char *file_name)
+static void p8_init_common(const char *file_name, const char *lua_script)
 {
-    p8_init();
-
-#ifdef SDL
-    char *lua_script = (char *)malloc(MEMORY_LUA_SIZE);
-#else
-    char *lua_script = (char *)rh_malloc(MEMORY_LUA_SIZE);
-#endif
-
-    memset(lua_script, 0, MEMORY_LUA_SIZE);
-
-    int lua_start, lua_end;
-
-    parse_cart_file(file_name, m_memory, &lua_script, &lua_start, &lua_end);
+    if (lua_script == NULL) {
+        if (file_name) fprintf(stderr, "%s: ", file_name);
+        fprintf(stderr, "invalid cart\n");
+        exit(1);
+    }
 
     lua_load_api();
-    lua_init_script(lua_script);
 
-#ifdef SDL
-    free(lua_script);
-#else
-    rh_free(lua_script);
-#endif
+    if (setjmp(jmpbuf) && !restart)
+        return;
+    restart = false;
+
+    memcpy(m_memory, m_cart_memory, CART_MEMORY_SIZE);
+
+    p8_reset();
+    p8_update_input();
+
+    lua_init_script(lua_script);
 
     clear_screen(0);
 
@@ -149,6 +177,24 @@ int p8_init_file(char *file_name)
     p8_init_lcd();
 
     p8_main_loop();
+}
+
+int p8_init_file(char *file_name)
+{
+    p8_init();
+
+    const char *lua_script = NULL;
+    uint8_t *file_buffer = NULL;
+
+    parse_cart_file(file_name, m_cart_memory, &lua_script, &file_buffer);
+
+    p8_init_common(file_name, lua_script);
+
+#ifdef OS_FREERTOS
+    rh_free(file_buffer);
+#else
+    free(file_buffer);
+#endif
 
     return 0;
 }
@@ -157,50 +203,20 @@ int p8_init_ram(uint8_t *buffer, int size)
 {
     p8_init();
 
-    /* #ifdef SDL
-        char *lua_script = (char *)malloc(MEMORY_LUA_SIZE);
-    #else
-        char *lua_script = (char *)rh_malloc_psram(MEMORY_LUA_SIZE);
-    #endif */
+    const char *lua_script = NULL;
+    uint8_t *decompression_buffer = NULL;
 
-    int lua_start, lua_end;
-
-    parse_cart_ram(buffer, size, m_memory, NULL, &lua_start, &lua_end);
-
-    /* #ifdef SDL
-        free(buffer);
-    #else
-        rh_free(buffer);
-    #endif */
+    parse_cart_ram(buffer, size, m_cart_memory, &lua_script, &decompression_buffer);
 
     // printf("%s", m_lua_script);
 
-    buffer[lua_end] = '\0';
+    p8_init_common(NULL, lua_script);
 
-    // printf("%s\r\n", (char *)(buffer + lua_start));
-
-    lua_load_api();
-    lua_init_script((char *)(buffer + lua_start));
-
-    /* #ifdef SDL
-        free(lua_script);
-    #else
-        rh_free(lua_script);
-    #endif */
-
-#ifdef SDL
-    free(buffer);
+#ifdef OS_FREERTOS
+    rh_free(decompression_buffer);
 #else
-    rh_free(buffer);
+    free(decompression_buffer);
 #endif
-
-    clear_screen(0);
-
-    lua_init();
-
-    p8_init_lcd();
-
-    p8_main_loop();
 
     return 0;
 }
@@ -211,13 +227,17 @@ int p8_shutdown()
 
     lua_shutdown_api();
 
+    p8_close_cartdata();
+
 #ifdef SDL
     SDL_FreeSurface(m_output);
     SDL_FreeSurface(m_screen);
     SDL_Quit();
 
+    free(m_cart_memory);
     free(m_memory);
 #else
+    rh_free(m_cart_memory);
     rh_free(m_memory);
 #endif
 
@@ -239,7 +259,7 @@ void p8_render()
             int screen_offset = MEMORY_SCREEN + (x >> 1) + y * 64;
             uint8_t value = m_memory[screen_offset];
             uint8_t index = color_get(PALTYPE_SCREEN, IS_EVEN(x) ? value & 0xF : value >> 4);
-            uint32_t color = m_colors[index & 0xF];
+            uint32_t color = m_colors[color_index(index)];
 
             output[x + (y * P8_WIDTH)] = color;
         }
@@ -282,32 +302,11 @@ void p8_render()
                 uint8_t left = (*screen_mem) & 0xF;
                 uint8_t right = (*screen_mem) >> 4;
 
-                uint8_t index_left = pal[left] & 0xF;
-                uint8_t index_right = pal[right] & 0xF;
+                uint8_t index_left = pal[left];
+                uint8_t index_right = color_pal[right];
 
-                uint16_t c_left = m_colors[index_left];
-                uint16_t c_right = m_colors[index_right];
-
-                *top++ = c_left;
-                *top++ = c_left;
-                *top++ = c_right;
-                *top++ = c_right;
-
-                *bottom++ = c_left;
-                *bottom++ = c_left;
-                *bottom++ = c_right;
-                *bottom++ = c_right;
-
-                screen_mem++;
-
-                left = (*screen_mem) & 0xF;
-                right = (*screen_mem) >> 4;
-
-                index_left = pal[left] & 0xF;
-                index_right = pal[right] & 0xF;
-
-                c_left = m_colors[index_left];
-                c_right = m_colors[index_right];
+                uint16_t c_left = m_colors[color_index(index_left)];
+                uint16_t c_right = m_colors[color_index(index_right)];
 
                 *top++ = c_left;
                 *top++ = c_left;
@@ -324,11 +323,11 @@ void p8_render()
                 left = (*screen_mem) & 0xF;
                 right = (*screen_mem) >> 4;
 
-                index_left = pal[left] & 0xF;
-                index_right = pal[right] & 0xF;
+                index_left = pal[left];
+                index_right = pal[right];
 
-                c_left = m_colors[index_left];
-                c_right = m_colors[index_right];
+                c_left = m_colors[color_index(index_left)];
+                c_right = m_colors[color_index(index_right)];
 
                 *top++ = c_left;
                 *top++ = c_left;
@@ -345,11 +344,32 @@ void p8_render()
                 left = (*screen_mem) & 0xF;
                 right = (*screen_mem) >> 4;
 
-                index_left = pal[left] & 0xF;
-                index_right = pal[right] & 0xF;
+                index_left = pal[left];
+                index_right = pal[right];
 
-                c_left = m_colors[index_left];
-                c_right = m_colors[index_right];
+                c_left = m_colors[color_index(index_left)];
+                c_right = m_colors[color_index(index_right)];
+
+                *top++ = c_left;
+                *top++ = c_left;
+                *top++ = c_right;
+                *top++ = c_right;
+
+                *bottom++ = c_left;
+                *bottom++ = c_left;
+                *bottom++ = c_right;
+                *bottom++ = c_right;
+
+                screen_mem++;
+
+                left = (*screen_mem) & 0xF;
+                right = (*screen_mem) >> 4;
+
+                index_left = pal[left];
+                index_right = pal[right];
+
+                c_left = m_colors[color_index(index_left)];
+                c_right = m_colors[color_index(index_right)];
 
                 *top++ = c_left;
                 *top++ = c_left;
@@ -374,27 +394,11 @@ void p8_render()
                 uint8_t left = (*screen_mem) & 0xF;
                 uint8_t right = (*screen_mem) >> 4;
 
-                uint8_t index_left = pal[left] & 0xF;
-                uint8_t index_right = pal[right] & 0xF;
+                uint8_t index_left = pal[left];
+                uint8_t index_right = pal[right];
 
-                uint16_t c_left = m_colors[index_left];
-                uint16_t c_right = m_colors[index_right];
-
-                *top++ = c_left;
-                *top++ = c_left;
-                *top++ = c_right;
-                *top++ = c_right;
-
-                screen_mem++;
-
-                left = (*screen_mem) & 0xF;
-                right = (*screen_mem) >> 4;
-
-                index_left = pal[left] & 0xF;
-                index_right = pal[right] & 0xF;
-
-                c_left = m_colors[index_left];
-                c_right = m_colors[index_right];
+                uint16_t c_left = m_colors[color_index(index_left)];
+                uint16_t c_right = m_colors[color_index(index_right)];
 
                 *top++ = c_left;
                 *top++ = c_left;
@@ -406,11 +410,11 @@ void p8_render()
                 left = (*screen_mem) & 0xF;
                 right = (*screen_mem) >> 4;
 
-                index_left = pal[left] & 0xF;
-                index_right = pal[right] & 0xF;
+                index_left = pal[left];
+                index_right = pal[right];
 
-                c_left = m_colors[index_left];
-                c_right = m_colors[index_right];
+                c_left = m_colors[color_index(index_left)];
+                c_right = m_colors[color_index(index_right)];
 
                 *top++ = c_left;
                 *top++ = c_left;
@@ -422,11 +426,27 @@ void p8_render()
                 left = (*screen_mem) & 0xF;
                 right = (*screen_mem) >> 4;
 
-                index_left = pal[left] & 0xF;
-                index_right = pal[right] & 0xF;
+                index_left = pal[left];
+                index_right = pal[right];
 
-                c_left = m_colors[index_left];
-                c_right = m_colors[index_right];
+                c_left = m_colors[color_index(index_left)];
+                c_right = m_colors[color_index(index_right)];
+
+                *top++ = c_left;
+                *top++ = c_left;
+                *top++ = c_right;
+                *top++ = c_right;
+
+                screen_mem++;
+
+                left = (*screen_mem) & 0xF;
+                right = (*screen_mem) >> 4;
+
+                index_left = pal[left];
+                index_right = pal[right];
+
+                c_left = m_colors[color_index(index_left)];
+                c_right = m_colors[color_index(index_right)];
 
                 *top++ = c_left;
                 *top++ = c_left;
@@ -445,7 +465,91 @@ void p8_render()
 
 void p8_update_input()
 {
-#ifdef OS_FREERTOS
+    bool pointer_lock = (m_memory[MEMORY_DEVKIT_MODE] & 0x4) != 0;
+    if (pointer_lock != m_prev_pointer_lock) {
+        m_prev_pointer_lock  = pointer_lock;
+#ifdef SDL
+        SDL_WM_GrabInput(pointer_lock ? SDL_GRAB_ON : SDL_GRAB_OFF);
+#endif
+    }
+
+#ifdef SDL
+    SDL_Event event;
+    while (SDL_PollEvent(&event))
+    {
+        switch (event.type)
+        {
+        case SDL_MOUSEMOTION:
+            m_mouse_x = event.motion.x;
+            m_mouse_y = event.motion.y;
+            m_mouse_xrel += event.motion.xrel;
+            m_mouse_yrel += event.motion.yrel;
+            break;
+        case SDL_MOUSEBUTTONDOWN:
+            m_mouse_buttons |= 1 << event.button.button;
+            break;
+        case SDL_MOUSEBUTTONUP:
+            m_mouse_buttons &= ~(1 << event.button.button);
+            break;
+        case SDL_KEYDOWN:
+            switch (event.key.keysym.sym)
+            {
+            case INPUT_LEFT:
+                update_buttons(0, 0, true);
+                break;
+            case INPUT_RIGHT:
+                update_buttons(0, 1, true);
+                break;
+            case INPUT_UP:
+                update_buttons(0, 2, true);
+                break;
+            case INPUT_DOWN:
+                update_buttons(0, 3, true);
+                break;
+            case INPUT_ACTION1:
+                update_buttons(0, 4, true);
+                break;
+            case INPUT_ACTION2:
+                update_buttons(0, 5, true);
+                break;
+            default:
+                break;
+            }
+            m_keypress = (event.key.keysym.sym < 256) ? event.key.keysym.sym : 0;
+            break;
+        case SDL_KEYUP:
+            switch (event.key.keysym.sym)
+            {
+            case INPUT_LEFT:
+                update_buttons(0, 0, false);
+                break;
+            case INPUT_RIGHT:
+                update_buttons(0, 1, false);
+                break;
+            case INPUT_UP:
+                update_buttons(0, 2, false);
+                break;
+            case INPUT_DOWN:
+                update_buttons(0, 3, false);
+                break;
+            case INPUT_ACTION1:
+                update_buttons(0, 4, false);
+                break;
+            case INPUT_ACTION2:
+                update_buttons(0, 5, false);
+                break;
+            default:
+                break;
+            }
+            break;
+        case SDL_QUIT:
+            p8_abort();
+            break;
+        default:
+            break;
+        }
+    }
+#else
     uint8_t mask = 0;
 
     if (gamepad & AXIS_L_LEFT)
@@ -484,129 +588,163 @@ void p8_update_input()
     m_buttons[0] = mask;
 
 #endif
-}
 
-void p8_main_loop()
-{
-    long start_time, end_time;
-    float elapsed_time;
-#ifdef SDL
-    SDL_Event event;
-#endif
-    bool done = 0;
+    if (m_memory[MEMORY_DEVKIT_MODE] & 0x2)
+        m_buttons[0] |= (((m_mouse_buttons >> 0) & 1) << 4) | (((m_mouse_buttons >> 1) & 1) << 5) | (((m_mouse_buttons >> 2) & 1) << 6);
 
-#ifdef OS_FREERTOS
-    start_time = xTaskGetTickCount();
-#else
-    start_time = clock();
-#endif
-
-    while (!done)
-    {
-#ifdef SDL
-        while (SDL_PollEvent(&event))
-        {
-            switch (event.type)
-            {
-            case SDL_MOUSEMOTION:
-                break;
-            case SDL_MOUSEBUTTONDOWN:
-                break;
-            case SDL_KEYDOWN:
-                switch (event.key.keysym.sym)
-                {
-                case INPUT_LEFT:
-                    update_buttons(0, 0, true);
-                    break;
-                case INPUT_RIGHT:
-                    update_buttons(0, 1, true);
-                    break;
-                case INPUT_UP:
-                    update_buttons(0, 2, true);
-                    break;
-                case INPUT_DOWN:
-                    update_buttons(0, 3, true);
-                    break;
-                case INPUT_ACTION1:
-                    update_buttons(0, 4, true);
-                    break;
-                case INPUT_ACTION2:
-                    update_buttons(0, 5, true);
-                    break;
-                default:
-                    break;
+    uint8_t delay = m_memory[MEMORY_AUTO_REPEAT_DELAY];
+    if (delay == 0)
+        delay = DEFAULT_AUTO_REPEAT_DELAY;
+    uint8_t interval = m_memory[MEMORY_AUTO_REPEAT_INTERVAL];
+    if (interval == 0)
+        interval = DEFAULT_AUTO_REPEAT_INTERVAL;
+    for (unsigned p=0;p<2;++p) {
+        m_buttonsp[p] = 0;
+        for (unsigned i=0;i<6;++i) {
+            if (m_buttons[p] & (1 << i)) {
+                if (!m_button_down_time[p][i]) {
+                    m_button_down_time[p][i] = m_frames;
+                    m_buttonsp[p] |= 1 << i;
+                } else if (delay != 255 && !(m_button_first_repeat[p] & (1 << i)) && m_frames - m_button_down_time[p][i] >= delay) {
+                    m_button_down_time[p][i] = m_frames;
+                    m_button_first_repeat[p] |= 1 << i;
+                    m_buttonsp[p] |= 1 << i;
+                } else if ((m_button_first_repeat[p] & (1 << i)) && m_frames - m_button_down_time[p][i] >= interval) {
+                    m_button_down_time[p][i] = m_frames;
+                    m_buttonsp[p] |= 1 << i;
                 }
-                break;
-            case SDL_KEYUP:
-                switch (event.key.keysym.sym)
-                {
-                case INPUT_LEFT:
-                    update_buttons(0, 0, false);
-                    break;
-                case INPUT_RIGHT:
-                    update_buttons(0, 1, false);
-                    break;
-                case INPUT_UP:
-                    update_buttons(0, 2, false);
-                    break;
-                case INPUT_DOWN:
-                    update_buttons(0, 3, false);
-                    break;
-                case INPUT_ACTION1:
-                    update_buttons(0, 4, false);
-                    break;
-                case INPUT_ACTION2:
-                    update_buttons(0, 5, false);
-                    break;
-                default:
-                    break;
+            } else  {
+                if (m_button_down_time[p][i]) {
+                    m_button_down_time[p][i] = 0;
+                    m_button_first_repeat[p] &= ~(1 << i);
                 }
-                break;
-            case SDL_QUIT:
-                done = 1;
-                break;
-            default:
-                break;
             }
         }
-#endif
-        p8_update_input();
+    }
+}
 
+void p8_flip()
+{
+    p8_update_input();
+
+    p8_render();
+
+    p8_flush_cartdata();
+
+    unsigned elapsed_time = p8_elapsed_time();
+    const unsigned target_frame_time = 1000 / m_fps;
+    int sleep_time = target_frame_time - elapsed_time;
+    if (sleep_time < 0)
+        sleep_time = 0;
+    m_actual_fps = 1000 / (elapsed_time + sleep_time);
+    m_frames++;
+
+    if (sleep_time > 0)
+    {
+#ifdef OS_FREERTOS
+        vTaskDelay(pdMS_TO_TICKS(sleep_time));
+#else
+        usleep(sleep_time * 1000);
+#endif
+    }
+
+#ifdef OS_FREERTOS
+    m_start_time = xTaskGetTickCount();
+#else
+    m_start_time = clock();
+#endif
+}
+
+static void p8_main_loop()
+{
+    for (;;)
+    {
         lua_update();
         lua_draw();
 
-        p8_render();
+        p8_flip();
+    }
+}
 
+unsigned p8_elapsed_time(void)
+{
+    unsigned elapsed_time;
 #ifdef OS_FREERTOS
-        end_time = xTaskGetTickCount();
-        elapsed_time = (float)(end_time - start_time) * portTICK_PERIOD_MS;
-        m_time += elapsed_time;
-
-        const float target_frame_time = 1000.0f / m_fps;
-        float sleep_time = target_frame_time - elapsed_time;
-        m_actual_fps = 1000.0f / (elapsed_time + sleep_time);
-
-        if (sleep_time > 0)
-        {
-            vTaskDelay(pdMS_TO_TICKS(sleep_time));
-        }
-
-        start_time = xTaskGetTickCount();
+    long now = xTaskGetTickCount();
+    if (start_time == 0)
+        elapsed_time = 0;
+    else
+        elapsed_time = (now - m_start_time) * portTICK_PERIOD_MS;
 #else
-        end_time = clock();
-        elapsed_time = (float)(end_time - start_time) / CLOCKS_PER_SEC * 1000.0f;
-        m_time += elapsed_time;
-
-        const float target_frame_time = 1000.0f / m_fps;
-        float sleep_time = target_frame_time - elapsed_time;
-        m_actual_fps = 1000.0f / (elapsed_time + sleep_time);
-
-        if (sleep_time > 0)
-        {
-            usleep(sleep_time * 1000);
-        }
-
-        start_time = clock();
+    clock_t now = clock();
+    if (m_start_time == 0)
+        elapsed_time = 0;
+    else
+        elapsed_time = ((now - m_start_time) + ((now < m_start_time) ? CLOCKS_PER_CLOCK_T : 0)) * (clock_t)1000 / CLOCKS_PER_SEC;
 #endif
+    return elapsed_time;
+}
+
+void p8_reset(void)
+{
+    memset(m_memory + MEMORY_DRAWSTATE, 0, MEMORY_DRAWSTATE_SIZE);
+    memset(m_memory + MEMORY_HARDWARESTATE, 0, MEMORY_HARDWARESTATE_SIZE);
+    pencolor_set(6);
+    reset_color();
+    clip_set(0, 0, P8_WIDTH, P8_HEIGHT);
+}
+
+static void __attribute__ ((noreturn)) p8_abort()
+{
+    longjmp(jmpbuf, 1);
+}
+
+void __attribute__ ((noreturn)) p8_restart()
+{
+    restart = true;
+    p8_abort();
+}
+
+bool p8_open_cartdata(const char *id)
+{
+    if (cartdata)
+        return false;
+    int ret = mkdir(CARTDATA_PATH, 0777);
+    if (ret == 0 && errno != EEXIST) {
+        return false;
+    } else {
+        char *path = alloca(strlen(CARTDATA_PATH) + 1 + strlen(id) + 1);
+        sprintf(path, "%s/%s", CARTDATA_PATH, id);
+        cartdata = fopen(path, "w+");
+        if (cartdata == NULL) {
+            return false;
+        } else {
+            fread(m_memory + MEMORY_CARTDATA, 0x100, 1, cartdata);
+            return true;
+        }
+    }
+}
+
+void p8_flush_cartdata(void)
+{
+    if (cartdata && cartdata_needs_flush) {
+        cartdata_needs_flush = false;
+        fseek(cartdata, 0, SEEK_SET);
+        fwrite(m_memory + MEMORY_CARTDATA, 0x100, 1, cartdata);
+        fflush(cartdata);
+    }
+}
+
+void p8_delayed_flush_cartdata(void)
+{
+    cartdata_needs_flush = true;
+}
+
+void p8_close_cartdata(void)
+{
+    if (cartdata) {
+        p8_flush_cartdata();
+        fclose(cartdata);
+        cartdata = NULL;
     }
 }

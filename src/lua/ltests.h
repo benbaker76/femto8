@@ -1,5 +1,5 @@
 /*
-** $Id: ltests.h,v 2.50.1.1 2017/04/19 17:20:42 roberto Exp $
+** $Id: ltests.h,v 2.33 2010/07/28 15:51:59 roberto Exp $
 ** Internal Header for Debugging of the Lua Implementation
 ** See Copyright Notice in lua.h
 */
@@ -10,24 +10,11 @@
 
 #include <stdlib.h>
 
-/* test Lua with no compatibility code */
-#undef LUA_COMPAT_MATHLIB
-#undef LUA_COMPAT_IPAIRS
-#undef LUA_COMPAT_BITLIB
-#undef LUA_COMPAT_APIINTCASTS
-#undef LUA_COMPAT_FLOATSTRING
-#undef LUA_COMPAT_UNPACK
-#undef LUA_COMPAT_LOADERS
-#undef LUA_COMPAT_LOG10
-#undef LUA_COMPAT_LOADSTRING
-#undef LUA_COMPAT_MAXN
-#undef LUA_COMPAT_MODULE
-
+/* do not use compatibility macros in Lua code */
+#undef LUA_COMPAT_API
 
 #define LUA_DEBUG
 
-
-/* turn on assertions */
 #undef NDEBUG
 #include <assert.h>
 #define lua_assert(c)           assert(c)
@@ -37,16 +24,7 @@
 #define UNUSED(x)       (x=0, (void)(x))
 
 
-/* test for sizes in 'l_sprintf' (make sure whole buffer is available) */
-#undef l_sprintf
-#if !defined(LUA_USE_C89)
-#define l_sprintf(s,sz,f,i)	(memset(s,0xAB,sz), snprintf(s,sz,f,i))
-#else
-#define l_sprintf(s,sz,f,i)	(memset(s,0xAB,sz), sprintf(s,f,i))
-#endif
-
-
-/* memory-allocator control variables */
+/* memory allocator control variables */
 typedef struct Memcontrol {
   unsigned long numblocks;
   unsigned long total;
@@ -55,7 +33,7 @@ typedef struct Memcontrol {
   unsigned long objcount[LUA_NUMTAGS];
 } Memcontrol;
 
-LUA_API Memcontrol l_memcontrol;
+extern Memcontrol l_memcontrol;
 
 
 /*
@@ -64,43 +42,39 @@ LUA_API Memcontrol l_memcontrol;
 extern void *l_Trick;
 
 
+void *debug_realloc (void *ud, void *block, size_t osize, size_t nsize);
 
-/*
-** Function to traverse and check all memory used by Lua
-*/
+
+typedef struct CallInfo *pCallInfo;
+
 int lua_checkmemory (lua_State *L);
 
 
 /* test for lock/unlock */
+#undef luai_userstateopen
+#undef luai_userstatethread
+#undef lua_lock
+#undef lua_unlock
 
 struct L_EXTRA { int lock; int *plock; };
-#undef LUA_EXTRASPACE
-#define LUA_EXTRASPACE	sizeof(struct L_EXTRA)
-#define getlock(l)	cast(struct L_EXTRA*, lua_getextraspace(l))
+#define LUAI_EXTRASPACE		sizeof(struct L_EXTRA)
+#define getlock(l)	(cast(struct L_EXTRA *, l) - 1)
 #define luai_userstateopen(l)  \
 	(getlock(l)->lock = 0, getlock(l)->plock = &(getlock(l)->lock))
-#define luai_userstateclose(l)  \
-  lua_assert(getlock(l)->lock == 1 && getlock(l)->plock == &(getlock(l)->lock))
-#define luai_userstatethread(l,l1) \
-  lua_assert(getlock(l1)->plock == getlock(l)->plock)
+#define luai_userstatethread(l,l1)  (getlock(l1)->plock = getlock(l)->plock)
 #define luai_userstatefree(l,l1) \
   lua_assert(getlock(l)->plock == getlock(l1)->plock)
 #define lua_lock(l)     lua_assert((*getlock(l)->plock)++ == 0)
 #define lua_unlock(l)   lua_assert(--(*getlock(l)->plock) == 0)
 
 
+int luaB_opentests (lua_State *L);
 
-LUA_API int luaB_opentests (lua_State *L);
-
-LUA_API void *debug_realloc (void *ud, void *block,
-                             size_t osize, size_t nsize);
 
 #if defined(lua_c)
 #define luaL_newstate()		lua_newstate(debug_realloc, &l_memcontrol)
 #define luaL_openlibs(L)  \
-  { (luaL_openlibs)(L); \
-     luaL_requiref(L, "T", luaB_opentests, 1); \
-     lua_pop(L, 1); }
+  { (luaL_openlibs)(L); luaL_requiref(L, "T", luaB_opentests, 1); }
 #endif
 
 
@@ -110,20 +84,10 @@ LUA_API void *debug_realloc (void *ud, void *block,
 #undef LUAL_BUFFERSIZE
 #define LUAL_BUFFERSIZE		23
 #define MINSTRTABSIZE		2
-#define MAXINDEXRK		1
-
-
-/* make stack-overflow tests run faster */
-#undef LUAI_MAXSTACK
-#define LUAI_MAXSTACK   50000
 
 
 #undef LUAI_USER_ALIGNMENT_T
-#define LUAI_USER_ALIGNMENT_T   union { char b[sizeof(void*) * 8]; }
+#define LUAI_USER_ALIGNMENT_T   union { char b[32]; }
 
-
-#define STRCACHE_N	23
-#define STRCACHE_M	5
 
 #endif
-
