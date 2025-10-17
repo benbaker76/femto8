@@ -11,6 +11,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdlib.h>
+#include <math.h>
 #include "p8_emu.h"
 #include "p8_symbols.h"
 #include "pico_font.h"
