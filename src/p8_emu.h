@@ -14,6 +14,8 @@
 #include <stdint.h>
 #include <time.h>
 
+#define PROGNAME "femto8"
+
 #ifdef __DA1470x__
 #define OS_FREERTOS
 #else
@@ -153,6 +155,12 @@ enum
     BUTTON_DOWN = 0x0008,
     BUTTON_ACTION1 = 0x0010,
     BUTTON_ACTION2 = 0x0020,
+};
+
+enum {
+    COMPAT_OK = 0,
+    COMPAT_SOME,
+    COMPAT_NONE
 };
 
 extern unsigned m_fps;
