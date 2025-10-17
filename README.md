@@ -31,7 +31,7 @@ To build femto8:
 
 ## Credits
 
-- [benbaker76](https://github.com/benbaker76) - Author and maintainer of PicoSharp
+- [benbaker76](https://github.com/benbaker76) - Author and maintainer of [femto8](https://github.com/benbaker76/femto8)
 - [Jacopo Santoni](https://github.com/Jakz) - Author of [retro8](https://github.com/Jakz/retro8)
 - [Lexaloffle](https://www.lexaloffle.com/) - Creator of PICO-8
 - [atomice1](https://github.com/atomice1) - For updates and improvements
