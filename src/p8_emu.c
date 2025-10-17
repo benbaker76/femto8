@@ -740,19 +740,25 @@ bool p8_open_cartdata(const char *id)
     if (cartdata)
         return false;
     int ret = MKDIR(CARTDATA_PATH);
-    if (ret == 0 && errno != EEXIST) {
+    if (ret == -1 && errno != EEXIST) {
         return false;
-    } else {
-        char *path = alloca(strlen(CARTDATA_PATH) + 1 + strlen(id) + 1);
-        sprintf(path, "%s/%s", CARTDATA_PATH, id);
-        cartdata = fopen(path, "w+");
-        if (cartdata == NULL) {
+    }
+    char *path = alloca(strlen(CARTDATA_PATH) + 1 + strlen(id) + 1);
+    sprintf(path, "%s/%s", CARTDATA_PATH, id);
+    cartdata = fopen(path, "r+b");
+    if (!cartdata) {
+        cartdata = fopen(path, "w+b");
+        if (!cartdata) {
             return false;
-        } else {
-            fread(m_memory + MEMORY_CARTDATA, 0x100, 1, cartdata);
-            return true;
         }
     }
+    fseek(cartdata, 0, SEEK_SET);
+    uint8_t *dst = m_memory + MEMORY_CARTDATA;
+    size_t n = fread(dst, 1, 0x100, cartdata);
+    if (n < 0x100) {
+        memset(dst + n, 0, 0x100 - n);
+    }
+    return true;
 }
 
 void p8_flush_cartdata(void)
