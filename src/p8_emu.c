@@ -7,7 +7,6 @@
 
 #include <errno.h>
 #include <fcntl.h>
-#include <setjmp.h>
 #include <stdio.h>
 #include <stdint.h>
 #include <stdbool.h>
@@ -63,6 +62,7 @@ static inline int color_index(uint8_t c)
 }
 
 static void p8_abort();
+static int p8_init_lcd(void);
 static void p8_main_loop();
 
 uint8_t *m_memory = NULL;
@@ -74,7 +74,7 @@ unsigned m_frames = 0;
 
 clock_t m_start_time;
 
-static jmp_buf jmpbuf;
+jmp_buf jmpbuf;
 static bool restart;
 
 #ifdef SDL
@@ -100,8 +100,12 @@ static bool m_prev_pointer_lock;
 static FILE *cartdata = NULL;
 static bool cartdata_needs_flush = false;
 
+static int m_initialized = 0;
+
 int p8_init()
 {
+    assert(!m_initialized);
+
     srand((unsigned int)time(NULL));
 
 #ifdef SDL
@@ -138,10 +142,14 @@ int p8_init()
     audio_init();
 #endif
 
+    p8_init_lcd();
+
+    m_initialized = 1;
+
     return 0;
 }
 
-int p8_init_lcd()
+static int p8_init_lcd(void)
 {
 #ifndef SDL
     gdi_set_layer_start(HW_LCDC_LAYER_0, 0, 0);
@@ -172,6 +180,8 @@ static void p8_init_common(const char *file_name, const char *lua_script)
 
     memcpy(m_memory, m_cart_memory, CART_MEMORY_SIZE);
 
+    clear_screen(0);
+
     p8_reset();
     p8_update_input();
 
@@ -186,9 +196,10 @@ static void p8_init_common(const char *file_name, const char *lua_script)
     p8_main_loop();
 }
 
-int p8_init_file(char *file_name)
+int p8_init_file(const char *file_name)
 {
-    p8_init();
+    if (!m_initialized)
+        p8_init();
 
     const char *lua_script = NULL;
     uint8_t *file_buffer = NULL;
@@ -208,7 +219,8 @@ int p8_init_file(char *file_name)
 
 int p8_init_ram(uint8_t *buffer, int size)
 {
-    p8_init();
+    if (!m_initialized)
+        p8_init();
 
     const char *lua_script = NULL;
     uint8_t *decompression_buffer = NULL;
@@ -247,6 +259,8 @@ int p8_shutdown()
     rh_free(m_cart_memory);
     rh_free(m_memory);
 #endif
+
+    m_initialized = 0;
 
     return 0;
 }

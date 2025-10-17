@@ -9,7 +9,9 @@
 #define P8_EMU_H
 
 #include <limits.h>
+#include <setjmp.h>
 #include <stdbool.h>
+#include <stdint.h>
 #include <time.h>
 
 #ifdef __DA1470x__
@@ -175,18 +177,22 @@ extern uint8_t m_buttonsp[2];
 extern uint8_t m_button_first_repeat[2];
 extern unsigned m_button_down_time[2][6];
 
+extern jmp_buf jmpbuf;
+
 void p8_close_cartdata(void);
 void p8_delayed_flush_cartdata(void);
 unsigned p8_elapsed_time(void);
 void p8_flip(void);
 void p8_flush_cartdata(void);
-int p8_init_file(char *file_name);
+int p8_init(void);
+int p8_init_file(const char *file_name);
 int p8_init_ram(uint8_t *buffer, int size);
 bool p8_open_cartdata(const char *id);
 int p8_shutdown(void);
 void p8_render();
 void p8_reset(void);
 void __attribute__ ((noreturn)) p8_restart(void);
+int p8_shutdown(void);
 void p8_update_input(void);
 
 #endif
