@@ -318,12 +318,18 @@ static inline void pixel_set(int x, int y, int c, int fillp, int draw_type)
 
 static inline void draw_scaled_sprite(int sx, int sy, int sw, int sh, int dx, int dy, float scale_x, float scale_y, bool flip_x, bool flip_y)
 {
-    for (int y = 0; y < sh * scale_y; y++)
+    int dw = roundf(sw * scale_x);
+    int dh = roundf(sh * scale_y);
+
+    if (dw <= 0 || dh <= 0)
+        return;
+
+    for (int y = 0; y < dh; y++)
     {
-        for (int x = 0; x < sw * scale_x; x++)
+        for (int x = 0; x < dw; x++)
         {
-            int src_x = flip_x ? sx + (sw - 1 - x / scale_x) : sx + x / scale_x;
-            int src_y = flip_y ? sy + (sh - 1 - y / scale_y) : sy + y / scale_y;
+            int src_x = sx + (flip_x ? (sw - 1 - (x * sw) / dw) : (x * sw) / dw);
+            int src_y = sy + (flip_y ? (sh - 1 - (y * sh) / dh) : (y * sh) / dh);
             uint8_t index = gfx_get(src_x, src_y, MEMORY_SPRITES, MEMORY_SPRITES_SIZE);
             uint8_t color = color_get(PALTYPE_DRAW, (int)index);
 

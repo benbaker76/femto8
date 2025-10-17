@@ -1,6 +1,26 @@
-PLATFORM ?= linux
-include Makefile.$(PLATFORM)
+ifeq ($(OS),Windows_NT)
+  PLATFORM ?= windows
+else
+  UNAME_S := $(shell uname -s 2>/dev/null || echo Unknown)
+  ifeq ($(UNAME_S),Linux)
+    PLATFORM ?= linux
+  else ifeq ($(UNAME_S),Darwin)
+    PLATFORM ?= mac
+  else ifneq (,$(findstring MINGW,$(UNAME_S)))
+    PLATFORM ?= windows
+  else ifneq (,$(findstring MSYS,$(UNAME_S)))
+    PLATFORM ?= windows
+  else
+    PLATFORM ?= linux
+  endif
+endif
 
+PLATFORM_MK := Makefile.$(PLATFORM)
+ifeq (,$(wildcard $(PLATFORM_MK)))
+  $(error No platform file '$(PLATFORM_MK)' found)
+endif
+
+include $(PLATFORM_MK)
 BUILD_DIR := build-$(PLATFORM)
 TARGET_NAME := femto8
 TARGET := $(BUILD_DIR)/$(TARGET_NAME)

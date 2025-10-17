@@ -1,0 +1,5 @@
+INCFLAGS += -ISDL-1.2/include
+LDFLAGS  += -LSDL-1.2/build/.libs
+LIBS += -Wl,-ObjC -lSDLmain -lSDL -Wl,-framework,Cocoa -Wl,-framework,IOKit -Wl,-framework,CoreVideo -Wl,-framework,OpenGL -Wl,-framework,AudioToolbox -Wl,-framework,AudioUnit -Wl,-framework,CoreAudio
+DEFINES += -DLUA_USE_POSIX -DLUA_USE_DLOPEN
+fpic := -fPIC

@@ -1,0 +1,5 @@
+INCFLAGS += -ISDL-1.2/include
+LDFLAGS += -LSDL-1.2/build/.libs
+LIBS += -lmingw32 -lSDLmain -lSDL -lpsapi -lws2_32 -lwinmm
+DEFINES += -DLUA_USE_WINDOWS -D_CRT_SECURE_NO_WARNINGS
+fpic := -fPIC

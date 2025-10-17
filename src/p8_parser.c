@@ -58,6 +58,29 @@ static int m_p8_mem_offset[] = {
     MEMORY_MUSIC,
 };
 
+#if defined(_WIN32) || defined(__MINGW32__)
+static char* strsep_portable(char **stringp, const char *delim)
+{
+    char *start, *p;
+    if (stringp == NULL || *stringp == NULL) return NULL;
+
+    start = *stringp;
+    for (p = start; *p; ++p) {
+        const char *d;
+        for (d = delim; *d; ++d) {
+            if (*p == *d) {
+                *p = '\0';
+                *stringp = p + 1;
+                return start;
+            }
+        }
+    }
+    *stringp = NULL;
+    return start;
+}
+#define strsep strsep_portable
+#endif
+
 void parse_cart_ram(uint8_t *buffer, int size, uint8_t *memory, const char **lua_script, uint8_t **decompression_buffer);
 void parse_cart_file(const char *file_name, uint8_t *memory, const char **lua_script, uint8_t **file_buffer);
 static void parse_p8_ram(const char *file_name, uint8_t *buffer, int size, uint8_t *memory, const char **lua_script);
@@ -83,7 +106,7 @@ void parse_cart_ram(uint8_t *buffer, int size, uint8_t *memory, const char **lua
 
 void parse_cart_file(const char *file_name, uint8_t *memory, const char **lua_script, uint8_t **file_buffer)
 {
-    FILE *file = fopen(file_name, "r");
+    FILE *file = fopen(file_name, "rb");
 
     if (file == NULL)
     {

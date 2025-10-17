@@ -13,7 +13,14 @@
 #include <stdbool.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/stat.h>
+#if defined(_WIN32)
+#include <direct.h>   // _mkdir
+#define MKDIR(p) _mkdir(p)
+#else
+#include <sys/types.h>
+#include <sys/stat.h> // mkdir
+#define MKDIR(p) mkdir((p), 0777)
+#endif
 #include <unistd.h>
 #include <math.h>
 #include <assert.h>
@@ -709,7 +716,7 @@ bool p8_open_cartdata(const char *id)
 {
     if (cartdata)
         return false;
-    int ret = mkdir(CARTDATA_PATH, 0777);
+    int ret = MKDIR(CARTDATA_PATH);
     if (ret == 0 && errno != EEXIST) {
         return false;
     } else {
