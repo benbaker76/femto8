@@ -112,7 +112,7 @@ static void list_dir(const char* path) {
 #endif
     DIR *dir = opendir(path);
     if (dir == NULL) {
-        fprintf(stderr, "1. %s: %s\n", path, strerror(errno));
+        fprintf(stderr, "%s: %s\n", path, strerror(errno));
     } else {
         free((char *)pwd);
         pwd = strdup(path);
@@ -123,7 +123,7 @@ static void list_dir(const char* path) {
             dirent = readdir(dir);
             if (dirent == NULL) {
                 if (errno != 0)
-                    fprintf(stderr, "2. %s: %s\n", path, strerror(errno));
+                    fprintf(stderr, "%s: %s\n", path, strerror(errno));
                 break;
             }
             const char *full_path = make_full_path(path, dirent->d_name);
@@ -139,7 +139,7 @@ static void list_dir(const char* path) {
                 if (res == 0)
                     is_dir = S_ISDIR(statbuf.st_mode);
                 else
-                    fprintf(stderr, "3. %s: %s\n", full_path, strerror(errno));
+                    fprintf(stderr, "%s: %s\n", full_path, strerror(errno));
             }
             free((char *)full_path);
             append_dir_entry(dirent->d_name, is_dir);
@@ -208,7 +208,6 @@ const char *browse_for_cart(void)
             struct dir_entry *dir_entry = &dir_contents[current_item];
             const char *full_path = make_full_path(pwd, dir_entry->file_name);
             if (dir_entry->is_dir) {
-                printf("list_dir >>%s<< pwd=>>%s<< file_name=>>%s<<\n", full_path, pwd, dir_entry->file_name);
                 list_dir(full_path);
                 free((char *)full_path);
             } else {
