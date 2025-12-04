@@ -149,14 +149,20 @@ static void list_dir(const char* path) {
     qsort(dir_contents, nitems, sizeof(dir_contents[0]), compare_dir_entry);
 }
 
-#define LIST_TOP (GLYPH_HEIGHT + 1)
-#define LIST_HEIGHT (P8_HEIGHT - LIST_TOP)
+#define HEADER_HEIGHT GLYPH_HEIGHT
+#define FOOTER_HEIGHT GLYPH_HEIGHT
+#define LIST_TOP      HEADER_HEIGHT
+#define LIST_HEIGHT   (P8_HEIGHT - HEADER_HEIGHT - FOOTER_HEIGHT)
+#define FOOTER_TOP    (P8_HEIGHT - FOOTER_HEIGHT)
 
 static void display_dir_contents()
 {
     clear_screen(1);
-    draw_rectfill(0, 0, P8_WIDTH, GLYPH_HEIGHT, 7, 0);
-    draw_text(pwd, 0, 0, 1);
+    draw_rectfill(0, 0, P8_WIDTH, GLYPH_HEIGHT - 1, 7, 0);
+    draw_text(pwd, 1, 0, 1);
+    draw_rectfill(0, FOOTER_TOP, P8_WIDTH - 1, P8_HEIGHT - 1, 7, 0);
+    draw_text("z", 1, FOOTER_TOP, 7);
+    draw_text("z/fire: select file", 1, FOOTER_TOP, 1);
     clip_set(0, LIST_TOP, P8_WIDTH, LIST_HEIGHT);
     int y = LIST_TOP;
     int scroll = current_item * GLYPH_HEIGHT + (GLYPH_HEIGHT - LIST_HEIGHT) / 2;
@@ -171,7 +177,7 @@ static void display_dir_contents()
             if (dir_entry->is_dir)
                 clip_set(0, LIST_TOP, P8_WIDTH - GLYPH_WIDTH * 6, LIST_HEIGHT);
             int fg = highlighted ? 1 : 7;
-            draw_text(dir_entry->file_name, 0, y - scroll, fg);
+            draw_text(dir_entry->file_name, 1, y - scroll, fg);
             if (dir_entry->is_dir)
                 clip_set(0, LIST_TOP, P8_WIDTH, LIST_HEIGHT);
             if (dir_entry->is_dir) {
