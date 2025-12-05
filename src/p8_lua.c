@@ -59,6 +59,15 @@ void lua_init();
 
 void lua_register_functions(lua_State *L);
 
+static unsigned addr_remap(unsigned address)
+{
+    if (address >= 0x0000 && address < 0x2000)
+        address = (m_memory[MEMORY_SPRITE_PHYS] << 8) | (address & 0x1fff);
+    else if (address >= 0x6000 && address < 0x8000)
+        address = (m_memory[MEMORY_SCREEN_PHYS] << 8) | (address & 0x1fff);
+    return address;
+}
+
 // ****************************************************************
 // *** Graphics ***
 // ****************************************************************
@@ -846,7 +855,15 @@ int _memcpy(lua_State *L)
     if (destaddr < 0 || (destaddr + len) > (1 << 16))
         return 0;
 
-    memmove(m_memory + destaddr, m_memory + sourceaddr, len);
+    while (len > 0) {
+        unsigned chunk = MIN(MIN(len, 0x2000 - (sourceaddr & 0x1fff)), 0x2000 - (destaddr & 0x1fff));
+        unsigned destaddr1 = addr_remap(destaddr);
+        unsigned sourceaddr1 = addr_remap(sourceaddr);
+        memmove(m_memory + destaddr1, m_memory + sourceaddr1, chunk);
+        destaddr += chunk;
+        sourceaddr += chunk;
+        len -= chunk;
+    }
 
     return 0;
 }
@@ -858,7 +875,13 @@ int _memset(lua_State *L)
     int val = lua_tointeger(L, 2);
     unsigned len = lua_tounsigned(L, 3);
 
-    memset(m_memory + destaddr, val, len);
+    while (len > 0) {
+        unsigned chunk = MIN(len, 0x2000 - (destaddr & 0x1fff));
+        unsigned destaddr1 = addr_remap(destaddr);
+        memset(m_memory + destaddr1, val, chunk);
+        destaddr += chunk;
+        len -= chunk;
+    }
 
     return 0;
 }
@@ -868,6 +891,8 @@ int peek(lua_State *L)
 {
     unsigned addr = lua_tounsigned(L, 1);
     unsigned n = lua_gettop(L) >= 2 ? lua_tounsigned(L, 2) : 1;
+
+    addr = addr_remap(addr);
 
     for (unsigned i=0;i<n;++i)
         lua_pushinteger(L, m_memory[addr+i]);
@@ -881,6 +906,8 @@ int peek2(lua_State *L)
     unsigned addr = lua_tounsigned(L, 1);
     unsigned n = lua_gettop(L) >= 2 ? lua_tounsigned(L, 2) : 1;
 
+    addr = addr_remap(addr);
+
     for (unsigned i=0;i<n;++i)
         lua_pushinteger(L, (m_memory[addr + i*2 + 1] << 8) | (m_memory[addr + i*2]));
 
@@ -893,6 +920,8 @@ int peek4(lua_State *L)
     unsigned addr = lua_tounsigned(L, 1);
     unsigned n = lua_gettop(L) >= 2 ? lua_tounsigned(L, 2) : 1;
 
+    addr = addr_remap(addr);
+
     for (unsigned i=0;i<n;++i)
         lua_pushnumber(L, z8::fix32::frombits((m_memory[addr + i*4 + 3] << 24) | (m_memory[addr + i*4 + 2] << 16) | (m_memory[addr + i*4 + 1] << 8) | m_memory[addr + i*4]));
 
@@ -903,6 +932,8 @@ int peek4(lua_State *L)
 int poke(lua_State *L)
 {
     unsigned addr = lua_tounsigned(L, 1);
+
+    addr = addr_remap(addr);
 
     for (int i=2;i<=lua_gettop(L);++i) {
         unsigned val = lua_tounsigned(L, i);
@@ -921,6 +952,8 @@ int poke2(lua_State *L)
 {
     unsigned addr = lua_tounsigned(L, 1);
 
+    addr = addr_remap(addr);
+
     for (int i=2;i<=lua_gettop(L);++i) {
         unsigned val = lua_tounsigned(L, i);
 
@@ -938,6 +971,8 @@ int poke2(lua_State *L)
 int poke4(lua_State *L)
 {
     unsigned addr = lua_tounsigned(L, 1);
+
+    addr = addr_remap(addr);
 
     for (int i=2;i<=lua_gettop(L);++i) {
         uint32_t val = lua_tonumber(L, i).bits();
@@ -960,6 +995,7 @@ int reload(lua_State *L)
     unsigned destaddr = lua_tounsigned(L, 1);
     unsigned srcaddr = lua_tounsigned(L, 2);
     unsigned len = lua_tounsigned(L, 3);
+    destaddr = addr_remap(destaddr);
     const char *file_name = lua_gettop(L) >= 4 ? lua_tostring(L, 4) : NULL;
     uint8_t *src_mem = NULL;
     if (file_name != NULL) {

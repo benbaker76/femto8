@@ -218,12 +218,21 @@ static int call_orderTM (lua_State *L, const TValue *p1, const TValue *p2,
 }
 
 
-#define PEEK(ram, address) (ram && (address < 0x8000) ? ram[address] : 0)
+static unsigned char PEEK(unsigned char const *ram, unsigned address)
+{
+  if (!ram || address > 0x10000)
+    return 0;
+  if (address >= 0x0000 && address < 0x2000)
+    address = (ram[0x5f54] << 8) | (address & 0xfff);
+  else if (address >= 0x6000 && address < 0x8000)
+    address = (ram[0x5f55] << 8) | (address & 0xfff);
+  return ram[address];
+}
 
 lua_Number luaV_peek(struct lua_State *L, lua_Number a, int count)
 {
   unsigned char const *p = G(L)->pico8memory;
-  int address = int(a) & 0x7fff;
+  int address = int(a) & 0xffff;
   uint32_t ret = 0;
   switch (count) {
     case 4:

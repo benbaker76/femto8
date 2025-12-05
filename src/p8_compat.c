@@ -425,7 +425,9 @@ bool is_unsupported_address(unsigned address) {
         address == MEMORY_TLINE_MASK_X ||
         address == MEMORY_TLINE_MASK_Y ||
         address == MEMORY_TLINE_OFFSET_X ||
-        address == MEMORY_TLINE_OFFSET_Y)
+        address == MEMORY_TLINE_OFFSET_Y ||
+        address == MEMORY_SCREEN_PHYS ||
+        address == MEMORY_SPRITE_PHYS)
         return false;
     return true;
 }

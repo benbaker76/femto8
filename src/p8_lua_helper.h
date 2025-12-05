@@ -443,11 +443,21 @@ static inline int draw_text(const char *str, int x, int y, int col)
     return left;
 }
 
+static inline int gfx_addr_remap(int location)
+{
+    if (location == MEMORY_SPRITES)
+        return m_memory[MEMORY_SPRITE_PHYS] << 8;
+    else if (location == MEMORY_SCREEN)
+        return m_memory[MEMORY_SCREEN_PHYS] << 8;
+    else
+        return location;
+}
+
 static inline uint8_t gfx_addr_get(int x, int y, uint8_t *memory, int location, int size)
 {
     if (x < 0 || y < 0 || x > P8_WIDTH || y > P8_HEIGHT)
         return 0;
-    int offset = location + (x >> 1) + y * 64;
+    int offset = gfx_addr_remap(location) + (x >> 1) + y * 64;
 
     return IS_EVEN(x) ? memory[offset] & 0xF : memory[offset] >> 4;
 }
@@ -463,7 +473,7 @@ static inline void gfx_set(int x, int y, int location, int size, int col)
 {
     if (x < 0 || y < 0 || x > P8_WIDTH || y > P8_HEIGHT)
         return;
-    int offset = location + (x >> 1) + y * 64;
+    int offset = gfx_addr_remap(location) + (x >> 1) + y * 64;
 
     uint8_t color = (col == -1 ? pencolor_get() : color_get(PALTYPE_DRAW, col));
     m_memory[offset] = IS_EVEN(x) ? (m_memory[offset] & 0xF0) | (color & 0xF) : (color << 4) | (m_memory[offset] & 0xF);

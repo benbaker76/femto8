@@ -189,9 +189,9 @@ static void p8_init_common(const char *file_name, const char *lua_script)
 
     memcpy(m_memory, m_cart_memory, CART_MEMORY_SIZE);
 
+    p8_reset();
     clear_screen(0);
 
-    p8_reset();
     p8_update_input();
 
     lua_init_script(lua_script);
@@ -286,7 +286,7 @@ void p8_render()
     {
         for (int x = 0; x < P8_WIDTH; x++)
         {
-            int screen_offset = MEMORY_SCREEN + (x >> 1) + y * 64;
+            int screen_offset = (m_memory[MEMORY_SCREEN_PHYS] << 8) + (x >> 1) + y * 64;
             uint8_t value = m_memory[screen_offset];
             uint8_t index = color_get(PALTYPE_SCREEN, IS_EVEN(x) ? value & 0xF : value >> 4);
             uint32_t color = m_colors[color_index(index)];
@@ -316,7 +316,7 @@ void p8_render()
     draw_text(m_str_buffer, 0, 0, 1);
 
     uint16_t *output = gdi_get_frame_buffer_addr(HW_LCDC_LAYER_0);
-    uint8_t *screen_mem = &m_memory[MEMORY_SCREEN];
+    uint8_t *screen_mem = &m_memory[(m_memory[MEMORY_SCREEN_PHYS] << 8)];
     uint8_t *pal = &m_memory[MEMORY_PALETTES + PALTYPE_SCREEN * 16];
 
     for (int y = 1; y <= 128; y++)
@@ -719,6 +719,8 @@ void p8_reset(void)
 {
     memset(m_memory + MEMORY_DRAWSTATE, 0, MEMORY_DRAWSTATE_SIZE);
     memset(m_memory + MEMORY_HARDWARESTATE, 0, MEMORY_HARDWARESTATE_SIZE);
+    m_memory[MEMORY_SCREEN_PHYS] = 0x60;
+    m_memory[MEMORY_MAP_START] = 0x20;
     pencolor_set(6);
     reset_color();
     clip_set(0, 0, P8_WIDTH, P8_HEIGHT);
