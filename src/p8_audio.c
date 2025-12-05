@@ -220,6 +220,11 @@ void audio_music(int32_t index, int32_t fadems, int32_t mask)
     pthread_mutex_unlock(&m_sound_queue_mutex);
 }
 
+int32_t audio_stat(int32_t index)
+{
+    return 0;
+}
+
 void update_channel(soundstate_t *channel)
 {
     if (channel->sound_mode == SOUNDMODE_NONE)

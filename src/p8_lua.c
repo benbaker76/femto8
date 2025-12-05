@@ -1212,7 +1212,11 @@ case STAT_MEM_USAGE: {
         lua_pushinteger(L, m_mouse_yrel);
         break;
     default:
-        lua_pushinteger(L, 0);
+        if ((n >= 46 && n <= 56) || (n >= 16 && n <= 26)) {
+            lua_pushinteger(L, audio_stat(n));
+        } else {
+            lua_pushinteger(L, 0);
+        }
         break;
     }
 
