@@ -196,8 +196,6 @@ static void p8_init_common(const char *file_name, const char *lua_script)
 
     lua_init_script(lua_script);
 
-    clear_screen(0);
-
     lua_init();
 
     p8_init_lcd();
