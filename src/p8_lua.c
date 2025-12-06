@@ -1217,6 +1217,9 @@ case STAT_MEM_USAGE: {
         lua_pushnumber(L, f);
         break;
     }
+    case STAT_PARAM:
+        lua_pushstring(L, "");
+        break;
     case STAT_FRAMERATE:
         lua_pushinteger(L, m_actual_fps);
         break;
