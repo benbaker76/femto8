@@ -91,6 +91,7 @@ int16_t m_mouse_x, m_mouse_y;
 int16_t m_mouse_xrel, m_mouse_yrel;
 uint8_t m_mouse_buttons;
 uint8_t m_keypress;
+bool m_scancodes[NUM_SCANCODES];
 
 uint8_t m_buttons[2];
 uint8_t m_buttonsp[2];
@@ -543,6 +544,8 @@ void p8_update_input()
             default:
                 break;
             }
+            if (event.key.keysym.scancode < NUM_SCANCODES)
+                m_scancodes[event.key.keysym.scancode] = true;
             m_keypress = (event.key.keysym.sym < 256) ? event.key.keysym.sym : 0;
             break;
         case SDL_KEYUP:
@@ -569,6 +572,8 @@ void p8_update_input()
             default:
                 break;
             }
+            if (event.key.keysym.scancode < NUM_SCANCODES)
+                m_scancodes[event.key.keysym.scancode] = false;
             break;
         case SDL_QUIT:
             p8_abort();

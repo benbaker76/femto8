@@ -119,6 +119,7 @@
 #define STAT_PARAM 6
 #define STAT_FRAMERATE 7
 #define STAT_TARGET_FRAMERATE 8
+#define STAT_RAW_KEYBOARD 28
 #define STAT_KEY_PRESSED 30
 #define STAT_KEY_NAME 31
 #define STAT_MOUSE_X 32
@@ -139,6 +140,8 @@
 #define INPUT_DOWN SDLK_DOWN
 #define INPUT_ACTION1 SDLK_z
 #define INPUT_ACTION2 SDLK_x
+#define INPUT_ESCAPE SDLK_ESCAPE
+#define NUM_SCANCODES 512
 
 #define DEFAULT_AUTO_REPEAT_DELAY 15
 #define DEFAULT_AUTO_REPEAT_INTERVAL 4
@@ -189,6 +192,7 @@ extern int16_t m_mouse_x, m_mouse_y;
 extern int16_t m_mouse_xrel, m_mouse_yrel;
 extern uint8_t m_mouse_buttons;
 extern uint8_t m_keypress;
+extern bool m_scancodes[NUM_SCANCODES];
 
 extern uint8_t m_buttons[2];
 extern uint8_t m_buttonsp[2];
@@ -212,5 +216,8 @@ void p8_reset(void);
 void __attribute__ ((noreturn)) p8_restart(void);
 int p8_shutdown(void);
 void p8_update_input(void);
+#ifdef NEXTP8
+void p8_update_keyboard_input(void);
+#endif
 
 #endif
