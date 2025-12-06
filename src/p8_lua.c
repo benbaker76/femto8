@@ -398,7 +398,7 @@ int print(lua_State *L)
 {
     size_t len;
     const char *str = lua_tolstring(L, 1, &len);
-    int w;
+    int right;
 
     if (lua_gettop(L) >= 1 && lua_gettop(L) <= 2)
     {
@@ -407,13 +407,7 @@ int print(lua_State *L)
         int col = lua_gettop(L) == 2 ? lua_tointeger(L, 2) : pencolor_get() & 0xF;
         if (lua_gettop(L) == 2)
             pencolor_set(col);
-        w = draw_text(str, x, y, col);
-        if (len > strlen(str) || (m_memory[MEMORY_MISCFLAGS] & 0x4) != 0) { // check for embedded \0 in string
-            x += w;
-        } else {
-            x = left_margin_get();
-            y += GLYPH_HEIGHT;
-        }
+        draw_text(str, len, x, y, col, left_margin_get(), (m_memory[MEMORY_MISCFLAGS] & 0x4) == 0, &x, &y, &right);
         cursor_set(x, y, -1);
         if ((m_memory[MEMORY_MISCFLAGS] & 0x40) == 0)
             scroll();
@@ -428,12 +422,12 @@ int print(lua_State *L)
 
         left_margin_set(x);
 
-        w = draw_text(str, x, y, col);
+        draw_text(str, len, x, y, col, x, false, NULL, NULL, &right);
     }
     else
         assert(false);
 
-    lua_pushinteger(L, w);
+    lua_pushinteger(L, right);
     return 1;
 }
 
