@@ -1250,6 +1250,37 @@ case STAT_MEM_USAGE: {
     case STAT_MOUSE_YREL:
         lua_pushinteger(L, m_mouse_yrel);
         break;
+    case STAT_YEAR:
+    case STAT_MONTH:
+    case STAT_DAY:
+    case STAT_HOUR:
+    case STAT_MINUTE:
+    case STAT_SECOND: {
+        time_t t = time(NULL);
+        struct tm *tm = localtime(&t);
+        switch (n)
+        {
+        case STAT_YEAR:
+            lua_pushinteger(L, tm->tm_year + 1900);
+            break;
+        case STAT_MONTH:
+            lua_pushinteger(L, tm->tm_mon + 1);
+            break;
+        case STAT_DAY:
+            lua_pushinteger(L, tm->tm_mday);
+            break;
+        case STAT_HOUR:
+            lua_pushinteger(L, tm->tm_hour);
+            break;
+        case STAT_MINUTE:
+            lua_pushinteger(L, tm->tm_min);
+            break;
+        case STAT_SECOND:
+            lua_pushinteger(L, tm->tm_sec);
+            break;
+        }
+        break;
+    }
     default:
         if ((n >= 46 && n <= 56) || (n >= 16 && n <= 26)) {
             lua_pushinteger(L, audio_stat(n));
