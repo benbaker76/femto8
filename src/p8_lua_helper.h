@@ -46,7 +46,6 @@ static inline void clip_set(int x, int y, int w, int h);
 static inline void cursor_get(int *x, int *y);
 static inline void cursor_set(int x, int y, int col);
 static inline void pixel_set(int x, int y, int c, int fillp, int draw_type);
-static inline void draw_text(const char *str, unsigned len, int x, int y, int col, int left_margin, bool add_newline, int *out_left, int *out_top, int *out_right);
 static inline void draw_simple_text(const char *str, int x, int y, int col);
 static inline bool is_button_set(int index, int button, bool prev_buttons);
 static inline void update_buttons(int index, int button, bool state);
@@ -410,142 +409,16 @@ static inline int get_p8_symbol(const char *str, int str_len, uint8_t *symbol_le
     return -1;
 }
 
-static inline int hexy(int c)
-{
-    if (c >= '0' && c <= '9')
-        return c - '0';
-    else if (c >= 'a' && c <= 'f')
-        return c - 'a' + 10;
-    else if (c >= 'A' && c <= 'F')
-        return c - 'A' + 10;
-    else
-        return 0;
-}
-
-static inline void draw_text(const char *str, unsigned str_len, int x, int y, int col, int left_margin, bool add_newline, int *out_left, int *out_top, int *out_right)
-{
-    int right = x;
-    int repeat = 1;
-    int bg = -1;
-    int fg = col;
-
-    for (unsigned i = 0; i < str_len; i++)
-    {
-        uint8_t character = str[i];
-        int index = -1;
-        int old_repeat = repeat;
-        repeat = 1;
-
-        for (int j = 0; j < old_repeat; j++)
-        {
-            if (character < 16)
-            {
-                switch (character) {
-                case 0: // "\0"
-                    add_newline = false;
-                    str_len = 0;
-                    break;
-                case 1: // "\*"
-                    if (i + 1 < str_len)
-                        repeat = hexy(str[++i]);
-                    break;
-                case 2: // "\#"
-                    if (i + 1 < str_len)
-                        bg = hexy(str[++i]);
-                    break;
-                case 3: // "\-"
-                    if (i + 1 < str_len)
-                        x += hexy(str[++i]) - 16;
-                    break;
-                case 4: // "\|"
-                    if (i + 1 < str_len)
-                        y += hexy(str[++i]) - 16;
-                    break;
-                case 5: // "\+"
-                    if (i + 2 < str_len) {
-                        x += hexy(str[++i]) - 16;
-                        y += hexy(str[++i]) - 16;
-                    }
-                    break;
-                case 6: // "\^"
-                    // TODO: not implemented
-                    break;
-                case 7: // "\a":
-                    // TODO: not implemented
-                    break;
-                case 8: // "\b"
-                    x -= GLYPH_WIDTH;
-                    break;
-                case 9: // "\t"
-                    x = (x + GLYPH_WIDTH - 1) / GLYPH_WIDTH * GLYPH_WIDTH;
-                    break;
-                case 0xa: // "\n"
-                    x = left_margin;
-                    y += GLYPH_HEIGHT;
-                    break;
-                case 0xb: // "\v"
-                    // TODO: not implemented
-                    break;
-                case 0xc: // "\r"
-                    if (i + 1 < str_len)
-                        fg = hexy(str[++i]);
-                    break;
-                case 0xd: // "\r"
-                    x = left_margin;
-                    break;
-                case 0xe:
-                    // TODO: not implemented
-                    break;
-                case 0xf:
-                    // TODO: not implemented
-                    break;
-                default:
-                break;
-                }
-            }
-            else
-            {
-                if (character >= 0x20 && character < 0x7F)
-                {
-                    index = character;
-                }
-                else
-                {
-                    uint8_t symbol_length = 0;
-                    index = get_p8_symbol(&str[i], str_len - i, &symbol_length);
-
-                    if (index != -1)
-                        i += symbol_length - 1;
-                    else
-                        index = character;
-                }
-
-                if (bg != -1)
-                    draw_rectfill(x, y, x + GLYPH_WIDTH - 1, y + GLYPH_HEIGHT - 1, bg, 0);
-                if (index >= 0)
-                    draw_char(index, x, y, fg);
-                x += GLYPH_WIDTH;
-                if (x > right) right = x;
-            }
-        }
-    }
-
-    if (add_newline) {
-        x = left_margin;
-        y += GLYPH_HEIGHT;
-    }
-
-    if (out_left)
-        *out_left = x;
-    if (out_top)
-        *out_top = y;
-    if (out_right)
-        *out_right = right;
-}
-
+// Simple text drawing - draws a single line with no P8SCII support
 static inline void draw_simple_text(const char *str, int x, int y, int col)
 {
-    draw_text(str, strlen(str), x, y, col, x, false, NULL, NULL, NULL);
+    int cursor_x = x;
+    for (const char *c = str; *c != '\0'; c++) {
+        if (*c >= 0x20 && *c < 0x7F) {
+            draw_char(*c, cursor_x, y, col);
+            cursor_x += GLYPH_WIDTH;
+        }
+    }
 }
 
 static inline int gfx_addr_remap(int location)

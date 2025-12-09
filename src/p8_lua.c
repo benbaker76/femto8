@@ -29,6 +29,7 @@ extern "C" {
 #include <time.h>
 #include <string.h>
 #include "p8_lua_helper.h"
+#include "p8_print_helper.h"
 #include "pico_font.h"
 #include "p8_parser.h"
 }
