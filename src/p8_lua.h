@@ -19,6 +19,7 @@ void lua_call_function(const char *name, int ret);
 void lua_update();
 void lua_draw();
 void lua_init();
+bool lua_has_main_loop_callbacks();
 
 extern char m_str_buffer[256];
 

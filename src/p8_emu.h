@@ -210,6 +210,7 @@ void p8_flush_cartdata(void);
 int p8_init(void);
 int p8_init_file(const char *file_name);
 void p8_set_skip_compat_check(bool skip);
+void p8_set_skip_main_loop_if_no_callbacks(bool skip);
 int p8_init_ram(uint8_t *buffer, int size);
 bool p8_open_cartdata(const char *id);
 int p8_shutdown(void);

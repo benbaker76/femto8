@@ -79,6 +79,7 @@ clock_t m_start_time;
 jmp_buf jmpbuf;
 static bool restart;
 static bool skip_compat_check = false;
+static bool skip_main_loop_if_no_callbacks = false;
 
 #ifdef SDL
 SDL_Surface *m_screen = NULL;
@@ -202,7 +203,8 @@ static void p8_init_common(const char *file_name, const char *lua_script)
 
     p8_init_lcd();
 
-    p8_main_loop();
+    if (!skip_main_loop_if_no_callbacks || lua_has_main_loop_callbacks())
+        p8_main_loop();
 }
 
 int p8_init_file(const char *file_name)
@@ -776,6 +778,11 @@ void __attribute__ ((noreturn)) p8_restart()
 void p8_set_skip_compat_check(bool skip)
 {
     skip_compat_check = skip;
+}
+
+void p8_set_skip_main_loop_if_no_callbacks(bool skip)
+{
+    skip_main_loop_if_no_callbacks = skip;
 }
 
 bool p8_open_cartdata(const char *id)

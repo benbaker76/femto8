@@ -15,10 +15,13 @@ int main(int argc, char *argv[])
 {
     const char *file_name = NULL;
     bool skip_compat = false;
+    bool skip_main_loop = false;
 
     for (int i = 1; i < argc; i++) {
         if (strcmp(argv[i], "--skip-compat-check") == 0) {
             skip_compat = true;
+        } else if (strcmp(argv[i], "-x") == 0) {
+            skip_main_loop = true;
         } else if (file_name == NULL) {
             file_name = argv[i];
         }
@@ -29,6 +32,8 @@ int main(int argc, char *argv[])
 
     if (skip_compat)
         p8_set_skip_compat_check(true);
+    if (skip_main_loop)
+        p8_set_skip_main_loop_if_no_callbacks(true);
     if (file_name != NULL)
         p8_init_file(file_name);
     p8_shutdown();

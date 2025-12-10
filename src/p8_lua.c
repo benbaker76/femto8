@@ -1648,6 +1648,11 @@ void lua_draw()
         lua_call_function("_draw", 0);
 }
 
+bool lua_has_main_loop_callbacks()
+{
+    return (m_lua_update != NULL || m_lua_update60 != NULL) && (m_lua_draw != NULL);
+}
+
 void lua_init()
 {
     if (m_lua_init)
