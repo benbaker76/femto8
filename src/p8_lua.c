@@ -1014,9 +1014,53 @@ int reload(lua_State *L)
 // rnd(max)
 int rnd(lua_State *L)
 {
-    float max = lua_gettop(L) >= 1 ? (float)lua_tonumber(L, 1) : 1.0f;
+    int is_table = 0;
 
-    lua_pushnumber(L, ((float)rand() / RAND_MAX) * max);
+    if (lua_gettop(L) >= 1)
+    {
+        if (lua_istable(L, 1))
+        {
+            is_table = 1;
+        }
+    }
+
+    uint32_t hi = m_memory[MEMORY_RNG_STATE] | (m_memory[MEMORY_RNG_STATE + 1] << 8) |
+                  (m_memory[MEMORY_RNG_STATE + 2] << 16) | (m_memory[MEMORY_RNG_STATE + 3] << 24);
+    uint32_t lo = m_memory[MEMORY_RNG_STATE + 4] | (m_memory[MEMORY_RNG_STATE + 5] << 8) |
+                  (m_memory[MEMORY_RNG_STATE + 6] << 16) | (m_memory[MEMORY_RNG_STATE + 7] << 24);
+
+    hi = (hi << 16) | (hi >> 16);
+    hi += lo;
+    lo += hi;
+
+    m_memory[MEMORY_RNG_STATE] = hi & 0xFF;
+    m_memory[MEMORY_RNG_STATE + 1] = (hi >> 8) & 0xFF;
+    m_memory[MEMORY_RNG_STATE + 2] = (hi >> 16) & 0xFF;
+    m_memory[MEMORY_RNG_STATE + 3] = (hi >> 24) & 0xFF;
+    m_memory[MEMORY_RNG_STATE + 4] = lo & 0xFF;
+    m_memory[MEMORY_RNG_STATE + 5] = (lo >> 8) & 0xFF;
+    m_memory[MEMORY_RNG_STATE + 6] = (lo >> 16) & 0xFF;
+    m_memory[MEMORY_RNG_STATE + 7] = (lo >> 24) & 0xFF;
+
+    if (is_table)
+    {
+        size_t len = lua_rawlen(L, 1);
+        if (len > 0)
+        {
+            int index = ((hi >> 16) % len) + 1;
+            lua_rawgeti(L, 1, index);
+        }
+        else
+        {
+            lua_pushnil(L);
+        }
+    }
+    else
+    {
+        uint32_t max_fixed = (lua_gettop(L) >= 1) ? lua_tonumber(L, 1).bits() : 0x10000;
+        uint32_t result_fixed = hi % max_fixed;
+        lua_pushnumber(L, z8::fix32::frombits(result_fixed));
+    }
 
     return 1;
 }
@@ -1024,8 +1068,9 @@ int rnd(lua_State *L)
 // srand(val)
 int _srand(lua_State *L)
 {
-    int n = lua_tointeger(L, 1);
-    srand(n);
+    unsigned n = lua_tounsigned(L, 1);
+
+    p8_seed_rng_state(n);
 
     return 0;
 }

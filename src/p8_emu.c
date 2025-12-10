@@ -718,6 +718,37 @@ unsigned p8_elapsed_time(void)
     return elapsed_time;
 }
 
+void p8_seed_rng_state(uint32_t seed)
+{
+    uint32_t hi, lo;
+
+    if (seed == 0) {
+        hi = 0x60009755;
+        lo = 0xdeadbeef;
+    } else {
+        seed &= 0x7fffffff;
+
+        uint32_t seed_fixed = seed << 16;
+        hi = seed_fixed ^ 0xbead29ba;
+        lo = seed_fixed;
+    }
+
+    for (int i = 0; i < 32; i++) {
+        hi = (hi << 16) | (hi >> 16);
+        hi += lo;
+        lo += hi;
+    }
+
+    m_memory[MEMORY_RNG_STATE] = hi & 0xFF;
+    m_memory[MEMORY_RNG_STATE + 1] = (hi >> 8) & 0xFF;
+    m_memory[MEMORY_RNG_STATE + 2] = (hi >> 16) & 0xFF;
+    m_memory[MEMORY_RNG_STATE + 3] = (hi >> 24) & 0xFF;
+    m_memory[MEMORY_RNG_STATE + 4] = lo & 0xFF;
+    m_memory[MEMORY_RNG_STATE + 5] = (lo >> 8) & 0xFF;
+    m_memory[MEMORY_RNG_STATE + 6] = (lo >> 16) & 0xFF;
+    m_memory[MEMORY_RNG_STATE + 7] = (lo >> 24) & 0xFF;
+}
+
 void p8_reset(void)
 {
     memset(m_memory + MEMORY_DRAWSTATE, 0, MEMORY_DRAWSTATE_SIZE);
@@ -727,6 +758,7 @@ void p8_reset(void)
     pencolor_set(6);
     reset_color();
     clip_set(0, 0, P8_WIDTH, P8_HEIGHT);
+    p8_seed_rng_state(time(NULL));
 }
 
 static void __attribute__ ((noreturn)) p8_abort()

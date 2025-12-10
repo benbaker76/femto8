@@ -97,6 +97,7 @@
 #define MEMORY_TLINE_OFFSET_Y 0x5f3b
 #define MEMORY_LINE_X 0x5f3c
 #define MEMORY_LINE_Y 0x5f3e
+#define MEMORY_RNG_STATE 0x5f44
 #define MEMORY_SPRITE_PHYS 0x5f54
 #define MEMORY_SCREEN_PHYS 0x5f55
 #define MEMORY_MAP_START 0x5f56
@@ -214,6 +215,7 @@ int p8_shutdown(void);
 void p8_render();
 void p8_reset(void);
 void __attribute__ ((noreturn)) p8_restart(void);
+void p8_seed_rng_state(uint32_t seed);
 int p8_shutdown(void);
 void p8_update_input(void);
 #ifdef NEXTP8

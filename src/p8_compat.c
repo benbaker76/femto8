@@ -429,7 +429,8 @@ bool is_unsupported_address(unsigned address) {
         address == MEMORY_SCREEN_PHYS ||
         address == MEMORY_SPRITE_PHYS ||
         address == 0x5f30 /* unimplemented, but causes no compatibility issues */ ||
-        (address >= MEMORY_PALETTES && address < MEMORY_PALETTES + 32))
+        (address >= MEMORY_PALETTES && address < MEMORY_PALETTES + 32) ||
+        (address >= MEMORY_RNG_STATE && address < MEMORY_RNG_STATE + 8))
         return false;
     return true;
 }
