@@ -78,6 +78,7 @@ clock_t m_start_time;
 
 jmp_buf jmpbuf;
 static bool restart;
+static bool skip_compat_check = false;
 
 #ifdef SDL
 SDL_Surface *m_screen = NULL;
@@ -179,7 +180,7 @@ static void p8_init_common(const char *file_name, const char *lua_script)
 
     if (setjmp(jmpbuf) && !restart)
         return;
-    if (!restart) {
+    if (!restart && !skip_compat_check) {
         int ret = check_compatibility(file_name, lua_script);
         if (ret != COMPAT_OK)
             p8_show_compatibility_error(ret);
@@ -770,6 +771,11 @@ void __attribute__ ((noreturn)) p8_restart()
 {
     restart = true;
     p8_abort();
+}
+
+void p8_set_skip_compat_check(bool skip)
+{
+    skip_compat_check = skip;
 }
 
 bool p8_open_cartdata(const char *id)
