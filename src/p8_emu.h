@@ -185,9 +185,13 @@ extern unsigned m_fps;
 extern unsigned m_actual_fps;
 extern unsigned m_frames;
 
-extern clock_t m_start_time;
+#ifdef OS_FREERTOS
+typedef long p8_clock_t;
+#else
+typedef uint_fast64_t p8_clock_t;
+#endif
 
-#define CLOCKS_PER_CLOCK_T (((clock_t)1) << (CHAR_BIT * sizeof(clock_t) - 1))
+extern p8_clock_t m_start_time;
 
 extern unsigned char *m_memory;
 extern unsigned char *m_cart_memory;
