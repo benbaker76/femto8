@@ -460,8 +460,10 @@ static inline void gfx_set(int x, int y, int location, int size, int col)
 
 static inline void camera_get(int *x, int *y)
 {
-    *x = (m_memory[MEMORY_CAMERA + 1] << 8) | m_memory[MEMORY_CAMERA];
-    *y = (m_memory[MEMORY_CAMERA + 3] << 8) | m_memory[MEMORY_CAMERA + 2];
+    int16_t cx = (m_memory[MEMORY_CAMERA + 1] << 8) | m_memory[MEMORY_CAMERA];
+    int16_t cy = (m_memory[MEMORY_CAMERA + 3] << 8) | m_memory[MEMORY_CAMERA + 2];
+    *x = cx;
+    *y = cy;
 }
 
 static inline void camera_set(int x, int y)
