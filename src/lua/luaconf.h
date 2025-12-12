@@ -580,6 +580,8 @@
 
 #define LUA_USE_LONGJMP
 
+#define LUA_COMPAT_UNPACK
+
 #define luai_numidiv(L,a,b)	(l_mathop(floor)((a)/(b)))
 #define luai_numband(L,a,b)	((a)&(b))
 #define luai_numbor(L,a,b)	((a)|(b))
