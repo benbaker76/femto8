@@ -249,7 +249,7 @@ int p8_init_file(const char *file_name)
     const char *lua_script = NULL;
     uint8_t *file_buffer = NULL;
 
-    parse_cart_file(file_name, m_cart_memory, &lua_script, &file_buffer);
+    parse_cart_file(file_name, m_cart_memory, &lua_script, &file_buffer, NULL);
 
     p8_init_common(file_name, lua_script);
 

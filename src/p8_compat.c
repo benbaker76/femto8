@@ -652,7 +652,7 @@ int check_compatibility_file_names(int num_files, const char **file_names)
         const char *lua_script = NULL;
         uint8_t *file_buffer = NULL;
 
-        parse_cart_file(file_names[i], m_cart_memory, &lua_script, &file_buffer);
+        parse_cart_file(file_names[i], m_cart_memory, &lua_script, &file_buffer, NULL);
         if (lua_script) {
             size_t len = strlen(file_names[i]);
             ((char *)file_names[i])[len-3] = 'l';

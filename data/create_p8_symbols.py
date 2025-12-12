@@ -8,6 +8,10 @@ p8symbols = []
 
 # Filter and format characters
 for index, char in enumerate(characters):
+    # Skip \t, \n, and \r
+    if char in ['\t', '\n', '\r']:
+        continue
+
     encoded_length = len(char.encode('utf-8'))
     
     # Skip standard ASCII characters

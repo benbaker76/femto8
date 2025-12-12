@@ -1,7 +1,9 @@
 # Linux-specific additional targets
 # p8_compat_check - a tool to test PICO-8 cart compatibility
+# png_to_p8 - a tool to convert .p8.png files to .p8 files
 
 COMPAT_CHECK_TARGET := $(BUILD_DIR)/p8_compat_check
+PNG_TO_P8_TARGET := $(BUILD_DIR)/png_to_p8
 
 # p8_compat_check tool objects (only parser and compat, no emulator dependencies)
 COMPAT_CHECK_OBJECTS := $(BUILD_DIR)/p8_parser.o \
@@ -11,7 +13,14 @@ COMPAT_CHECK_OBJECTS := $(BUILD_DIR)/p8_parser.o \
                         $(BUILD_DIR)/lodepng/lodepng.o \
                         $(BUILD_DIR)/p8_compat_check.o
 
-all: $(COMPAT_CHECK_TARGET)
+# png_to_p8 tool objects (parser with decompression support)
+PNG_TO_P8_OBJECTS := $(BUILD_DIR)/p8_parser.o \
+                     $(BUILD_DIR)/lexaloffle/p8_compress.o \
+                     $(BUILD_DIR)/lexaloffle/pxa_compress_snippets.o \
+                     $(BUILD_DIR)/lodepng/lodepng.o \
+                     $(BUILD_DIR)/png_to_p8.o
+
+all: $(COMPAT_CHECK_TARGET) $(PNG_TO_P8_TARGET)
 
 $(COMPAT_CHECK_TARGET): $(COMPAT_CHECK_OBJECTS)
 	$(CC) $(CFLAGS) $(LDFLAGS) $(COMPAT_CHECK_OBJECTS) -o $@
@@ -20,10 +29,21 @@ $(BUILD_DIR)/p8_compat_check.o: tools/p8_compat_check.c
 	$(CC) $(CFLAGS) -c $< -o $@
 	$(CC) -MM $(CFLAGS) -MT $@ -MF $(BUILD_DIR)/p8_compat_check.d $<
 
-clean: clean-compat-check
+$(PNG_TO_P8_TARGET): $(PNG_TO_P8_OBJECTS)
+	$(CC) $(CFLAGS) $(LDFLAGS) $(PNG_TO_P8_OBJECTS) -o $@
+
+$(BUILD_DIR)/png_to_p8.o: tools/png_to_p8.c
+	$(CC) $(CFLAGS) -c $< -o $@
+	$(CC) -MM $(CFLAGS) -MT $@ -MF $(BUILD_DIR)/png_to_p8.d $<
+
+clean: clean-compat-check clean-png-to-p8
 
 clean-compat-check:
 	rm -f $(BUILD_DIR)/p8_compat_check.o $(BUILD_DIR)/p8_compat_check.d
 	rm -f $(COMPAT_CHECK_TARGET)
 
-.PHONY: clean-compat-check
+clean-png-to-p8:
+	rm -f $(BUILD_DIR)/png_to_p8.o $(BUILD_DIR)/png_to_p8.d
+	rm -f $(PNG_TO_P8_TARGET)
+
+.PHONY: clean-compat-check clean-png-to-p8
