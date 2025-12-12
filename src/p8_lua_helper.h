@@ -659,6 +659,7 @@ static inline void update_buttons(int index, int button, bool state)
     }
 
     m_buttons[index] = mask;
+    m_memory[MEMORY_BUTTON_STATE + index] = mask;
 }
 
 static inline void scroll(void)
