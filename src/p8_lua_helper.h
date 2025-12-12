@@ -528,20 +528,49 @@ static inline void cursor_get(int *x, int *y)
     *y = (int)m_memory[MEMORY_CURSOR + 1];
 }
 
+static inline int map_cell_addr(int celx, int cely)
+{
+    uint8_t map_start = m_memory[MEMORY_MAP_START];
+    if ((map_start >= 0x10 && map_start < 0x20) ||
+        (map_start >= 0x30 && map_start < 0x3f))
+        return 0;
+    if (map_start < 0x10 ||
+        (map_start >= 0x40 && map_start < 0x80))
+        map_start = 0x20;
+    if (cely >= 32 && map_start < 0x80) {
+        map_start = 0x10;
+        cely -= 32;
+    }
+
+    int map_width = m_memory[MEMORY_MAP_WIDTH];
+    if (map_width == 0)
+        map_width = 256;
+
+    int map_base = map_start << 8;
+    int offset = celx + cely * map_width;
+    int address = map_base + offset;
+
+    if (address < 0x1000 || address >= 0x10000 ||
+        (address >= 0x3000 && address < 0x8000))
+        return 0;
+
+    return address;
+}
+
 static inline uint8_t map_get(int celx, int cely)
 {
-    if (cely < 32)
-        return m_memory[MEMORY_MAP + celx + cely * P8_WIDTH];
-    else
-        return m_memory[MEMORY_SPRITES_MAP + celx + (cely - 32) * P8_WIDTH];
+    int address = map_cell_addr(celx, cely);
+    if (address == 0)
+        return 0;
+    return m_memory[address];
 }
 
 static inline void map_set(int celx, int cely, int snum)
 {
-    if (cely < 32)
-        m_memory[MEMORY_MAP + celx + cely * P8_WIDTH] = snum;
-    else
-        m_memory[MEMORY_SPRITES_MAP + celx + (cely - 32) * P8_WIDTH] = snum;
+    int address = map_cell_addr(celx, cely);
+    if (address == 0)
+        return;
+    m_memory[address] = snum;
 }
 
 static inline void reset_color()
