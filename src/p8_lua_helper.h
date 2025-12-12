@@ -49,6 +49,7 @@ static inline void pixel_set(int x, int y, int c, int fillp, int draw_type);
 static inline void draw_simple_text(const char *str, int x, int y, int col);
 static inline bool is_button_set(int index, int button, bool prev_buttons);
 static inline void update_buttons(int index, int button, bool state);
+static inline int map_cell_addr(int celx, int cely);
 static inline void map_set(int celx, int cely, int snum);
 static inline uint8_t map_get(int celx, int cely);
 static inline void reset_color(void);
@@ -530,6 +531,9 @@ static inline void cursor_get(int *x, int *y)
 
 static inline int map_cell_addr(int celx, int cely)
 {
+    if (celx < 0 || cely < 0)
+        return 0;
+
     uint8_t map_start = m_memory[MEMORY_MAP_START];
     if ((map_start >= 0x10 && map_start < 0x20) ||
         (map_start >= 0x30 && map_start < 0x3f))

@@ -386,10 +386,12 @@ int pget(lua_State *L)
     int x0, y0, x1, y1;
     clip_get(&x0, &y0, &x1, &y1);
 
-    if (x >= x0 && y >= y0 && x < x1 && y < y1)
+    if (x >= x0 && y >= y0 && x < x1 && y < y1) {
         lua_pushinteger(L, gfx_get(x, y, MEMORY_SCREEN, MEMORY_SCREEN_SIZE));
-    else
-        lua_pushinteger(L, 0);
+    } else {
+        int default_val = (m_memory[MEMORY_MISCFLAGS] & 0x10) ? m_memory[MEMORY_PGET_DEFAULT] : 0;
+        lua_pushinteger(L, default_val);
+    }
 
     return 1;
 }
@@ -543,10 +545,12 @@ int sget(lua_State *L)
     int x = lua_tointeger(L, 1);
     int y = lua_tointeger(L, 2);
 
-    if (x >= 0 && y >= 0 && x < P8_WIDTH && y < P8_HEIGHT)
+    if (x >= 0 && y >= 0 && x < P8_WIDTH && y < P8_HEIGHT) {
         lua_pushinteger(L, gfx_get(x, y, MEMORY_SPRITES, MEMORY_SPRITES_SIZE));
-    else
-        lua_pushinteger(L, 0);
+    } else {
+        int default_val = (m_memory[MEMORY_MISCFLAGS] & 0x10) ? m_memory[MEMORY_SGET_DEFAULT] : 0;
+        lua_pushinteger(L, default_val);
+    }
 
     return 1;
 }
@@ -812,7 +816,13 @@ int mget(lua_State *L)
     int celx = lua_tointeger(L, 1);
     int cely = lua_tointeger(L, 2);
 
-    lua_pushinteger(L, map_get(celx, cely));
+    int address = map_cell_addr(celx, cely);
+    if (address == 0) {
+        int default_val = (m_memory[MEMORY_MISCFLAGS] & 0x10) ? m_memory[MEMORY_MGET_DEFAULT] : 0;
+        lua_pushinteger(L, default_val);
+    } else {
+        lua_pushinteger(L, m_memory[address]);
+    }
 
     return 1;
 }
