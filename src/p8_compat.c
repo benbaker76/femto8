@@ -436,7 +436,8 @@ bool is_unsupported_address(unsigned address) {
         address == MEMORY_TEXT_ATTRS ||
         address == MEMORY_TEXT_CHAR_SIZE ||
         address == MEMORY_TEXT_CHAR_SIZE2 ||
-        address == MEMORY_TEXT_OFFSET)
+        address == MEMORY_TEXT_OFFSET ||
+        address == MEMORY_MISCFLAGS)
         return false;
     return true;
 }

@@ -93,6 +93,12 @@ int circ(lua_State *L)
     int col = lua_gettop(L) >= 4 ? lua_tointeger(L, 4) : pencolor_get() & 0xF;
     int fillp = lua_gettop(L) >= 4 ? (lua_tonumber(L, 4).bits() & 0xffff) : 0;
 
+    if (lua_gettop(L) >= 3 && (m_memory[MEMORY_MISCFLAGS] & 0x2)) {
+        double r_real = lua_tonumber(L, 3);
+        if (r_real - r >= 0.5)
+            r++;
+    }
+
     draw_circ(x, y, r, col, fillp);
 
     return 0;
@@ -106,6 +112,12 @@ int circfill(lua_State *L)
     int r = lua_gettop(L) >= 3 ? lua_tointeger(L, 3) : 4;
     int col = lua_gettop(L) >= 4 ? lua_tointeger(L, 4) : pencolor_get() & 0xF;
     int fillp = lua_gettop(L) >= 4 ? (lua_tonumber(L, 4).bits() & 0xffff) : 0;
+
+    if (lua_gettop(L) >= 3 && (m_memory[MEMORY_MISCFLAGS] & 0x2)) {
+        double r_real = lua_tonumber(L, 3);
+        if (r_real - r >= 0.5)
+            r++;
+    }
 
     draw_circfill(x, y, r, col, fillp);
 
@@ -797,8 +809,10 @@ int map(lua_State *L)
         {
             uint8_t index = map_get(celx + x, cely + y);
             uint8_t sprite_flags = m_memory[MEMORY_SPRITEFLAGS + index];
+            bool sprite_0_opaque = (m_memory[MEMORY_MISCFLAGS] & 0x8) != 0;
+            bool should_draw = (index != 0 || sprite_0_opaque) && (layer == 0 || ((layer & sprite_flags) == layer));
 
-            if (index != 0 && (layer == 0 || ((layer & sprite_flags) == layer)))
+            if (should_draw)
             {
                 int left = sx + x * SPRITE_WIDTH;
                 int top = sy + y * SPRITE_HEIGHT;

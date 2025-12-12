@@ -188,6 +188,7 @@ static inline void draw_text(const char *str, unsigned str_len, int x, int y, in
     int fg = col;
     int tab_width = 16;
     int wrap_boundary = 128;
+    bool wrap_enabled = m_memory[MEMORY_MISCFLAGS] & 0x80;
 
     uint8_t text_attrs = m_memory[MEMORY_TEXT_ATTRS];
     bool use_defaults = (text_attrs & 0x1) != 0;
@@ -301,6 +302,7 @@ static inline void draw_text(const char *str, unsigned str_len, int x, int y, in
                         case 'r':
                             if (i + 1 < str_len) {
                                 wrap_boundary = hexy(str[++i]) * 4;
+                                wrap_enabled = true;
                             }
                             break;
                         case 's':
@@ -545,7 +547,7 @@ static inline void draw_text(const char *str, unsigned str_len, int x, int y, in
                         p8_flip();
                     }
 
-                    if (x >= wrap_boundary) {
+                    if (wrap_enabled && x >= wrap_boundary) {
                         x = left_margin;
                         y += state.char_h;
                     }
