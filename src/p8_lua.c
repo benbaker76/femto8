@@ -1225,6 +1225,7 @@ int printh(lua_State *L)
     const char *str = lua_tostring(L, 1);
 
     printf("%s\r\n", str);
+    fflush(stdout);
 
     return 0;
 }
