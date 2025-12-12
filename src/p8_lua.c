@@ -913,6 +913,8 @@ int peek(lua_State *L)
 
     addr = addr_remap(addr);
 
+    luaL_checkstack(L, n, "too many values");
+
     for (unsigned i=0;i<n;++i)
         lua_pushinteger(L, m_memory[addr+i]);
 
@@ -927,6 +929,8 @@ int peek2(lua_State *L)
 
     addr = addr_remap(addr);
 
+    luaL_checkstack(L, n, "too many values");
+
     for (unsigned i=0;i<n;++i)
         lua_pushinteger(L, (m_memory[addr + i*2 + 1] << 8) | (m_memory[addr + i*2]));
 
@@ -940,6 +944,8 @@ int peek4(lua_State *L)
     unsigned n = lua_gettop(L) >= 2 ? lua_tounsigned(L, 2) : 1;
 
     addr = addr_remap(addr);
+
+    luaL_checkstack(L, n, "too many values");
 
     for (unsigned i=0;i<n;++i)
         lua_pushnumber(L, z8::fix32::frombits((m_memory[addr + i*4 + 3] << 24) | (m_memory[addr + i*4 + 2] << 16) | (m_memory[addr + i*4 + 1] << 8) | m_memory[addr + i*4]));
