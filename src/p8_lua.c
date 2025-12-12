@@ -1161,19 +1161,26 @@ int sub(lua_State *L)
     const char *str = lua_tostring(L, 1);
     int start = lua_tointeger(L, 2);
     int end = lua_to_or_default(L, integer, 3, -1);
+    int str_len = strlen(str);
+
+    if (start < 1) start = 1;
+    if (start > str_len + 1) start = str_len + 1;
 
     if (end == -1)
     {
-        strncpy(m_str_buffer, str + start - 1, strlen(str) - start + 1);
-
-        lua_pushstring(L, m_str_buffer);
-
+        int len = str_len - start + 1;
+        if (len < 0) len = 0;
+        lua_pushlstring(L, str + start - 1, len);
         return 1;
     }
 
-    strncpy(m_str_buffer, str + start - 1, end - start + 1);
+    if (end < 0) end = str_len + end + 1;
+    if (end < 1) end = 1;
+    if (end > str_len) end = str_len;
 
-    lua_pushstring(L, m_str_buffer);
+    int len = end - start + 1;
+    if (len < 0) len = 0;
+    lua_pushlstring(L, str + start - 1, len);
 
     return 1;
 }
