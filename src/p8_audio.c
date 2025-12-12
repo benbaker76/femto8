@@ -28,6 +28,8 @@
 #define VOLUME_SHIFT 9
 #define WAVEFORM_SHIFT 6
 
+#define PCM_BUFFER_SIZE 2048
+
 enum
 {
     SOUNDMODE_NONE,
@@ -139,6 +141,13 @@ pthread_mutex_t m_sound_queue_mutex;
 
 soundstate_t m_channels[CHANNEL_COUNT];
 musicstate_t m_music_state;
+
+uint8_t m_pcm_buffer[PCM_BUFFER_SIZE];
+int m_pcm_write_pos = 0;
+int m_pcm_read_pos = 0;
+int m_pcm_buffered = 0;
+int m_pcm_repeat = 0;
+int16_t m_pcm_dampen = 0;
 
 #ifdef SDL
 SDL_AudioSpec m_audio_spec;
@@ -448,4 +457,77 @@ void render_sounds(int16_t *buffer, int total_samples)
             }
         }
     }
+
+    const bool dampen_enabled = (m_memory[MEMORY_MISCFLAGS] & 0x20) == 0;
+
+    for (int i = 0; i < total_samples; i++)
+    {
+        if (m_pcm_buffered > 0)
+        {
+            uint8_t pcm_sample = m_pcm_buffer[m_pcm_read_pos];
+            int16_t sample16 = (int16_t)((pcm_sample - 128) * 256);
+
+            if (dampen_enabled)
+            {
+                m_pcm_dampen = (sample16 + m_pcm_dampen * 3) / 4;
+                buffer[i] = (int16_t)(buffer[i] + m_pcm_dampen);
+            }
+            else
+            {
+                buffer[i] = (int16_t)(buffer[i] + sample16);
+            }
+
+            m_pcm_repeat++;
+            if (m_pcm_repeat >= 8)
+            {
+                m_pcm_repeat = 0;
+                m_pcm_read_pos = (m_pcm_read_pos + 1) % PCM_BUFFER_SIZE;
+                m_pcm_buffered--;
+            }
+        }
+        else
+        {
+            m_pcm_repeat = 0;
+            m_pcm_dampen = 0;
+        }
+    }
+}
+
+void audio_pcm_write(uint16_t address, uint16_t length)
+{
+#ifdef ENABLE_AUDIO
+    if (address >= MEMORY_SIZE || length == 0)
+        return;
+
+    if (address + length > MEMORY_SIZE)
+        length = MEMORY_SIZE - address;
+
+    if (length > PCM_BUFFER_SIZE - m_pcm_buffered)
+        length = PCM_BUFFER_SIZE - m_pcm_buffered;
+
+    for (uint32_t i = 0; i < length; i++)
+    {
+        m_pcm_buffer[m_pcm_write_pos] = m_memory[address + i];
+        m_pcm_write_pos = (m_pcm_write_pos + 1) % PCM_BUFFER_SIZE;
+        m_pcm_buffered++;
+    }
+#endif
+}
+
+int16_t audio_pcm_buffered()
+{
+#ifdef ENABLE_AUDIO
+    return m_pcm_buffered;
+#else
+    return 0;
+#endif
+}
+
+int16_t audio_pcm_app_buffer()
+{
+#ifdef ENABLE_AUDIO
+    return PCM_BUFFER_SIZE / 4;
+#else
+    return 0;
+#endif
 }

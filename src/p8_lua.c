@@ -1350,6 +1350,12 @@ case STAT_MEM_USAGE: {
         }
         break;
     }
+    case STAT_PCM_BUFFER_SIZE:
+        lua_pushinteger(L, audio_pcm_buffered());
+        break;
+    case STAT_PCM_APP_BUFFER:
+        lua_pushinteger(L, audio_pcm_app_buffer());
+        break;
     default:
         if ((n >= 46 && n <= 56) || (n >= 16 && n <= 26)) {
             lua_pushinteger(L, audio_stat(n));
@@ -1410,6 +1416,25 @@ int note_to_hz(lua_State *L)
     lua_pushinteger(L, 440 * 2 ^ ((note - 33 / 12)));
 
     return 1;
+}
+
+// serial(channel, address, [length])
+int serial(lua_State *L)
+{
+    int channel = lua_tointeger(L, 1);
+    uint32_t address = lua_tounsigned(L, 2);
+    uint32_t length = lua_gettop(L) >= 3 ? lua_tounsigned(L, 3) : 1;
+
+    switch (channel) {
+    case 0x808:
+        // PCM audio output
+#ifdef ENABLE_AUDIO
+        audio_pcm_write(address, length);
+#endif
+        break;
+    }
+
+    return 0;
 }
 
 void lua_register_functions(lua_State *L)
@@ -1544,6 +1569,7 @@ void lua_register_functions(lua_State *L)
     // lua_register(L, "extcmd", extcmd);
     lua_register(L, "reset", reset);
     lua_register(L, "run", run);
+    lua_register(L, "serial", serial);
     // ****************************************************************
     // *** Debugging ***
     // ****************************************************************

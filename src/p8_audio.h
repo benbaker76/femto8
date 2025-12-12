@@ -25,5 +25,8 @@ void audio_close();
 void audio_sound(int32_t index, int32_t channel, uint32_t start, uint32_t end);
 void audio_music(int32_t index, int32_t fade_ms, int32_t mask);
 int32_t audio_stat(int32_t index);
+void audio_pcm_write(uint16_t address, uint16_t length);
+int16_t audio_pcm_buffered();
+int16_t audio_pcm_app_buffer();
 
 #endif

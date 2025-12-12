@@ -95,7 +95,6 @@ const char *p8_functions[] = {
     "run",
     "save",
     "select",
-    "serial",
     "setmetatable",
     "sfx",
     "sget",
@@ -458,7 +457,9 @@ bool is_unsupported_stat(unsigned address) {
         (address >= 16 && address <= 26) ||
         (address >= 46 && address <= 56) ||
         address == STAT_PARAM ||
-        (address >= STAT_YEAR && address <= STAT_SECOND))
+        (address >= STAT_YEAR && address <= STAT_SECOND) ||
+        address == STAT_PCM_BUFFER_SIZE ||
+        address == STAT_PCM_APP_BUFFER)
         return false;
 
     return true;
