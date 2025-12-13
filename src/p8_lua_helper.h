@@ -46,9 +46,10 @@ static inline void clip_set(int x, int y, int w, int h);
 static inline void cursor_get(int *x, int *y);
 static inline void cursor_set(int x, int y, int col);
 static inline void pixel_set(int x, int y, int c, int fillp, int draw_type);
-static inline int draw_text(const char *str, int x, int y, int col);
+static inline void draw_simple_text(const char *str, int x, int y, int col);
 static inline bool is_button_set(int index, int button, bool prev_buttons);
 static inline void update_buttons(int index, int button, bool state);
+static inline int map_cell_addr(int celx, int cely);
 static inline void map_set(int celx, int cely, int snum);
 static inline uint8_t map_get(int celx, int cely);
 static inline void reset_color(void);
@@ -409,45 +410,33 @@ static inline int get_p8_symbol(const char *str, int str_len, uint8_t *symbol_le
     return -1;
 }
 
-static inline int draw_text(const char *str, int x, int y, int col)
+// Simple text drawing - draws a single line with no P8SCII support
+static inline void draw_simple_text(const char *str, int x, int y, int col)
 {
-    int left = 0;
-    int str_len = strlen(str);
-
-    for (int i = 0; i < str_len; i++)
-    {
-        uint8_t character = str[i];
-        int index = -1;
-
-        if (character >= 0x20 && character < 0x7F)
-        {
-            index = character;
+    int cursor_x = x;
+    for (const char *c = str; *c != '\0'; c++) {
+        if (*c >= 0x20 && *c < 0x7F) {
+            draw_char(*c, cursor_x, y, col);
+            cursor_x += GLYPH_WIDTH;
         }
-        else
-        {
-            uint8_t symbol_length = 0;
-            index = get_p8_symbol(&str[i], str_len - i, &symbol_length);
-
-            if (index != -1)
-                i += symbol_length - 1;
-            else
-                index = character;
-        }
-
-        if (index >= 0)
-            draw_char(index, (int)x + left, (int)y, col);
-
-        left += GLYPH_WIDTH;
     }
+}
 
-    return left;
+static inline int gfx_addr_remap(int location)
+{
+    if (location == MEMORY_SPRITES)
+        return m_memory[MEMORY_SPRITE_PHYS] << 8;
+    else if (location == MEMORY_SCREEN)
+        return m_memory[MEMORY_SCREEN_PHYS] << 8;
+    else
+        return location;
 }
 
 static inline uint8_t gfx_addr_get(int x, int y, uint8_t *memory, int location, int size)
 {
     if (x < 0 || y < 0 || x > P8_WIDTH || y > P8_HEIGHT)
         return 0;
-    int offset = location + (x >> 1) + y * 64;
+    int offset = gfx_addr_remap(location) + (x >> 1) + y * 64;
 
     return IS_EVEN(x) ? memory[offset] & 0xF : memory[offset] >> 4;
 }
@@ -463,7 +452,7 @@ static inline void gfx_set(int x, int y, int location, int size, int col)
 {
     if (x < 0 || y < 0 || x > P8_WIDTH || y > P8_HEIGHT)
         return;
-    int offset = location + (x >> 1) + y * 64;
+    int offset = gfx_addr_remap(location) + (x >> 1) + y * 64;
 
     uint8_t color = (col == -1 ? pencolor_get() : color_get(PALTYPE_DRAW, col));
     m_memory[offset] = IS_EVEN(x) ? (m_memory[offset] & 0xF0) | (color & 0xF) : (color << 4) | (m_memory[offset] & 0xF);
@@ -471,8 +460,10 @@ static inline void gfx_set(int x, int y, int location, int size, int col)
 
 static inline void camera_get(int *x, int *y)
 {
-    *x = (m_memory[MEMORY_CAMERA + 1] << 8) | m_memory[MEMORY_CAMERA];
-    *y = (m_memory[MEMORY_CAMERA + 3] << 8) | m_memory[MEMORY_CAMERA + 2];
+    int16_t cx = (m_memory[MEMORY_CAMERA + 1] << 8) | m_memory[MEMORY_CAMERA];
+    int16_t cy = (m_memory[MEMORY_CAMERA + 3] << 8) | m_memory[MEMORY_CAMERA + 2];
+    *x = cx;
+    *y = cy;
 }
 
 static inline void camera_set(int x, int y)
@@ -540,20 +531,52 @@ static inline void cursor_get(int *x, int *y)
     *y = (int)m_memory[MEMORY_CURSOR + 1];
 }
 
+static inline int map_cell_addr(int celx, int cely)
+{
+    if (celx < 0 || cely < 0)
+        return 0;
+
+    uint8_t map_start = m_memory[MEMORY_MAP_START];
+    if ((map_start >= 0x10 && map_start < 0x20) ||
+        (map_start >= 0x30 && map_start < 0x3f))
+        return 0;
+    if (map_start < 0x10 ||
+        (map_start >= 0x40 && map_start < 0x80))
+        map_start = 0x20;
+    if (cely >= 32 && map_start < 0x80) {
+        map_start = 0x10;
+        cely -= 32;
+    }
+
+    int map_width = m_memory[MEMORY_MAP_WIDTH];
+    if (map_width == 0)
+        map_width = 256;
+
+    int map_base = map_start << 8;
+    int offset = celx + cely * map_width;
+    int address = map_base + offset;
+
+    if (address < 0x1000 || address >= 0x10000 ||
+        (address >= 0x3000 && address < 0x8000))
+        return 0;
+
+    return address;
+}
+
 static inline uint8_t map_get(int celx, int cely)
 {
-    if (cely < 32)
-        return m_memory[MEMORY_MAP + celx + cely * P8_WIDTH];
-    else
-        return m_memory[MEMORY_SPRITES_MAP + celx + (cely - 32) * P8_WIDTH];
+    int address = map_cell_addr(celx, cely);
+    if (address == 0)
+        return 0;
+    return m_memory[address];
 }
 
 static inline void map_set(int celx, int cely, int snum)
 {
-    if (cely < 32)
-        m_memory[MEMORY_MAP + celx + cely * P8_WIDTH] = snum;
-    else
-        m_memory[MEMORY_SPRITES_MAP + celx + (cely - 32) * P8_WIDTH] = snum;
+    int address = map_cell_addr(celx, cely);
+    if (address == 0)
+        return;
+    m_memory[address] = snum;
 }
 
 static inline void reset_color()
@@ -636,6 +659,7 @@ static inline void update_buttons(int index, int button, bool state)
     }
 
     m_buttons[index] = mask;
+    m_memory[MEMORY_BUTTON_STATE + index] = mask;
 }
 
 static inline void scroll(void)

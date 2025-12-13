@@ -112,7 +112,7 @@ static void list_dir(const char* path) {
 #endif
     DIR *dir = opendir(path);
     if (dir == NULL) {
-        fprintf(stderr, "1. %s: %s\n", path, strerror(errno));
+        fprintf(stderr, "%s: %s\n", path, strerror(errno));
     } else {
         free((char *)pwd);
         pwd = strdup(path);
@@ -123,7 +123,7 @@ static void list_dir(const char* path) {
             dirent = readdir(dir);
             if (dirent == NULL) {
                 if (errno != 0)
-                    fprintf(stderr, "2. %s: %s\n", path, strerror(errno));
+                    fprintf(stderr, "%s: %s\n", path, strerror(errno));
                 break;
             }
             const char *full_path = make_full_path(path, dirent->d_name);
@@ -139,7 +139,7 @@ static void list_dir(const char* path) {
                 if (res == 0)
                     is_dir = S_ISDIR(statbuf.st_mode);
                 else
-                    fprintf(stderr, "3. %s: %s\n", full_path, strerror(errno));
+                    fprintf(stderr, "%s: %s\n", full_path, strerror(errno));
             }
             free((char *)full_path);
             append_dir_entry(dirent->d_name, is_dir);
@@ -149,14 +149,19 @@ static void list_dir(const char* path) {
     qsort(dir_contents, nitems, sizeof(dir_contents[0]), compare_dir_entry);
 }
 
-#define LIST_TOP (GLYPH_HEIGHT + 1)
-#define LIST_HEIGHT (P8_HEIGHT - LIST_TOP)
+#define HEADER_HEIGHT GLYPH_HEIGHT
+#define FOOTER_HEIGHT GLYPH_HEIGHT
+#define LIST_TOP      HEADER_HEIGHT
+#define LIST_HEIGHT   (P8_HEIGHT - HEADER_HEIGHT - FOOTER_HEIGHT)
+#define FOOTER_TOP    (P8_HEIGHT - FOOTER_HEIGHT)
 
 static void display_dir_contents()
 {
     clear_screen(1);
-    draw_rectfill(0, 0, P8_WIDTH, GLYPH_HEIGHT, 7, 0);
-    draw_text(pwd, 0, 0, 1);
+    draw_rectfill(0, 0, P8_WIDTH, GLYPH_HEIGHT - 1, 7, 0);
+    draw_simple_text(pwd, 1, 0, 1);
+    draw_rectfill(0, FOOTER_TOP, P8_WIDTH - 1, P8_HEIGHT - 1, 7, 0);
+    draw_simple_text("z/fire: select file", 1, FOOTER_TOP, 1);
     clip_set(0, LIST_TOP, P8_WIDTH, LIST_HEIGHT);
     int y = LIST_TOP;
     int scroll = current_item * GLYPH_HEIGHT + (GLYPH_HEIGHT - LIST_HEIGHT) / 2;
@@ -171,11 +176,11 @@ static void display_dir_contents()
             if (dir_entry->is_dir)
                 clip_set(0, LIST_TOP, P8_WIDTH - GLYPH_WIDTH * 6, LIST_HEIGHT);
             int fg = highlighted ? 1 : 7;
-            draw_text(dir_entry->file_name, 0, y - scroll, fg);
+            draw_simple_text(dir_entry->file_name, 1, y - scroll, fg);
             if (dir_entry->is_dir)
                 clip_set(0, LIST_TOP, P8_WIDTH, LIST_HEIGHT);
             if (dir_entry->is_dir) {
-                draw_text(" <DIR>", 128 - GLYPH_WIDTH * 6, y - scroll, fg);
+                draw_simple_text(" <DIR>", 128 - GLYPH_WIDTH * 6, y - scroll, fg);
             }
         }
         y += GLYPH_HEIGHT;
@@ -208,7 +213,6 @@ const char *browse_for_cart(void)
             struct dir_entry *dir_entry = &dir_contents[current_item];
             const char *full_path = make_full_path(pwd, dir_entry->file_name);
             if (dir_entry->is_dir) {
-                printf("list_dir >>%s<< pwd=>>%s<< file_name=>>%s<<\n", full_path, pwd, dir_entry->file_name);
                 list_dir(full_path);
                 free((char *)full_path);
             } else {

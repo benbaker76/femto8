@@ -218,12 +218,21 @@ static int call_orderTM (lua_State *L, const TValue *p1, const TValue *p2,
 }
 
 
-#define PEEK(ram, address) (ram && (address < 0x8000) ? ram[address] : 0)
+static unsigned char PEEK(unsigned char const *ram, unsigned address)
+{
+  if (!ram || address > 0x10000)
+    return 0;
+  if (address >= 0x0000 && address < 0x2000)
+    address = (ram[0x5f54] << 8) | (address & 0xfff);
+  else if (address >= 0x6000 && address < 0x8000)
+    address = (ram[0x5f55] << 8) | (address & 0xfff);
+  return ram[address];
+}
 
 lua_Number luaV_peek(struct lua_State *L, lua_Number a, int count)
 {
   unsigned char const *p = G(L)->pico8memory;
-  int address = int(a) & 0x7fff;
+  int address = int(a) & 0xffff;
   uint32_t ret = 0;
   switch (count) {
     case 4:
@@ -844,9 +853,11 @@ void luaV_execute (lua_State *L) {
         lua_Number step = nvalue(ra+2);
         lua_Number idx = luai_numadd(L, (lua_Number)nvalue(ra), step); /* increment index */
         lua_Number limit = nvalue(ra+1);
-        /* check for idx sign wrap-around */
-        if (luai_numlt(L, 0, step) ? luai_numle(L, nvalue(ra), idx)
-                                   : luai_numle(L, idx, nvalue(ra)))
+        /* check for idx sign wrap-around is disabled because FORPREP may wrap
+           (e.g., -32768 - 1 = 32767), and the loop should continue as long as the
+           limit check passes. This allows for i=0x8000,0xffff to work. */
+        /* if (luai_numlt(L, 0, step) ? luai_numle(L, nvalue(ra), idx)
+                                     : luai_numle(L, idx, nvalue(ra))) */
         if (luai_numlt(L, 0, step) ? luai_numle(L, idx, limit)
                                    : luai_numle(L, limit, idx)) {
           ci->u.l.savedpc += GETARG_sBx(i);  /* jump back */

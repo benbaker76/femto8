@@ -1,0 +1,29 @@
+# Linux-specific additional targets
+# p8_compat_check - a tool to test PICO-8 cart compatibility
+
+COMPAT_CHECK_TARGET := $(BUILD_DIR)/p8_compat_check
+
+# p8_compat_check tool objects (only parser and compat, no emulator dependencies)
+COMPAT_CHECK_OBJECTS := $(BUILD_DIR)/p8_parser.o \
+                        $(BUILD_DIR)/p8_compat.o \
+                        $(BUILD_DIR)/lexaloffle/p8_compress.o \
+                        $(BUILD_DIR)/lexaloffle/pxa_compress_snippets.o \
+                        $(BUILD_DIR)/lodepng/lodepng.o \
+                        $(BUILD_DIR)/p8_compat_check.o
+
+all: $(COMPAT_CHECK_TARGET)
+
+$(COMPAT_CHECK_TARGET): $(COMPAT_CHECK_OBJECTS)
+	$(CC) $(CFLAGS) $(LDFLAGS) $(COMPAT_CHECK_OBJECTS) -o $@
+
+$(BUILD_DIR)/p8_compat_check.o: tools/p8_compat_check.c
+	$(CC) $(CFLAGS) -c $< -o $@
+	$(CC) -MM $(CFLAGS) -MT $@ -MF $(BUILD_DIR)/p8_compat_check.d $<
+
+clean: clean-compat-check
+
+clean-compat-check:
+	rm -f $(BUILD_DIR)/p8_compat_check.o $(BUILD_DIR)/p8_compat_check.d
+	rm -f $(COMPAT_CHECK_TARGET)
+
+.PHONY: clean-compat-check

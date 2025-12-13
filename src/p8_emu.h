@@ -97,6 +97,19 @@
 #define MEMORY_TLINE_OFFSET_Y 0x5f3b
 #define MEMORY_LINE_X 0x5f3c
 #define MEMORY_LINE_Y 0x5f3e
+#define MEMORY_RNG_STATE 0x5f44
+#define MEMORY_BUTTON_STATE 0x5f4c
+#define MEMORY_SPRITE_PHYS 0x5f54
+#define MEMORY_SCREEN_PHYS 0x5f55
+#define MEMORY_MAP_START 0x5f56
+#define MEMORY_MAP_WIDTH 0x5f57
+#define MEMORY_TEXT_ATTRS 0x5f58
+#define MEMORY_SGET_DEFAULT 0x5f59
+#define MEMORY_MGET_DEFAULT 0x5f5a
+#define MEMORY_PGET_DEFAULT 0x5f5b
+#define MEMORY_TEXT_CHAR_SIZE 0x5f59
+#define MEMORY_TEXT_CHAR_SIZE2 0x5f5a
+#define MEMORY_TEXT_OFFSET 0x5f5b
 #define MEMORY_AUTO_REPEAT_DELAY 0x5f5c
 #define MEMORY_AUTO_REPEAT_INTERVAL 0x5f5d
 #define MEMORY_PALETTE_SECONDARY 0x5f60
@@ -113,8 +126,10 @@
 #define STAT_MEM_USAGE 0
 #define STAT_CPU_USAGE 1
 #define STAT_SYSTEM_CPU_USAGE 2
+#define STAT_PARAM 6
 #define STAT_FRAMERATE 7
 #define STAT_TARGET_FRAMERATE 8
+#define STAT_RAW_KEYBOARD 28
 #define STAT_KEY_PRESSED 30
 #define STAT_KEY_NAME 31
 #define STAT_MOUSE_X 32
@@ -122,6 +137,14 @@
 #define STAT_MOUSE_BUTTONS 34
 #define STAT_MOUSE_XREL 38
 #define STAT_MOUSE_YREL 39
+#define STAT_YEAR 90
+#define STAT_MONTH 91
+#define STAT_DAY 92
+#define STAT_HOUR 93
+#define STAT_MINUTE 94
+#define STAT_SECOND 95
+#define STAT_PCM_BUFFER_SIZE 108
+#define STAT_PCM_APP_BUFFER 109
 
 #define INPUT_LEFT SDLK_LEFT
 #define INPUT_RIGHT SDLK_RIGHT
@@ -129,6 +152,8 @@
 #define INPUT_DOWN SDLK_DOWN
 #define INPUT_ACTION1 SDLK_z
 #define INPUT_ACTION2 SDLK_x
+#define INPUT_ESCAPE SDLK_ESCAPE
+#define NUM_SCANCODES 512
 
 #define DEFAULT_AUTO_REPEAT_DELAY 15
 #define DEFAULT_AUTO_REPEAT_INTERVAL 4
@@ -167,9 +192,13 @@ extern unsigned m_fps;
 extern unsigned m_actual_fps;
 extern unsigned m_frames;
 
-extern clock_t m_start_time;
+#ifdef OS_FREERTOS
+typedef long p8_clock_t;
+#else
+typedef uint_fast64_t p8_clock_t;
+#endif
 
-#define CLOCKS_PER_CLOCK_T (((clock_t)1) << (CHAR_BIT * sizeof(clock_t) - 1))
+extern p8_clock_t m_start_time;
 
 extern unsigned char *m_memory;
 extern unsigned char *m_cart_memory;
@@ -179,6 +208,7 @@ extern int16_t m_mouse_x, m_mouse_y;
 extern int16_t m_mouse_xrel, m_mouse_yrel;
 extern uint8_t m_mouse_buttons;
 extern uint8_t m_keypress;
+extern bool m_scancodes[NUM_SCANCODES];
 
 extern uint8_t m_buttons[2];
 extern uint8_t m_buttonsp[2];
@@ -194,13 +224,19 @@ void p8_flip(void);
 void p8_flush_cartdata(void);
 int p8_init(void);
 int p8_init_file(const char *file_name);
+void p8_set_skip_compat_check(bool skip);
+void p8_set_skip_main_loop_if_no_callbacks(bool skip);
 int p8_init_ram(uint8_t *buffer, int size);
 bool p8_open_cartdata(const char *id);
 int p8_shutdown(void);
 void p8_render();
 void p8_reset(void);
 void __attribute__ ((noreturn)) p8_restart(void);
+void p8_seed_rng_state(uint32_t seed);
 int p8_shutdown(void);
 void p8_update_input(void);
+#ifdef NEXTP8
+void p8_update_keyboard_input(void);
+#endif
 
 #endif

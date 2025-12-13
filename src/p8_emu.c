@@ -74,10 +74,12 @@ unsigned m_fps = 30;
 unsigned m_actual_fps = 0;
 unsigned m_frames = 0;
 
-clock_t m_start_time;
+p8_clock_t m_start_time;
 
 jmp_buf jmpbuf;
 static bool restart;
+static bool skip_compat_check = false;
+static bool skip_main_loop_if_no_callbacks = false;
 
 #ifdef SDL
 SDL_Surface *m_screen = NULL;
@@ -91,6 +93,7 @@ int16_t m_mouse_x, m_mouse_y;
 int16_t m_mouse_xrel, m_mouse_yrel;
 uint8_t m_mouse_buttons;
 uint8_t m_keypress;
+bool m_scancodes[NUM_SCANCODES];
 
 uint8_t m_buttons[2];
 uint8_t m_buttonsp[2];
@@ -103,6 +106,40 @@ static FILE *cartdata = NULL;
 static bool cartdata_needs_flush = false;
 
 static int m_initialized = 0;
+
+static p8_clock_t p8_clock(void)
+{
+#ifdef OS_FREERTOS
+    return xTaskGetTickCount();
+#else
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return ts.tv_sec * UINT64_C(1000000) + ts.tv_nsec / UINT64_C(1000);
+#endif
+}
+
+static unsigned p8_clock_ms(p8_clock_t clocks)
+{
+#ifdef OS_FREERTOS
+    return clocks * portTICK_PERIOD_MS;
+#else
+    return clocks / UINT64_C(1000);
+#endif
+}
+
+static p8_clock_t p8_clock_delta(p8_clock_t start, p8_clock_t end)
+{
+    return end - start;
+}
+
+static void p8_sleep(unsigned ms)
+{
+#ifdef OS_FREERTOS
+    vTaskDelay(pdMS_TO_TICKS(ms));
+#else
+    usleep(ms * 1000);
+#endif
+}
 
 int p8_init()
 {
@@ -178,7 +215,7 @@ static void p8_init_common(const char *file_name, const char *lua_script)
 
     if (setjmp(jmpbuf) && !restart)
         return;
-    if (!restart) {
+    if (!restart && !skip_compat_check) {
         int ret = check_compatibility(file_name, lua_script);
         if (ret != COMPAT_OK)
             p8_show_compatibility_error(ret);
@@ -189,20 +226,19 @@ static void p8_init_common(const char *file_name, const char *lua_script)
 
     memcpy(m_memory, m_cart_memory, CART_MEMORY_SIZE);
 
+    p8_reset();
     clear_screen(0);
 
-    p8_reset();
     p8_update_input();
 
     lua_init_script(lua_script);
-
-    clear_screen(0);
 
     lua_init();
 
     p8_init_lcd();
 
-    p8_main_loop();
+    if (!skip_main_loop_if_no_callbacks || lua_has_main_loop_callbacks())
+        p8_main_loop();
 }
 
 int p8_init_file(const char *file_name)
@@ -278,7 +314,7 @@ int p8_shutdown()
 void p8_render()
 {
     sprintf(m_str_buffer, "%d", (int)m_actual_fps);
-    draw_text(m_str_buffer, 0, 0, 1);
+    draw_simple_text(m_str_buffer, 0, 0, 1);
 
     uint32_t *output = m_output->pixels;
 
@@ -286,7 +322,7 @@ void p8_render()
     {
         for (int x = 0; x < P8_WIDTH; x++)
         {
-            int screen_offset = MEMORY_SCREEN + (x >> 1) + y * 64;
+            int screen_offset = (m_memory[MEMORY_SCREEN_PHYS] << 8) + (x >> 1) + y * 64;
             uint8_t value = m_memory[screen_offset];
             uint8_t index = color_get(PALTYPE_SCREEN, IS_EVEN(x) ? value & 0xF : value >> 4);
             uint32_t color = m_colors[color_index(index)];
@@ -316,7 +352,7 @@ void p8_render()
     draw_text(m_str_buffer, 0, 0, 1);
 
     uint16_t *output = gdi_get_frame_buffer_addr(HW_LCDC_LAYER_0);
-    uint8_t *screen_mem = &m_memory[MEMORY_SCREEN];
+    uint8_t *screen_mem = &m_memory[(m_memory[MEMORY_SCREEN_PHYS] << 8)];
     uint8_t *pal = &m_memory[MEMORY_PALETTES + PALTYPE_SCREEN * 16];
 
     for (int y = 1; y <= 128; y++)
@@ -545,6 +581,8 @@ void p8_update_input()
             default:
                 break;
             }
+            if (event.key.keysym.scancode < NUM_SCANCODES)
+                m_scancodes[event.key.keysym.scancode] = true;
             m_keypress = (event.key.keysym.sym < 256) ? event.key.keysym.sym : 0;
             break;
         case SDL_KEYUP:
@@ -571,6 +609,8 @@ void p8_update_input()
             default:
                 break;
             }
+            if (event.key.keysym.scancode < NUM_SCANCODES)
+                m_scancodes[event.key.keysym.scancode] = false;
             break;
         case SDL_QUIT:
             p8_abort();
@@ -653,13 +693,16 @@ void p8_update_input()
     }
 }
 
+static void p8_post_flip(void)
+{
+    m_frames++;
+    p8_flush_cartdata();
+    p8_update_input();
+}
+
 void p8_flip()
 {
-    p8_update_input();
-
     p8_render();
-
-    p8_flush_cartdata();
 
     unsigned elapsed_time = p8_elapsed_time();
     const unsigned target_frame_time = 1000 / m_fps;
@@ -667,61 +710,105 @@ void p8_flip()
     if (sleep_time < 0)
         sleep_time = 0;
     m_actual_fps = 1000 / (elapsed_time + sleep_time);
-    m_frames++;
 
     if (sleep_time > 0)
-    {
-#ifdef OS_FREERTOS
-        vTaskDelay(pdMS_TO_TICKS(sleep_time));
-#else
-        usleep(sleep_time * 1000);
-#endif
-    }
+        p8_sleep(sleep_time);
 
-#ifdef OS_FREERTOS
-    m_start_time = xTaskGetTickCount();
-#else
-    m_start_time = clock();
-#endif
+    m_start_time = p8_clock();
+
+    p8_post_flip();
 }
 
 static void p8_main_loop()
 {
+    const int target_frame_time = 1000 / m_fps;
+    int time_debt = 0;
+    unsigned updates_since_last_flip = 0;
+
     for (;;)
     {
         lua_update();
-        lua_draw();
+        updates_since_last_flip++;
 
-        p8_flip();
+        unsigned elapsed = p8_elapsed_time();
+
+        time_debt += elapsed;
+
+        if (time_debt < target_frame_time || updates_since_last_flip >= m_fps) {
+            lua_draw();
+            time_debt += p8_elapsed_time() - elapsed;
+
+            p8_flip();
+
+            if (updates_since_last_flip >= m_fps) {
+                time_debt = 0;
+            } else {
+                time_debt -= target_frame_time;
+                if (time_debt < -target_frame_time) time_debt = -target_frame_time;
+            }
+
+            updates_since_last_flip = 0;
+        } else {
+            p8_post_flip();
+
+            time_debt -= target_frame_time;
+        }
     }
 }
 
 unsigned p8_elapsed_time(void)
 {
+    p8_clock_t now = p8_clock();
     unsigned elapsed_time;
-#ifdef OS_FREERTOS
-    long now = xTaskGetTickCount();
-    if (start_time == 0)
-        elapsed_time = 0;
-    else
-        elapsed_time = (now - m_start_time) * portTICK_PERIOD_MS;
-#else
-    clock_t now = clock();
     if (m_start_time == 0)
         elapsed_time = 0;
     else
-        elapsed_time = ((now - m_start_time) + ((now < m_start_time) ? CLOCKS_PER_CLOCK_T : 0)) * (clock_t)1000 / CLOCKS_PER_SEC;
-#endif
+        elapsed_time = p8_clock_ms(p8_clock_delta(m_start_time, now));
     return elapsed_time;
+}
+
+void p8_seed_rng_state(uint32_t seed)
+{
+    uint32_t hi, lo;
+
+    if (seed == 0) {
+        hi = 0x60009755;
+        lo = 0xdeadbeef;
+    } else {
+        seed &= 0x7fffffff;
+
+        uint32_t seed_fixed = seed << 16;
+        hi = seed_fixed ^ 0xbead29ba;
+        lo = seed_fixed;
+    }
+
+    for (int i = 0; i < 32; i++) {
+        hi = (hi << 16) | (hi >> 16);
+        hi += lo;
+        lo += hi;
+    }
+
+    m_memory[MEMORY_RNG_STATE] = hi & 0xFF;
+    m_memory[MEMORY_RNG_STATE + 1] = (hi >> 8) & 0xFF;
+    m_memory[MEMORY_RNG_STATE + 2] = (hi >> 16) & 0xFF;
+    m_memory[MEMORY_RNG_STATE + 3] = (hi >> 24) & 0xFF;
+    m_memory[MEMORY_RNG_STATE + 4] = lo & 0xFF;
+    m_memory[MEMORY_RNG_STATE + 5] = (lo >> 8) & 0xFF;
+    m_memory[MEMORY_RNG_STATE + 6] = (lo >> 16) & 0xFF;
+    m_memory[MEMORY_RNG_STATE + 7] = (lo >> 24) & 0xFF;
 }
 
 void p8_reset(void)
 {
     memset(m_memory + MEMORY_DRAWSTATE, 0, MEMORY_DRAWSTATE_SIZE);
     memset(m_memory + MEMORY_HARDWARESTATE, 0, MEMORY_HARDWARESTATE_SIZE);
+    m_memory[MEMORY_SCREEN_PHYS] = 0x60;
+    m_memory[MEMORY_MAP_START] = 0x20;
+    m_memory[MEMORY_MAP_WIDTH] = 128;
     pencolor_set(6);
     reset_color();
     clip_set(0, 0, P8_WIDTH, P8_HEIGHT);
+    p8_seed_rng_state(time(NULL));
 }
 
 static void __attribute__ ((noreturn)) p8_abort()
@@ -733,6 +820,16 @@ void __attribute__ ((noreturn)) p8_restart()
 {
     restart = true;
     p8_abort();
+}
+
+void p8_set_skip_compat_check(bool skip)
+{
+    skip_compat_check = skip;
+}
+
+void p8_set_skip_main_loop_if_no_callbacks(bool skip)
+{
+    skip_main_loop_if_no_callbacks = skip;
 }
 
 bool p8_open_cartdata(const char *id)
@@ -791,13 +888,13 @@ static void p8_show_compatibility_error(int severity)
     clear_screen(0);
     draw_rect(10, 51, 118, 78, 7, 0);
     if (severity <= COMPAT_SOME) {
-        draw_text("this cart may not be", 24, 55, 7);
-        draw_text("fully compatible with", 22, 62, 7);
-        draw_text(PROGNAME, 64-strlen(PROGNAME)*GLYPH_WIDTH/2, 69, 7);
+        draw_simple_text("this cart may not be", 24, 55, 7);
+        draw_simple_text("fully compatible with", 22, 62, 7);
+        draw_simple_text(PROGNAME, 64-strlen(PROGNAME)*GLYPH_WIDTH/2, 69, 7);
     } else {
-        draw_text("this cart is not", 32, 55, 7);
-        draw_text("compatible with", 34, 62, 7);
-        draw_text(PROGNAME, 64-strlen(PROGNAME)*GLYPH_WIDTH/2, 69, 7);
+        draw_simple_text("this cart is not", 32, 55, 7);
+        draw_simple_text("compatible with", 34, 62, 7);
+        draw_simple_text(PROGNAME, 64-strlen(PROGNAME)*GLYPH_WIDTH/2, 69, 7);
     }
     p8_flip();
     p8_update_input();

@@ -95,7 +95,6 @@ const char *p8_functions[] = {
     "run",
     "save",
     "select",
-    "serial",
     "setmetatable",
     "sfx",
     "sget",
@@ -425,7 +424,20 @@ bool is_unsupported_address(unsigned address) {
         address == MEMORY_TLINE_MASK_X ||
         address == MEMORY_TLINE_MASK_Y ||
         address == MEMORY_TLINE_OFFSET_X ||
-        address == MEMORY_TLINE_OFFSET_Y)
+        address == MEMORY_TLINE_OFFSET_Y ||
+        address == MEMORY_SCREEN_PHYS ||
+        address == MEMORY_SPRITE_PHYS ||
+        address == MEMORY_MAP_START ||
+        address == MEMORY_MAP_WIDTH ||
+        address == 0x5f30 /* unimplemented, but causes no compatibility issues */ ||
+        (address >= MEMORY_PALETTES && address < MEMORY_PALETTES + 32) ||
+        (address >= MEMORY_RNG_STATE && address < MEMORY_RNG_STATE + 8) ||
+        address == MEMORY_TEXT_ATTRS ||
+        address == MEMORY_TEXT_CHAR_SIZE ||
+        address == MEMORY_TEXT_CHAR_SIZE2 ||
+        address == MEMORY_TEXT_OFFSET ||
+        address == MEMORY_MISCFLAGS ||
+        (address >= MEMORY_BUTTON_STATE && address < MEMORY_BUTTON_STATE + 8))
         return false;
     return true;
 }
@@ -441,7 +453,13 @@ bool is_unsupported_stat(unsigned address) {
         address == STAT_MOUSE_Y  ||
         address == STAT_MOUSE_BUTTONS ||
         address == STAT_MOUSE_XREL ||
-        address == STAT_MOUSE_YREL)
+        address == STAT_MOUSE_YREL ||
+        (address >= 16 && address <= 26) ||
+        (address >= 46 && address <= 56) ||
+        address == STAT_PARAM ||
+        (address >= STAT_YEAR && address <= STAT_SECOND) ||
+        address == STAT_PCM_BUFFER_SIZE ||
+        address == STAT_PCM_APP_BUFFER)
         return false;
 
     return true;
