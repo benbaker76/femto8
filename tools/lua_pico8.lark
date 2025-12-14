@@ -1,0 +1,129 @@
+//
+// Copyright (c) 2019-2022 Sergey Bronnikov <estetus@gmail.com>
+// Copyright (c) 2025 Chris January
+//
+// Permission to use, copy, modify, and distribute this software for any
+// purpose with or without fee is hereby granted, provided that the above
+// copyright notice and this permission notice appear in all copies.
+//
+// THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
+// WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
+// MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
+// ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
+// WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
+// ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
+// OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+//
+
+// Source: Lua 5.1/5.2 Reference Manual
+// Extended for PICO-8 Lua and Lua 5.2
+
+start: chunk
+
+chunk: statement*
+
+?statement: stat ";"? | laststat ";"?
+
+block: statement*
+
+stat: "do" block "end"                                                             -> do_block
+    | "while" exp "do" block "end"                                                 -> while_loop
+    | "repeat" block "until" exp                                                   -> repeat_loop
+    | "if" exp ("then"|"do") block ("elseif" exp ("then"|"do") block)* ("else" block)? "end"   -> if_stat
+    | "for" NAME "=" exp "," exp ("," exp)? "do" block "end"                       -> for_num
+    | "for" namelist "in" explist "do" block "end"                                 -> for_in
+    | "function" funcname funcbody                                                 -> func_def
+    | "local" "function" NAME funcbody                                             -> local_func
+    | "local" namelist "=" explist                                                 -> local_assign_init
+    | "local" namelist                                                             -> local_assign
+    | "?" explist                                                                  -> print_shorthand
+    | "::" NAME "::"                                                               -> label
+    | "goto" NAME                                                                  -> goto_stat
+    | varlist "=" explist                                                          -> assignment
+    | suffixedexp COMPOUND_OP exp                                                  -> compound_assign
+    | suffixedexp                                                                  -> expr_stat
+
+COMPOUND_OP: "+=" | "-=" | "*=" | "/=" | "%=" | "^=" | "..="
+
+laststat: "return" explist?  -> return_stat
+        | "break"            -> break_stat
+
+funcname: NAME ("." NAME)* ":" NAME  -> funcname_method
+        | NAME ("." NAME)*           -> funcname_plain
+
+varlist: var ("," var)*
+
+var: NAME                     -> var_name
+   | suffixedexp "[" exp "]"  -> var_index
+   | suffixedexp "." NAME     -> var_attr
+
+// suffixedexp -> primaryexp { '.' NAME | '[' exp ']' | ':' NAME funcargs | funcargs }
+suffixedexp: NAME                           -> suffixed_name
+           | "(" exp ")"                    -> suffixed_paren
+           | suffixedexp "[" exp "]"        -> suffixed_index
+           | suffixedexp "." NAME           -> suffixed_attr
+           | suffixedexp args               -> suffixed_call
+           | suffixedexp ":" NAME args      -> suffixed_method
+
+namelist: NAME ("," NAME)*
+
+explist: exp ("," exp)*
+
+?exp: "nil"                 -> nil_exp
+    | "false"               -> false_exp
+    | "true"                -> true_exp
+    | number                -> number_exp
+    | string                -> string_exp
+    | "..."                 -> vararg_exp
+    | function              -> func_exp
+    | suffixedexp           -> prefix_exp
+    | tableconstructor      -> table_exp
+    | exp binop exp         -> binop_exp
+    | unop exp              -> unop_exp
+
+args: "(" explist? ")"      -> args_explist
+    | tableconstructor      -> args_table
+    | string                -> args_string
+
+function: "function" funcbody
+
+funcbody: "(" parlist? ")" block "end"
+
+parlist: NAME ("," NAME)* "," "..."     -> parlist_names_vararg
+       | NAME ("," NAME)*               -> parlist_names
+       | "..."                          -> parlist_vararg
+
+tableconstructor: "{" fieldlist? "}"
+
+fieldlist: field (fieldsep field)* fieldsep?
+
+field: "[" exp "]" "=" exp      -> field_index
+     | NAME "=" exp              -> field_named
+     | exp                       -> field_exp
+
+fieldsep: "," | ";"
+
+BINOP: "<=" | ">=" | "==" | "~=" | "!=" | "<<" | ">>" | "^^" | ".."
+     | "+" | "-" | "*" | "/" | "^" | "%" | "<" | ">" | "&" | "|" | "\\"
+     | "and" | "or"
+binop: BINOP
+
+UNOP: "#" | "~" | "not" | "-"
+unop: UNOP
+
+number: HEXNUMBER | BINNUMBER | NUMBER
+
+HEXNUMBER: /0[xX][0-9a-fA-F]+(\.[0-9a-fA-F]+)?/
+BINNUMBER: /0[bB][01]+/
+NUMBER: /\d+(\.\d+)?([eE][+-]?\d+)?|\.\d+([eE][+-]?\d+)?/
+
+string: SHORTSTRING | LONGSTRING
+
+SHORTSTRING: /"([^"\\]|\\.)*"/ | /'([^'\\]|\\.)*'/
+LONGSTRING: /\[\[.*?\]\]/s
+
+NAME.2: /(?!(and|break|do|else|elseif|end|false|for|function|goto|if|in|local|nil|not|or|repeat|return|then|true|until|while)\b)[a-zA-Z_\x7f-\xff\u0080-\U0010ffff][a-zA-Z0-9_\x7f-\xff\u0080-\U0010ffff]*/
+
+COMMENT: /--\[=*\[.*?\]=*\]/s | /--[^\n]*/
+%ignore COMMENT
+%ignore /[ \t\f\r\n]+/
