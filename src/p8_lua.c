@@ -1089,7 +1089,7 @@ int rnd(lua_State *L)
     else
     {
         uint32_t max_fixed = (lua_gettop(L) >= 1) ? lua_tonumber(L, 1).bits() : 0x10000;
-        uint32_t result_fixed = hi % max_fixed;
+        uint32_t result_fixed = (max_fixed == 0) ? 0 : (hi % max_fixed);
         lua_pushnumber(L, z8::fix32::frombits(result_fixed));
     }
 
