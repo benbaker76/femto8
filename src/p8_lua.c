@@ -1031,7 +1031,7 @@ int reload(lua_State *L)
     } else {
         src_mem = m_cart_memory;
     }
-    if (destaddr >= 0 && destaddr + len <= CART_MEMORY_SIZE && srcaddr >= 0 && srcaddr + len <= CART_MEMORY_SIZE)
+    if (destaddr >= 0 && destaddr + len <= 0x10000 && srcaddr >= 0 && srcaddr + len <= CART_MEMORY_SIZE)
         memcpy(m_memory + destaddr, src_mem + srcaddr, len);
     if (file_name != NULL)
         free(src_mem);
