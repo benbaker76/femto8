@@ -17,13 +17,7 @@
 #include "p8_emu.h"
 #include "p8_lua_helper.h"
 
-#ifdef NEXTP8
-#define DEFAULT_PATH "0:/nextp8/carts"
-#define FALLBACK_PATH "0:/"
-#else
-#define DEFAULT_PATH "carts"
-#define FALLBACK_PATH "."
-#endif
+#define FALLBACK_CARTS_PATH "."
 
 struct dir_entry {
     const char *file_name;
@@ -193,10 +187,10 @@ const char *browse_for_cart(void)
     p8_reset();
     if (setjmp(jmpbuf))
         return NULL;
-    if (access(DEFAULT_PATH, F_OK) == 0)
-        list_dir(DEFAULT_PATH);
+    if (access(DEFAULT_CARTS_PATH, F_OK) == 0)
+        list_dir(DEFAULT_CARTS_PATH);
     else
-        list_dir(FALLBACK_PATH);
+        list_dir(FALLBACK_CARTS_PATH);
     uint8_t buttons = 0;
     const char *cart_path = NULL;
     for (;;) {

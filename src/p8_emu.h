@@ -27,6 +27,10 @@
 #define CARTDATA_PATH "cdata"
 #endif
 
+#ifndef DEFAULT_CARTS_PATH
+#define DEFAULT_CARTS_PATH "carts"
+#endif
+
 // #define BOOL_NULL -1
 #define PI 3.14159265358f
 #define TWO_PI 6.28318530718f
