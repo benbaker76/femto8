@@ -16,6 +16,7 @@
 #include "lodepng.h"
 #include "p8_emu.h"
 #include "pico8.h"
+#include "p8_lua_helper.h"
 
 #define RAW_DATA_LENGTH 0x4300
 #define IMAGE_WIDTH 160
@@ -141,6 +142,31 @@ void parse_cart_file(const char *file_name, uint8_t *memory, const char **lua_sc
     }
 
     fclose(file);
+}
+
+static void convert_utf8_to_p8scii(uint8_t *buffer, size_t len)
+{
+    uint8_t *read_ptr = buffer;
+    uint8_t *write_ptr = buffer;
+    uint8_t *end_ptr = buffer + len;
+
+    while (read_ptr < end_ptr) {
+        if (*read_ptr >= 0x80) {
+            uint8_t symbol_length;
+            int p8_index = get_p8_symbol((const char *)read_ptr, end_ptr - read_ptr, &symbol_length);
+            
+            if (p8_index >= 0) {
+                *write_ptr++ = (uint8_t)p8_index;
+                read_ptr += symbol_length;
+            } else {
+                *write_ptr++ = *read_ptr++;
+            }
+        } else {
+            *write_ptr++ = *read_ptr++;
+        }
+    }
+
+    *write_ptr = '\0';
 }
 
 void hex_to_bytes(uint8_t *memory, char *str, int str_len, int *write_length)
@@ -379,6 +405,9 @@ void parse_p8_ram(const char *file_name, uint8_t *buffer, int size, uint8_t *mem
         memory[i] = NIBBLE_SWAP(memory[i]);
 
     buffer[lua_end] = '\0';
+
+    convert_utf8_to_p8scii(&buffer[lua_start], lua_end - lua_start);
+
     *lua_script = (const char *) &buffer[lua_start];
 }
 
