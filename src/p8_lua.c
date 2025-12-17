@@ -797,20 +797,55 @@ int sfx(lua_State *L)
 // *** Map ***
 // ****************************************************************
 
+static void map_get_visible_cells(int sx, int sy, int celw, int celh,
+                                   int *start_x, int *start_y, int *end_x, int *end_y)
+{
+    int cam_x, cam_y;
+    camera_get(&cam_x, &cam_y);
+
+    int clip_x0, clip_y0, clip_x1, clip_y1;
+    clip_get(&clip_x0, &clip_y0, &clip_x1, &clip_y1);
+
+    int screen_x0 = cam_x + clip_x0;
+    int screen_y0 = cam_y + clip_y0;
+    int screen_x1 = cam_x + clip_x1;
+    int screen_y1 = cam_y + clip_y1;
+
+    int visible_x0 = (screen_x0 - sx) / SPRITE_WIDTH;
+    int visible_y0 = (screen_y0 - sy) / SPRITE_HEIGHT;
+    int visible_x1 = (screen_x1 - sx + SPRITE_WIDTH - 1) / SPRITE_WIDTH;
+    int visible_y1 = (screen_y1 - sy + SPRITE_HEIGHT - 1) / SPRITE_HEIGHT;
+
+    *start_x = MAX(0, visible_x0);
+    *start_y = MAX(0, visible_y0);
+    *end_x = MIN(celw, visible_x1);
+    *end_y = MIN(celh, visible_y1);
+}
+
 // map(celx, cely, sx, sy, celw, celh, [layer])
 int map(lua_State *L)
 {
-    int celx = lua_tointeger(L, 1);
-    int cely = lua_tointeger(L, 2);
-    int sx = lua_tointeger(L, 3);
-    int sy = lua_tointeger(L, 4);
-    int celw = lua_gettop(L) >= 5 ? lua_tointeger(L, 5) : P8_WIDTH / SPRITE_WIDTH;
-    int celh = lua_gettop(L) >= 6 ? lua_tointeger(L, 6) : P8_HEIGHT / SPRITE_HEIGHT;
+    int default_celw = m_memory[MEMORY_MAP_WIDTH];
+    if (default_celw == 0)
+        default_celw = 128;
+    int map_start = m_memory[MEMORY_MAP_START];
+    int max_map_cells = (map_start >= 0x80) ? (0x10000 - (map_start << 8)) : 0x2000;
+    int default_celh = (default_celw > 0) ? (max_map_cells / default_celw) : 64;
+
+    int celx = lua_gettop(L) >= 1 ? lua_tointeger(L, 1) : 0;
+    int cely = lua_gettop(L) >= 2 ? lua_tointeger(L, 2) : 0;
+    int sx = lua_gettop(L) >= 3 ? lua_tointeger(L, 3) : 0;
+    int sy = lua_gettop(L) >= 4 ? lua_tointeger(L, 4) : 0;
+    int celw = lua_gettop(L) >= 5 ? lua_tointeger(L, 5) : default_celw;
+    int celh = lua_gettop(L) >= 6 ? lua_tointeger(L, 6) : default_celh;
     int layer = lua_gettop(L) >= 7 ? lua_tointeger(L, 7) : 0;
 
-    for (int y = 0; y < celh; y++)
+    int start_x, start_y, end_x, end_y;
+    map_get_visible_cells(sx, sy, celw, celh, &start_x, &start_y, &end_x, &end_y);
+
+    for (int y = start_y; y < end_y; y++)
     {
-        for (int x = 0; x < celw; x++)
+        for (int x = start_x; x < end_x; x++)
         {
             uint8_t index = map_get(celx + x, cely + y);
             uint8_t sprite_flags = m_memory[MEMORY_SPRITEFLAGS + index];
