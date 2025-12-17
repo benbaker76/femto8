@@ -219,7 +219,9 @@ extern uint8_t m_buttonsp[2];
 extern uint8_t m_button_first_repeat[2];
 extern unsigned m_button_down_time[2][6];
 
-extern jmp_buf jmpbuf;
+extern jmp_buf jmpbuf_restart;
+
+extern bool m_load_available;
 
 void p8_close_cartdata(void);
 void p8_delayed_flush_cartdata(void);
@@ -227,7 +229,8 @@ unsigned p8_elapsed_time(void);
 void p8_flip(void);
 void p8_flush_cartdata(void);
 int p8_init(void);
-int p8_init_file(const char *file_name);
+int p8_init_file_with_param(const char *file_name, const char *param);
+void __attribute__ ((noreturn)) p8_load_new(const char *filename, const char *param);
 void p8_set_skip_compat_check(bool skip);
 void p8_set_skip_main_loop_if_no_callbacks(bool skip);
 int p8_init_ram(uint8_t *buffer, int size);
@@ -235,7 +238,10 @@ bool p8_open_cartdata(const char *id);
 int p8_shutdown(void);
 void p8_render();
 void p8_reset(void);
-void __attribute__ ((noreturn)) p8_restart(void);
+char *p8_resolve_relative_path(const char *filename);
+void __attribute__ ((noreturn)) p8_restart();
+
+extern const char *m_param_string;
 void p8_seed_rng_state(uint32_t seed);
 int p8_shutdown(void);
 void p8_update_input(void);

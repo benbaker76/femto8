@@ -28,6 +28,7 @@ extern "C" {
 #include <stdlib.h>
 #include <time.h>
 #include <string.h>
+#include <unistd.h>
 #include "p8_lua_helper.h"
 #include "p8_print_helper.h"
 #include "pico_font.h"
@@ -1231,6 +1232,55 @@ int __attribute__ ((noreturn)) run(lua_State *L)
     p8_restart();
 }
 
+// load(filename [,breadcrumb] [,param])
+int _load(lua_State *L)
+{
+    if (!m_load_available)
+        luaL_error(L, "load() requires a filesystem");
+
+    int nargs = lua_gettop(L);
+
+    if (nargs < 1)
+        luaL_error(L, "load() requires at least 1 argument");
+
+    const char *filename = lua_tostring(L, 1);
+    if (!filename)
+        luaL_error(L, "load() filename must be a string");
+
+    char *full_filename = NULL;
+    if (strstr(filename, ".p8") == NULL && strstr(filename, ".P8") == NULL) {
+        size_t len = strlen(filename) + 4;
+        full_filename = (char *)malloc(len);
+        if (!full_filename)
+            luaL_error(L, "out of memory");
+        snprintf(full_filename, len, "%s.p8", filename);
+        filename = full_filename;
+    }
+
+    char *resolved_path = p8_resolve_relative_path(filename);
+
+    if (full_filename)
+        free(full_filename);
+
+    if (!resolved_path)
+        luaL_error(L, "out of memory");
+
+    if (access(resolved_path, F_OK) != 0) {
+        fprintf(stderr, "could not access %s\n", filename);
+        free(resolved_path);
+        return 0;
+    }
+
+    const char *param = NULL;
+    if (nargs >= 3)
+        param = lua_tostring(L, 3);
+
+    p8_load_new(resolved_path, param);
+    free(resolved_path);
+
+    return 0;
+}
+
 // ****************************************************************
 // *** Debugging ***
 // ****************************************************************
@@ -1300,7 +1350,7 @@ case STAT_MEM_USAGE: {
         break;
     }
     case STAT_PARAM:
-        lua_pushstring(L, "");
+        lua_pushstring(L, m_param_string);
         break;
     case STAT_FRAMERATE:
         lua_pushinteger(L, m_actual_fps);
@@ -1585,6 +1635,7 @@ void lua_register_functions(lua_State *L)
     // ****************************************************************
     lua_register(L, "menuitem", menuitem);
     // lua_register(L, "extcmd", extcmd);
+    lua_register(L, "load", _load);
     lua_register(L, "reset", reset);
     lua_register(L, "run", run);
     lua_register(L, "serial", serial);
@@ -1610,7 +1661,7 @@ void lua_load_api()
 
     luaL_openlibs(L);
 
-    printf("Loading extended PICO-8 Api\r\n");
+    lua_register_functions(L);
 
     if (luaL_dostring(L, lua_api_string))
         lua_print_error("Error loading extended PICO-8 Api");
@@ -1648,8 +1699,6 @@ void lua_init_script(const char *script)
 {
     if (!L)
         L = luaL_newstate();
-
-    lua_register_functions(L);
 
     if (luaL_loadstring(L, script))
         lua_print_error("luaL_loadString");

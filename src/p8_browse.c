@@ -185,7 +185,7 @@ const char *browse_for_cart(void)
 {
     p8_init();
     p8_reset();
-    if (setjmp(jmpbuf))
+    if (setjmp(jmpbuf_restart))
         return NULL;
     if (access(DEFAULT_CARTS_PATH, F_OK) == 0)
         list_dir(DEFAULT_CARTS_PATH);
