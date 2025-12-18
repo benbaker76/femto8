@@ -736,7 +736,7 @@ int btn(lua_State *L)
     // mask
     else
     {
-        lua_pushinteger(L, m_buttons[0] | (m_buttons[1] << 8));
+        lua_pushinteger(L, (m_buttons[0] & 0xff) | ((m_buttons[1] & 0xff) << 8));
     }
 
     return 1;
@@ -754,12 +754,15 @@ int btnp(lua_State *L)
         if (p >= PLAYER_COUNT)
             p = 0;
 
-        lua_pushboolean(L, is_button_set(p, i, true));
+        if (i < BUTTON_COUNT)
+            lua_pushboolean(L, is_button_set(p, i, true));
+        else
+            lua_pushboolean(L, false);
     }
     // mask
     else
     {
-        lua_pushinteger(L, m_buttonsp[0] | (m_buttons[1] << 8));
+        lua_pushinteger(L, (m_buttonsp[0] & 0xff) | ((m_buttons[1] & 0xff) << 8));
     }
 
     return 1;

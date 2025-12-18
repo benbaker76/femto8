@@ -35,6 +35,7 @@
 #include "p8_lua.h"
 #include "p8_lua_helper.h"
 #include "p8_parser.h"
+#include "p8_pause_menu.h"
 
 #ifdef SDL
 #include "SDL.h"
@@ -62,7 +63,6 @@ static inline int color_index(uint8_t c)
     return ((c >> 3) & 0x10) | (c & 0xf);
 }
 
-static void p8_abort();
 static int p8_init_lcd(void);
 static void p8_main_loop();
 static void p8_show_compatibility_error(int severity);
@@ -105,10 +105,10 @@ uint8_t m_mouse_buttons;
 uint8_t m_keypress;
 bool m_scancodes[NUM_SCANCODES];
 
-uint8_t m_buttons[2];
-uint8_t m_buttonsp[2];
-uint8_t m_button_first_repeat[2];
-unsigned m_button_down_time[2][6];
+uint16_t m_buttons[PLAYER_COUNT];
+uint16_t m_buttonsp[PLAYER_COUNT];
+uint16_t m_button_first_repeat[PLAYER_COUNT];
+unsigned m_button_down_time[PLAYER_COUNT][BUTTON_INTERNAL_COUNT];
 
 static bool m_prev_pointer_lock;
 
@@ -193,6 +193,12 @@ int p8_init()
 
     p8_init_lcd();
 
+    for (unsigned p=0;p<2;++p) {
+        for (unsigned i=0;i<BUTTON_INTERNAL_COUNT;++i) {
+            m_button_down_time[p][i] = UINT_MAX;
+        }
+    }
+
     m_initialized = 1;
 
     return 0;
@@ -236,6 +242,8 @@ static void p8_init_common(const char *file_name, const char *lua_script)
     restart = false;
 
     memcpy(m_memory, m_cart_memory, CART_MEMORY_SIZE);
+
+    m_frames = 0;
 
     p8_reset();
     clear_screen(0);
@@ -617,22 +625,32 @@ void p8_update_input()
             switch (event.key.keysym.sym)
             {
             case INPUT_LEFT:
-                update_buttons(0, 0, true);
+                update_buttons(0, BUTTON_LEFT, true);
                 break;
             case INPUT_RIGHT:
-                update_buttons(0, 1, true);
+                update_buttons(0, BUTTON_RIGHT, true);
                 break;
             case INPUT_UP:
-                update_buttons(0, 2, true);
+                update_buttons(0, BUTTON_UP, true);
                 break;
             case INPUT_DOWN:
-                update_buttons(0, 3, true);
+                update_buttons(0, BUTTON_DOWN, true);
                 break;
             case INPUT_ACTION1:
-                update_buttons(0, 4, true);
+                update_buttons(0, BUTTON_ACTION1, true);
                 break;
             case INPUT_ACTION2:
-                update_buttons(0, 5, true);
+                update_buttons(0, BUTTON_ACTION2, true);
+                break;
+            case INPUT_ESCAPE:
+                update_buttons(0, BUTTON_ESCAPE, true);
+                break;
+            case SDLK_RETURN:
+                update_buttons(0, BUTTON_PAUSE, true);
+                update_buttons(0, BUTTON_RETURN, true);
+                break;
+            case SDLK_p:
+                update_buttons(0, BUTTON_PAUSE, true);
                 break;
             default:
                 break;
@@ -645,22 +663,32 @@ void p8_update_input()
             switch (event.key.keysym.sym)
             {
             case INPUT_LEFT:
-                update_buttons(0, 0, false);
+                update_buttons(0, BUTTON_LEFT, false);
                 break;
             case INPUT_RIGHT:
-                update_buttons(0, 1, false);
+                update_buttons(0, BUTTON_RIGHT, false);
                 break;
             case INPUT_UP:
-                update_buttons(0, 2, false);
+                update_buttons(0, BUTTON_UP, false);
                 break;
             case INPUT_DOWN:
-                update_buttons(0, 3, false);
+                update_buttons(0, BUTTON_DOWN, false);
                 break;
             case INPUT_ACTION1:
-                update_buttons(0, 4, false);
+                update_buttons(0, BUTTON_ACTION1, false);
                 break;
             case INPUT_ACTION2:
-                update_buttons(0, 5, false);
+                update_buttons(0, BUTTON_ACTION2, false);
+                break;
+            case SDLK_RETURN:
+                update_buttons(0, BUTTON_PAUSE, false);
+                update_buttons(0, BUTTON_RETURN, false);
+                break;
+            case SDLK_p:
+                update_buttons(0, BUTTON_PAUSE, false);
+                break;
+            case INPUT_ESCAPE:
+                update_buttons(0, BUTTON_ESCAPE, false);
                 break;
             default:
                 break;
@@ -676,40 +704,40 @@ void p8_update_input()
         }
     }
 #else
-    uint8_t mask = 0;
+    uint16_t mask = 0;
 
     if (gamepad & AXIS_L_LEFT)
-        mask |= BUTTON_LEFT;
+        mask |= BUTTON_MASK_LEFT;
     if (gamepad & AXIS_L_RIGHT)
-        mask |= BUTTON_RIGHT;
+        mask |= BUTTON_MASK_RIGHT;
     if (gamepad & AXIS_L_UP)
-        mask |= BUTTON_UP;
+        mask |= BUTTON_MASK_UP;
     if (gamepad & AXIS_L_DOWN)
-        mask |= BUTTON_DOWN;
+        mask |= BUTTON_MASK_DOWN;
     if (gamepad & AXIS_L_TRIGGER)
-        mask |= BUTTON_ACTION1;
+        mask |= BUTTON_MASK_ACTION1;
     if (gamepad & AXIS_R_LEFT)
-        mask |= BUTTON_LEFT;
+        mask |= BUTTON_MASK_LEFT;
     if (gamepad & AXIS_R_RIGHT)
-        mask |= BUTTON_RIGHT;
+        mask |= BUTTON_MASK_RIGHT;
     if (gamepad & AXIS_R_UP)
-        mask |= BUTTON_UP;
+        mask |= BUTTON_MASK_UP;
     if (gamepad & AXIS_R_DOWN)
-        mask |= BUTTON_DOWN;
+        mask |= BUTTON_MASK_DOWN;
     if (gamepad & AXIS_R_TRIGGER)
-        mask |= BUTTON_ACTION2;
+        mask |= BUTTON_MASK_ACTION2;
     if (gamepad & DPAD_UP)
-        mask |= BUTTON_UP;
+        mask |= BUTTON_MASK_UP;
     if (gamepad & DPAD_RIGHT)
-        mask |= BUTTON_RIGHT;
+        mask |= BUTTON_MASK_RIGHT;
     if (gamepad & DPAD_DOWN)
-        mask |= BUTTON_DOWN;
+        mask |= BUTTON_MASK_DOWN;
     if (gamepad & DPAD_LEFT)
-        mask |= BUTTON_LEFT;
+        mask |= BUTTON_MASK_LEFT;
     if (gamepad & BUTTON_1)
-        mask |= BUTTON_ACTION1;
+        mask |= BUTTON_MASK_ACTION1;
     if (gamepad & BUTTON_2)
-        mask |= BUTTON_ACTION2;
+        mask |= BUTTON_MASK_ACTION2;
 
     m_buttons[0] = mask;
 
@@ -724,20 +752,24 @@ void p8_update_input()
     uint8_t interval = m_memory[MEMORY_AUTO_REPEAT_INTERVAL];
     if (interval == 0)
         interval = DEFAULT_AUTO_REPEAT_INTERVAL;
-    for (unsigned p=0;p<2;++p) {
+    for (unsigned p=0;p<PLAYER_COUNT;++p) {
         m_buttonsp[p] = 0;
-        for (unsigned i=0;i<6;++i) {
+        for (unsigned i=0;i<BUTTON_INTERNAL_COUNT;++i) {
             if (m_buttons[p] & (1 << i)) {
-                if (!m_button_down_time[p][i]) {
+                if (m_button_down_time[p][i] == UINT_MAX) {
+                    // ignore buttons pressed at startup
+                } else if (!m_button_down_time[p][i]) {
                     m_button_down_time[p][i] = m_frames;
                     m_buttonsp[p] |= 1 << i;
-                } else if (delay != 255 && !(m_button_first_repeat[p] & (1 << i)) && m_frames - m_button_down_time[p][i] >= delay) {
-                    m_button_down_time[p][i] = m_frames;
-                    m_button_first_repeat[p] |= 1 << i;
-                    m_buttonsp[p] |= 1 << i;
-                } else if ((m_button_first_repeat[p] & (1 << i)) && m_frames - m_button_down_time[p][i] >= interval) {
-                    m_button_down_time[p][i] = m_frames;
-                    m_buttonsp[p] |= 1 << i;
+                } else if (i < BUTTON_REPEAT_COUNT) {
+                    if (delay != 255 && !(m_button_first_repeat[p] & (1 << i)) && m_frames - m_button_down_time[p][i] >= delay) {
+                        m_button_down_time[p][i] = m_frames;
+                        m_button_first_repeat[p] |= 1 << i;
+                        m_buttonsp[p] |= 1 << i;
+                    } else if ((m_button_first_repeat[p] & (1 << i)) && m_frames - m_button_down_time[p][i] >= interval) {
+                        m_button_down_time[p][i] = m_frames;
+                        m_buttonsp[p] |= 1 << i;
+                    }
                 }
             } else  {
                 if (m_button_down_time[p][i]) {
@@ -747,13 +779,22 @@ void p8_update_input()
             }
         }
     }
+
+    if ((m_buttons[0] & BUTTON_MASK_ESCAPE) != 0)
+        p8_abort();
+
+    if (!m_pause_menu_showing) {
+        if ((m_buttonsp[0] & BUTTON_MASK_PAUSE) != 0) {
+            p8_show_pause_menu();
+        }
+    }
 }
 
 static void p8_post_flip(void)
 {
-    m_frames++;
     p8_flush_cartdata();
     p8_update_input();
+    m_frames++;
 }
 
 void p8_flip()
@@ -829,9 +870,30 @@ void p8_pump_events(void)
     SDL_PumpEvents();
 
     SDL_Event event;
-    if (SDL_PeepEvents(&event, 1, SDL_GETEVENT, SDL_QUITMASK) > 0) {
-        if (event.type == SDL_QUIT)
+    if (SDL_PeepEvents(&event, 1, SDL_PEEKEVENT, SDL_QUITMASK | SDL_KEYDOWNMASK) > 0) {
+        if (event.type == SDL_QUIT) {
+            SDL_PeepEvents(&event, 1, SDL_GETEVENT, SDL_QUITMASK);
             p8_abort();
+        } else if (event.type == SDL_KEYDOWN) {
+            if ((event.key.keysym.sym == SDLK_RETURN || event.key.keysym.sym == SDLK_p) &&
+                (m_buttons[0] & BUTTON_MASK_PAUSE) == 0) {
+                SDL_PeepEvents(&event, 1, SDL_GETEVENT, SDL_KEYDOWNMASK);
+                if (event.key.keysym.sym == SDLK_RETURN) {
+                    m_buttons[0] |= BUTTON_MASK_PAUSE | BUTTON_MASK_RETURN;
+                    m_button_down_time[0][BUTTON_PAUSE] = UINT_MAX;
+                    m_button_down_time[0][BUTTON_RETURN] = UINT_MAX;
+                } else {
+                    m_buttons[0] |= BUTTON_MASK_PAUSE;
+                    m_button_down_time[0][BUTTON_PAUSE] = UINT_MAX;
+                }
+                p8_show_pause_menu();
+            } else if (event.key.keysym.sym == INPUT_ESCAPE && (m_buttons[0] & BUTTON_MASK_ESCAPE) == 0) {
+                SDL_PeepEvents(&event, 1, SDL_GETEVENT, SDL_KEYDOWNMASK);
+                m_buttons[0] |= BUTTON_MASK_ESCAPE;
+                m_button_down_time[0][BUTTON_ESCAPE] = UINT_MAX;
+                p8_abort();
+            }
+        }
     }
 #endif
 }
@@ -880,7 +942,7 @@ void p8_reset(void)
     p8_seed_rng_state(time(NULL));
 }
 
-static void __attribute__ ((noreturn)) p8_abort()
+void __attribute__ ((noreturn)) p8_abort()
 {
     longjmp(jmpbuf_restart, 1);
 }
@@ -994,6 +1056,7 @@ void p8_close_cartdata(void)
 
 static void p8_show_compatibility_error(int severity)
 {
+    m_pause_menu_showing = true;
     p8_reset();
     clear_screen(0);
     draw_rect(10, 51, 118, 78, 7, 0);
@@ -1007,9 +1070,10 @@ static void p8_show_compatibility_error(int severity)
         draw_simple_text(PROGNAME, 64-strlen(PROGNAME)*GLYPH_WIDTH/2, 69, 7);
     }
     p8_flip();
-    p8_update_input();
-    while ((m_buttons[0] & BUTTON_ACTION1)) { p8_update_input(); }
-    while (!(m_buttons[0] & BUTTON_ACTION1)) { p8_update_input(); }
-    while ((m_buttons[0] & BUTTON_ACTION1)) { p8_update_input(); }
+    do {
+        p8_update_input();
+    } while ((m_buttons[0] & (BUTTON_MASK_ACTION1 | BUTTON_MASK_RETURN)) == 0);
     clear_screen(0);
+    m_button_down_time[0][BUTTON_ACTION1] = UINT_MAX;
+    m_pause_menu_showing = false;
 }

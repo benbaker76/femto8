@@ -606,60 +606,16 @@ static inline void reset_color()
 
 static inline bool is_button_set(int index, int button, bool btnp)
 {
-    uint8_t mask = (btnp?m_buttonsp:m_buttons)[index];
-
-    if (mask == 0)
-        return false;
-
-    switch (button)
-    {
-    case 0:
-        return (mask & BUTTON_LEFT);
-    case 1:
-        return (mask & BUTTON_RIGHT);
-    case 2:
-        return (mask & BUTTON_UP);
-    case 3:
-        return (mask & BUTTON_DOWN);
-    case 4:
-        return (mask & BUTTON_ACTION1);
-    case 5:
-        return (mask & BUTTON_ACTION2);
-    }
-
-    return false;
+    uint16_t mask = (btnp?m_buttonsp:m_buttons)[index];
+    return mask & (1 << button);
 }
 
 static inline void update_buttons(int index, int button, bool state)
 {
-    uint8_t mask = m_buttons[index];
-
-    switch (button)
-    {
-    case 0:
-        mask = state ? mask | BUTTON_LEFT : mask & ~BUTTON_LEFT;
-        break;
-    case 1:
-        mask = state ? mask | BUTTON_RIGHT : mask & ~BUTTON_RIGHT;
-        break;
-    case 2:
-        mask = state ? mask | BUTTON_UP : mask & ~BUTTON_UP;
-        break;
-    case 3:
-        mask = state ? mask | BUTTON_DOWN : mask & ~BUTTON_DOWN;
-        break;
-    case 4:
-        mask = state ? mask | BUTTON_ACTION1 : mask & ~BUTTON_ACTION1;
-        break;
-    case 5:
-        mask = state ? mask | BUTTON_ACTION2 : mask & ~BUTTON_ACTION2;
-        break;
-    default:
-        break;
-    }
-
+    uint16_t mask = m_buttons[index];
+    mask = state ? mask | (1 << button) : mask & ~(1 << button);
     m_buttons[index] = mask;
-    m_memory[MEMORY_BUTTON_STATE + index] = mask;
+    m_memory[MEMORY_BUTTON_STATE + index] = mask & 0xff;
 }
 
 static inline void scroll(void)

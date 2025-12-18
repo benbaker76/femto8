@@ -125,6 +125,8 @@
 #define SPRITE_WIDTH 8
 #define SPRITE_HEIGHT 8
 #define BUTTON_COUNT 6
+#define BUTTON_REPEAT_COUNT 5
+#define BUTTON_INTERNAL_COUNT 10
 #define PLAYER_COUNT 2
 
 #define STAT_MEM_USAGE 0
@@ -178,12 +180,28 @@ enum
 
 enum
 {
-    BUTTON_LEFT = 0x0001,
-    BUTTON_RIGHT = 0x0002,
-    BUTTON_UP = 0x0004,
-    BUTTON_DOWN = 0x0008,
-    BUTTON_ACTION1 = 0x0010,
-    BUTTON_ACTION2 = 0x0020,
+    BUTTON_LEFT = 0,
+    BUTTON_RIGHT = 1,
+    BUTTON_UP = 2,
+    BUTTON_DOWN = 3,
+    BUTTON_ACTION1 = 4,
+    BUTTON_ACTION2 = 5,
+    BUTTON_PAUSE = 6,
+    BUTTON_ESCAPE = 8,
+    BUTTON_RETURN = 9,
+};
+
+enum
+{
+    BUTTON_MASK_LEFT    = (1 << BUTTON_LEFT),
+    BUTTON_MASK_RIGHT   = (1 << BUTTON_RIGHT),
+    BUTTON_MASK_UP      = (1 << BUTTON_UP),
+    BUTTON_MASK_DOWN    = (1 << BUTTON_DOWN),
+    BUTTON_MASK_ACTION1 = (1 << BUTTON_ACTION1),
+    BUTTON_MASK_ACTION2 = (1 << BUTTON_ACTION2),
+    BUTTON_MASK_PAUSE   = (1 << BUTTON_PAUSE),
+    BUTTON_MASK_ESCAPE  = (1 << BUTTON_ESCAPE),
+    BUTTON_MASK_RETURN  = (1 << BUTTON_RETURN),
 };
 
 enum {
@@ -214,10 +232,10 @@ extern uint8_t m_mouse_buttons;
 extern uint8_t m_keypress;
 extern bool m_scancodes[NUM_SCANCODES];
 
-extern uint8_t m_buttons[2];
-extern uint8_t m_buttonsp[2];
-extern uint8_t m_button_first_repeat[2];
-extern unsigned m_button_down_time[2][6];
+extern uint16_t m_buttons[PLAYER_COUNT];
+extern uint16_t m_buttonsp[PLAYER_COUNT];
+extern uint16_t m_button_first_repeat[PLAYER_COUNT];
+extern unsigned m_button_down_time[PLAYER_COUNT][BUTTON_INTERNAL_COUNT];
 
 extern jmp_buf jmpbuf_restart;
 
@@ -240,6 +258,7 @@ int p8_shutdown(void);
 void p8_render();
 void p8_reset(void);
 char *p8_resolve_relative_path(const char *filename);
+void __attribute__ ((noreturn)) p8_abort();
 void __attribute__ ((noreturn)) p8_restart();
 
 extern const char *m_param_string;

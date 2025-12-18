@@ -21,6 +21,7 @@
 #include "p8_browse.h"
 #include "p8_emu.h"
 #include "p8_lua_helper.h"
+#include "p8_pause_menu.h"
 
 #define FALLBACK_CARTS_PATH "."
 
@@ -189,26 +190,29 @@ static void display_dir_contents()
 const char *browse_for_cart(void)
 {
     p8_init();
+    m_pause_menu_showing = true;
     p8_reset();
-    if (setjmp(jmpbuf_restart))
+    if (setjmp(jmpbuf_restart)) {
+        m_pause_menu_showing = false;
         return NULL;
+    }
     if (access(DEFAULT_CARTS_PATH, F_OK) == 0)
         list_dir(DEFAULT_CARTS_PATH);
     else
         list_dir(FALLBACK_CARTS_PATH);
-    uint8_t buttons = 0;
+    uint16_t buttons = 0;
     const char *cart_path = NULL;
     for (;;) {
         buttons = m_buttonsp[0];
-        if (buttons & BUTTON_UP) {
+        if (buttons & BUTTON_MASK_UP) {
             if (current_item > 0)
                 current_item--;
         }
-        if (buttons & BUTTON_DOWN) {
+        if (buttons & BUTTON_MASK_DOWN) {
             if (current_item < nitems - 1)
                 current_item++;
         }
-        if (buttons & BUTTON_ACTION1) {
+        if (buttons & (BUTTON_MASK_ACTION1 | BUTTON_MASK_RETURN)) {
             struct dir_entry *dir_entry = &dir_contents[current_item];
             const char *full_path = make_full_path(pwd, dir_entry->file_name);
             if (dir_entry->is_dir) {
@@ -225,10 +229,7 @@ const char *browse_for_cart(void)
     clear_dir_contents();
     free(dir_contents);
     free((char *)pwd);
-    // Wait for button release before loading.
-    // Otherwise the cart may respond to the button press.
-    do {
-        p8_update_input();
-    } while (m_buttons[0] & BUTTON_ACTION1);
+    m_button_down_time[0][BUTTON_ACTION1] = UINT_MAX;
+    m_pause_menu_showing = false;
     return cart_path;
 }
