@@ -235,6 +235,7 @@ void p8_set_skip_compat_check(bool skip);
 void p8_set_skip_main_loop_if_no_callbacks(bool skip);
 int p8_init_ram(uint8_t *buffer, int size);
 bool p8_open_cartdata(const char *id);
+void p8_pump_events(void);
 int p8_shutdown(void);
 void p8_render();
 void p8_reset(void);

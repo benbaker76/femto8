@@ -823,6 +823,19 @@ unsigned p8_elapsed_time(void)
     return elapsed_time;
 }
 
+void p8_pump_events(void)
+{
+#ifdef SDL
+    SDL_PumpEvents();
+
+    SDL_Event event;
+    if (SDL_PeepEvents(&event, 1, SDL_GETEVENT, SDL_QUITMASK) > 0) {
+        if (event.type == SDL_QUIT)
+            p8_abort();
+    }
+#endif
+}
+
 void p8_seed_rng_state(uint32_t seed)
 {
     uint32_t hi, lo;
