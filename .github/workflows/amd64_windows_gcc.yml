@@ -1,0 +1,58 @@
+name: amd64_windows_gcc
+
+on: [push]
+
+permissions:
+  contents: write
+
+jobs:
+  amd64_windows_gcc:
+    runs-on: windows-latest
+    timeout-minutes: 5
+    defaults:
+      run:
+        shell: msys2 {0}
+    steps:
+      - uses: actions/checkout@v3
+      - uses: msys2/setup-msys2@v2
+        with:
+          msystem: UCRT64
+          update: true
+          install: >-
+            mingw-w64-ucrt-x86_64-gcc
+            mingw-w64-ucrt-x86_64-make
+            mingw-w64-ucrt-x86_64-SDL
+      - name: Sanity check toolchain
+        run: |
+          which gcc
+          gcc -v
+      - run: mingw32-make
+      - name: Get version
+        id: version
+        run: |
+          output=$(build-windows/femto8.exe --version)
+          echo "result=$output" >> "$GITHUB_OUTPUT"
+      - name: Copy runtime DLLs
+        run: |
+          cp /ucrt64/bin/SDL.dll build-windows/
+          cp /ucrt64/bin/libwinpthread-1.dll build-windows/
+          # Often also required for MinGW-built exes:
+          cp /ucrt64/bin/libgcc_s_seh-1.dll build-windows/ || true
+          cp /ucrt64/bin/libstdc++-6.dll build-windows/ || true
+      - name: Compress Files
+        uses: vimtor/action-zip@v1
+        with:
+          files: README.md LICENSE build-windows/femto8.exe build-windows/SDL.dll build-windows/libwinpthread-1.dll
+          dest: build-windows/femto8_Windows_amd64.zip
+      - name: Upload to Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: Artifacts
+          path: build-windows/femto8_Windows_amd64.zip
+      - name: Upload to Release
+        uses: svenstaro/upload-release-action@v2
+        with:
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          file: build-windows/femto8_Windows_amd64.zip
+          tag: ${{ steps.version.outputs.result }}
+          overwrite: true

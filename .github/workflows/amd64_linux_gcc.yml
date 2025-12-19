@@ -1,0 +1,44 @@
+name: amd64_linux_gcc
+
+on: [push]
+
+permissions:
+  contents: write
+
+jobs:
+
+  amd64_linux_gcc:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+    - uses: actions/checkout@v3
+    - run: make
+    - name: Get version
+      id: version
+      run: |
+        output=$(build-linux/femto8 --version)
+        echo "::set-output name=result::$output"
+    - name: Copy README.md
+      run: cp README.md build
+    - name: Compress Files
+      uses: a7ul/tar-action@v1.1.0
+      with:
+        command: c
+        cwd: build
+        files: |
+          README.md
+          LICENSE
+          femto8
+        outPath: build-linux/femto8_Linux_amd64.tar.gz
+    - name: Upload to Artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: Artifacts
+        path: build-linux/femto8_Linux_amd64.tar.gz
+    - name: Upload to Release
+      uses: svenstaro/upload-release-action@v2
+      with:
+        repo_token: ${{ secrets.GITHUB_TOKEN }}
+        file: build-linux/femto8_Linux_amd64.tar.gz
+        tag: ${{ steps.version.outputs.result }}
+        overwrite: true
