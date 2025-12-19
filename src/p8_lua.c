@@ -16,7 +16,12 @@ extern "C" {
 #include <windows.h>
 #include <psapi.h>    // GetProcessMemoryInfo
 #elif defined(__GLIBC__)
-#include <malloc.h>   // mallinfo / mallinfo2
+#if defined(__APPLE__)
+  #include <stdlib.h>
+  #include <malloc/malloc.h>
+#else
+  #include <malloc.h> // mallinfo / mallinfo2
+#endif
 #else
 #include <unistd.h>   // sysconf
 #include <stdio.h>    // fopen/fscanf

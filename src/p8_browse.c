@@ -5,7 +5,12 @@
 #include <sys/types.h>
 #include <dirent.h>
 #include <errno.h>
-#include <malloc.h>
+#if defined(__APPLE__)
+  #include <stdlib.h>
+  #include <malloc/malloc.h>
+#else
+  #include <malloc.h>
+#endif
 #include <stdbool.h>
 #include <string.h>
 #include <stdio.h>
