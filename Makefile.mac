@@ -7,7 +7,7 @@ ifeq ($(strip $(SDL_CFLAGS)),)
   $(error SDL development files not found. On GitHub macOS runners: brew install pkg-config sdl12-compat)
 endif
 
-DEFINES += -DLUA_USE_POSIX -DLUA_USE_DLOPEN
+DEFINES += -DLUA_USE_POSIX -DLUA_USE_DLOPEN -Dmain=SDL_main
 fpic := -fPIC
 
 # Keep your existing framework list (safe even if SDL_LIBS also supplies some frameworks)
