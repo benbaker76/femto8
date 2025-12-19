@@ -39,13 +39,9 @@ jobs:
       - name: Get version
         id: version
         run: |
-          set -e
-          raw="$(./build-windows/femto8.exe --version 2>/dev/null | tr -d '\r' | head -n 1 || true)"
-          # If you output a clean tag already, keep it; otherwise fallback.
-          if [ -z "$raw" ]; then
-            raw="build-${GITHUB_SHA:0:7}"
-          fi
-          echo "result=$raw" >> "$GITHUB_OUTPUT"
+          set -euo pipefail
+          output="$(./build-windows/femto8.exe --version 2>&1 | tr -d '\r')"
+          echo "result=$output" >> "$GITHUB_OUTPUT"
 
       - name: Compress Files
         uses: vimtor/action-zip@v1
