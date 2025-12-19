@@ -12,6 +12,8 @@ jobs:
     timeout-minutes: 5
     steps:
     - uses: actions/checkout@v3
+      with:
+        submodules: recursive
     - run: make
     - name: Get version
       id: version

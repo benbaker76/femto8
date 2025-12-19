@@ -14,6 +14,8 @@ jobs:
         shell: msys2 {0}
     steps:
       - uses: actions/checkout@v3
+        with:
+          submodules: recursive
       - uses: msys2/setup-msys2@v2
         with:
           msystem: UCRT64
