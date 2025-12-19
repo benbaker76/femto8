@@ -6,7 +6,6 @@ permissions:
   contents: write
 
 jobs:
-
   amd64_linux_gcc:
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -19,7 +18,7 @@ jobs:
       id: version
       run: |
         output=$(build-linux/femto8 --version)
-        echo "::set-output name=result::$output"
+        echo "result=$output" >> "$GITHUB_OUTPUT"
     - name: Copy README.md
       run: cp README.md build
     - name: Compress Files
