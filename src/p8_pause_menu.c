@@ -52,6 +52,11 @@ void p8_show_pause_menu(void)
         return;
     m_pause_menu_showing = true;
 
+    m_overlay_enabled = true;
+    m_overlay_transparent_color = 0;
+
+    memset(m_overlay_memory, 0, MEMORY_SCREEN_SIZE);
+
     int current_item = 0;
     draw_pause_menu(current_item);
     p8_flip();
@@ -72,7 +77,9 @@ void p8_show_pause_menu(void)
         p8_flip();
     }
 
+    m_overlay_enabled = false;
     m_pause_menu_showing = false;
+    p8_flip();
 
     switch (current_item) {
         case 0: // Continue

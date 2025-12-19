@@ -80,7 +80,7 @@
 #define MEMORY_SCREEN 0x6000
 #define MEMORY_SCREEN_SIZE 0x2000
 
-#define MEMORY_SIZE 1024 * 64
+#define MEMORY_SIZE (1024 * 64)
 #define CART_MEMORY_SIZE 0x4300
 
 #define MEMORY_PALETTES 0x5f00
@@ -225,6 +225,10 @@ extern p8_clock_t m_start_time;
 extern unsigned char *m_memory;
 extern unsigned char *m_cart_memory;
 extern char *m_font;
+
+extern uint8_t *m_overlay_memory;
+extern bool m_overlay_enabled;
+extern uint8_t m_overlay_transparent_color;
 
 extern int16_t m_mouse_x, m_mouse_y;
 extern int16_t m_mouse_xrel, m_mouse_yrel;
