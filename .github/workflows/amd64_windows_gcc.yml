@@ -14,6 +14,8 @@ jobs:
         shell: msys2 {0}
     steps:
       - uses: actions/checkout@v3
+        with:
+          submodules: recursive
 
       - uses: msys2/setup-msys2@v2
         with:
@@ -22,15 +24,16 @@ jobs:
           install: >-
             mingw-w64-ucrt-x86_64-gcc
             mingw-w64-ucrt-x86_64-make
+            mingw-w64-ucrt-x86_64-pkgconf
             mingw-w64-ucrt-x86_64-SDL
 
-      - name: Sanity check toolchain
+      - name: Sanity check SDL flags
         run: |
           which gcc
           gcc -v
-          which sdl-config
-          sdl-config --cflags
-          sdl-config --libs
+          which pkg-config
+          pkg-config --cflags sdl
+          pkg-config --libs sdl
 
       - run: mingw32-make
 

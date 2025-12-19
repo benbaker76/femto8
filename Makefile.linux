@@ -1,5 +1,14 @@
-INCFLAGS += -ISDL-1.2/include
-LDFLAGS += -LSDL-1.2/build/.libs
-LIBS += -Wl,-Bstatic -lSDL -lSDLmain -Wl,-Bdynamic -lpthread
+# SDL 1.2 (Option A): use system-installed SDL dev package via pkg-config (preferred)
+# Fallback to sdl-config if pkg-config is unavailable.
+SDL_CFLAGS := $(shell pkg-config --cflags sdl 2>/dev/null || sdl-config --cflags 2>/dev/null)
+SDL_LIBS   := $(shell pkg-config --libs   sdl 2>/dev/null || sdl-config --libs   2>/dev/null)
+
+ifeq ($(strip $(SDL_CFLAGS)),)
+  $(error SDL development files not found. Install libsdl1.2-dev and pkg-config (or ensure sdl-config is available).)
+endif
+
 DEFINES += -DLUA_USE_POSIX
 fpic := -fPIC
+
+# SDL_LIBS typically already includes -lpthread on Linux, but keeping -lpthread is harmless.
+LIBS += $(SDL_LIBS) -lpthread

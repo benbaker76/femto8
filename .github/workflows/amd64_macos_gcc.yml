@@ -13,14 +13,23 @@ jobs:
     - uses: actions/checkout@v3
       with:
         submodules: recursive
+
+    - name: Install deps
+      run: |
+        brew update
+        brew install pkg-config sdl12-compat
+
     - run: make
+
     - name: Get version
       id: version
       run: |
         output=$(build-mac/femto8 --version)
         echo "result=$output" >> "$GITHUB_OUTPUT"
+
     - name: Copy README.md
       run: cp README.md build
+
     - name: Compress Files
       uses: a7ul/tar-action@v1.1.0
       with:
@@ -31,11 +40,13 @@ jobs:
           LICENSE
           femto8
         outPath: build-mac/femto8_Darwin_amd64.tar.gz
+
     - name: Upload to Artifacts
       uses: actions/upload-artifact@v4
       with:
         name: Artifacts
         path: build-mac/femto8_Darwin_amd64.tar.gz
+
     - name: Upload to Release
       uses: svenstaro/upload-release-action@v2
       with:

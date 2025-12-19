@@ -1,5 +1,21 @@
-INCFLAGS += -ISDL-1.2/include
-LDFLAGS  += -LSDL-1.2/build/.libs
-LIBS += -Wl,-ObjC -lSDLmain -lSDL -Wl,-framework,Cocoa -Wl,-framework,IOKit -Wl,-framework,CoreVideo -Wl,-framework,OpenGL -Wl,-framework,AudioToolbox -Wl,-framework,AudioUnit -Wl,-framework,CoreAudio
+# SDL 1.2 (Option A): use system-installed SDL dev package via pkg-config (preferred)
+# Fallback to sdl-config if pkg-config is unavailable.
+SDL_CFLAGS := $(shell pkg-config --cflags sdl 2>/dev/null || sdl-config --cflags 2>/dev/null)
+SDL_LIBS   := $(shell pkg-config --libs   sdl 2>/dev/null || sdl-config --libs   2>/dev/null)
+
+ifeq ($(strip $(SDL_CFLAGS)),)
+  $(error SDL development files not found. On GitHub macOS runners: brew install pkg-config sdl12-compat)
+endif
+
 DEFINES += -DLUA_USE_POSIX -DLUA_USE_DLOPEN
 fpic := -fPIC
+
+# Keep your existing framework list (safe even if SDL_LIBS also supplies some frameworks)
+LIBS += $(SDL_LIBS) -Wl,-ObjC \
+  -Wl,-framework,Cocoa \
+  -Wl,-framework,IOKit \
+  -Wl,-framework,CoreVideo \
+  -Wl,-framework,OpenGL \
+  -Wl,-framework,AudioToolbox \
+  -Wl,-framework,AudioUnit \
+  -Wl,-framework,CoreAudio
