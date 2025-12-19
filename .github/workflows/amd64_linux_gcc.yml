@@ -24,17 +24,18 @@ jobs:
     - name: Get version
       id: version
       run: |
-        output=$(build-linux/femto8 --version)
+        output=$(build-linux/femto8 --version | head -n 1)
+        if [ -z "$output" ]; then output="build-${GITHUB_SHA:0:7}"; fi
         echo "result=$output" >> "$GITHUB_OUTPUT"
 
-    - name: Copy README.md
-      run: cp README.md build
+    - name: Stage README/LICENSE into build dir
+      run: cp README.md LICENSE build-linux/
 
     - name: Compress Files
       uses: a7ul/tar-action@v1.1.0
       with:
         command: c
-        cwd: build
+        cwd: build-linux
         files: |
           README.md
           LICENSE

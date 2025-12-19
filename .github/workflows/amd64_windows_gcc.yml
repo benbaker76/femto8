@@ -27,21 +27,7 @@ jobs:
             mingw-w64-ucrt-x86_64-pkgconf
             mingw-w64-ucrt-x86_64-SDL
 
-      - name: Sanity check SDL flags
-        run: |
-          which gcc
-          gcc -v
-          which pkg-config
-          pkg-config --cflags sdl
-          pkg-config --libs sdl
-
       - run: mingw32-make
-
-      - name: Get version
-        id: version
-        run: |
-          output=$(build-windows/femto8.exe --version)
-          echo "result=$output" >> "$GITHUB_OUTPUT"
 
       - name: Copy runtime DLLs
         run: |
@@ -49,6 +35,17 @@ jobs:
           cp /ucrt64/bin/libwinpthread-1.dll build-windows/
           cp /ucrt64/bin/libgcc_s_seh-1.dll build-windows/ || true
           cp /ucrt64/bin/libstdc++-6.dll build-windows/ || true
+
+      - name: Get version
+        id: version
+        run: |
+          set -e
+          raw="$(./build-windows/femto8.exe --version 2>/dev/null | tr -d '\r' | head -n 1 || true)"
+          # If you output a clean tag already, keep it; otherwise fallback.
+          if [ -z "$raw" ]; then
+            raw="build-${GITHUB_SHA:0:7}"
+          fi
+          echo "result=$raw" >> "$GITHUB_OUTPUT"
 
       - name: Compress Files
         uses: vimtor/action-zip@v1
