@@ -28,6 +28,7 @@ extern "C" {
 #include <stdlib.h>
 #include <time.h>
 #include <string.h>
+#include <unistd.h>
 #include "p8_lua_helper.h"
 #include "p8_print_helper.h"
 #include "pico_font.h"
@@ -343,7 +344,9 @@ int pal(lua_State *L)
         {
             int c0 = lua_tointeger(L, -2);
             int c1 = lua_tointeger(L, -1);
-            color_set(p, c0, c1);
+            uint8_t old_val = color_get(p, c0);
+            uint8_t new_val = (c1 & 0x8f) | (old_val & 0x10);
+            color_set(p, c0, new_val);
             lua_pop(L, 1);
         }
         lua_pop(L, 1);
@@ -354,7 +357,9 @@ int pal(lua_State *L)
         int c1 = lua_tointeger(L, 2);
         int p = lua_gettop(L) == 3 ? lua_tointeger(L, 3) : PALTYPE_DRAW;
 
-        color_set(p, c0, c1);
+        uint8_t old_val = color_get(p, c0);
+        uint8_t new_val = (c1 & 0x8f) | (old_val & 0x10);
+        color_set(p, c0, new_val);
     }
 
     return 0;
@@ -792,20 +797,55 @@ int sfx(lua_State *L)
 // *** Map ***
 // ****************************************************************
 
+static void map_get_visible_cells(int sx, int sy, int celw, int celh,
+                                   int *start_x, int *start_y, int *end_x, int *end_y)
+{
+    int cam_x, cam_y;
+    camera_get(&cam_x, &cam_y);
+
+    int clip_x0, clip_y0, clip_x1, clip_y1;
+    clip_get(&clip_x0, &clip_y0, &clip_x1, &clip_y1);
+
+    int screen_x0 = cam_x + clip_x0;
+    int screen_y0 = cam_y + clip_y0;
+    int screen_x1 = cam_x + clip_x1;
+    int screen_y1 = cam_y + clip_y1;
+
+    int visible_x0 = (screen_x0 - sx) / SPRITE_WIDTH;
+    int visible_y0 = (screen_y0 - sy) / SPRITE_HEIGHT;
+    int visible_x1 = (screen_x1 - sx + SPRITE_WIDTH - 1) / SPRITE_WIDTH;
+    int visible_y1 = (screen_y1 - sy + SPRITE_HEIGHT - 1) / SPRITE_HEIGHT;
+
+    *start_x = MAX(0, visible_x0);
+    *start_y = MAX(0, visible_y0);
+    *end_x = MIN(celw, visible_x1);
+    *end_y = MIN(celh, visible_y1);
+}
+
 // map(celx, cely, sx, sy, celw, celh, [layer])
 int map(lua_State *L)
 {
-    int celx = lua_tointeger(L, 1);
-    int cely = lua_tointeger(L, 2);
-    int sx = lua_tointeger(L, 3);
-    int sy = lua_tointeger(L, 4);
-    int celw = lua_gettop(L) >= 5 ? lua_tointeger(L, 5) : P8_WIDTH / SPRITE_WIDTH;
-    int celh = lua_gettop(L) >= 6 ? lua_tointeger(L, 6) : P8_HEIGHT / SPRITE_HEIGHT;
+    int default_celw = m_memory[MEMORY_MAP_WIDTH];
+    if (default_celw == 0)
+        default_celw = 128;
+    int map_start = m_memory[MEMORY_MAP_START];
+    int max_map_cells = (map_start >= 0x80) ? (0x10000 - (map_start << 8)) : 0x2000;
+    int default_celh = (default_celw > 0) ? (max_map_cells / default_celw) : 64;
+
+    int celx = lua_gettop(L) >= 1 ? lua_tointeger(L, 1) : 0;
+    int cely = lua_gettop(L) >= 2 ? lua_tointeger(L, 2) : 0;
+    int sx = lua_gettop(L) >= 3 ? lua_tointeger(L, 3) : 0;
+    int sy = lua_gettop(L) >= 4 ? lua_tointeger(L, 4) : 0;
+    int celw = lua_gettop(L) >= 5 ? lua_tointeger(L, 5) : default_celw;
+    int celh = lua_gettop(L) >= 6 ? lua_tointeger(L, 6) : default_celh;
     int layer = lua_gettop(L) >= 7 ? lua_tointeger(L, 7) : 0;
 
-    for (int y = 0; y < celh; y++)
+    int start_x, start_y, end_x, end_y;
+    map_get_visible_cells(sx, sy, celw, celh, &start_x, &start_y, &end_x, &end_y);
+
+    for (int y = start_y; y < end_y; y++)
     {
-        for (int x = 0; x < celw; x++)
+        for (int x = start_x; x < end_x; x++)
         {
             uint8_t index = map_get(celx + x, cely + y);
             uint8_t sprite_flags = m_memory[MEMORY_SPRITEFLAGS + index];
@@ -913,6 +953,8 @@ int peek(lua_State *L)
 
     addr = addr_remap(addr);
 
+    luaL_checkstack(L, n, "too many values");
+
     for (unsigned i=0;i<n;++i)
         lua_pushinteger(L, m_memory[addr+i]);
 
@@ -927,6 +969,8 @@ int peek2(lua_State *L)
 
     addr = addr_remap(addr);
 
+    luaL_checkstack(L, n, "too many values");
+
     for (unsigned i=0;i<n;++i)
         lua_pushinteger(L, (m_memory[addr + i*2 + 1] << 8) | (m_memory[addr + i*2]));
 
@@ -940,6 +984,8 @@ int peek4(lua_State *L)
     unsigned n = lua_gettop(L) >= 2 ? lua_tounsigned(L, 2) : 1;
 
     addr = addr_remap(addr);
+
+    luaL_checkstack(L, n, "too many values");
 
     for (unsigned i=0;i<n;++i)
         lua_pushnumber(L, z8::fix32::frombits((m_memory[addr + i*4 + 3] << 24) | (m_memory[addr + i*4 + 2] << 16) | (m_memory[addr + i*4 + 1] << 8) | m_memory[addr + i*4]));
@@ -1020,12 +1066,12 @@ int reload(lua_State *L)
     if (file_name != NULL) {
         uint8_t *buffer = NULL;
         src_mem = (uint8_t *)malloc(CART_MEMORY_SIZE);
-        parse_cart_file(file_name, src_mem, NULL, &buffer);
+        parse_cart_file(file_name, src_mem, NULL, &buffer, NULL);
         free(buffer);
     } else {
         src_mem = m_cart_memory;
     }
-    if (destaddr >= 0 && destaddr + len <= CART_MEMORY_SIZE && srcaddr >= 0 && srcaddr + len <= CART_MEMORY_SIZE)
+    if (destaddr >= 0 && destaddr + len <= 0x10000 && srcaddr >= 0 && srcaddr + len <= CART_MEMORY_SIZE)
         memcpy(m_memory + destaddr, src_mem + srcaddr, len);
     if (file_name != NULL)
         free(src_mem);
@@ -1083,7 +1129,7 @@ int rnd(lua_State *L)
     else
     {
         uint32_t max_fixed = (lua_gettop(L) >= 1) ? lua_tonumber(L, 1).bits() : 0x10000;
-        uint32_t result_fixed = hi % max_fixed;
+        uint32_t result_fixed = (max_fixed == 0) ? 0 : (hi % max_fixed);
         lua_pushnumber(L, z8::fix32::frombits(result_fixed));
     }
 
@@ -1161,19 +1207,26 @@ int sub(lua_State *L)
     const char *str = lua_tostring(L, 1);
     int start = lua_tointeger(L, 2);
     int end = lua_to_or_default(L, integer, 3, -1);
+    int str_len = strlen(str);
+
+    if (start < 1) start = 1;
+    if (start > str_len + 1) start = str_len + 1;
 
     if (end == -1)
     {
-        strncpy(m_str_buffer, str + start - 1, strlen(str) - start + 1);
-
-        lua_pushstring(L, m_str_buffer);
-
+        int len = str_len - start + 1;
+        if (len < 0) len = 0;
+        lua_pushlstring(L, str + start - 1, len);
         return 1;
     }
 
-    strncpy(m_str_buffer, str + start - 1, end - start + 1);
+    if (end < 0) end = str_len + end + 1;
+    if (end < 1) end = 1;
+    if (end > str_len) end = str_len;
 
-    lua_pushstring(L, m_str_buffer);
+    int len = end - start + 1;
+    if (len < 0) len = 0;
+    lua_pushlstring(L, str + start - 1, len);
 
     return 1;
 }
@@ -1214,6 +1267,55 @@ int __attribute__ ((noreturn)) run(lua_State *L)
     p8_restart();
 }
 
+// load(filename [,breadcrumb] [,param])
+int _load(lua_State *L)
+{
+    if (!m_load_available)
+        luaL_error(L, "load() requires a filesystem");
+
+    int nargs = lua_gettop(L);
+
+    if (nargs < 1)
+        luaL_error(L, "load() requires at least 1 argument");
+
+    const char *filename = lua_tostring(L, 1);
+    if (!filename)
+        luaL_error(L, "load() filename must be a string");
+
+    char *full_filename = NULL;
+    if (strstr(filename, ".p8") == NULL && strstr(filename, ".P8") == NULL) {
+        size_t len = strlen(filename) + 4;
+        full_filename = (char *)malloc(len);
+        if (!full_filename)
+            luaL_error(L, "out of memory");
+        snprintf(full_filename, len, "%s.p8", filename);
+        filename = full_filename;
+    }
+
+    char *resolved_path = p8_resolve_relative_path(filename);
+
+    if (full_filename)
+        free(full_filename);
+
+    if (!resolved_path)
+        luaL_error(L, "out of memory");
+
+    if (access(resolved_path, F_OK) != 0) {
+        fprintf(stderr, "could not access %s\n", filename);
+        free(resolved_path);
+        return 0;
+    }
+
+    const char *param = NULL;
+    if (nargs >= 3)
+        param = lua_tostring(L, 3);
+
+    p8_load_new(resolved_path, param);
+    free(resolved_path);
+
+    return 0;
+}
+
 // ****************************************************************
 // *** Debugging ***
 // ****************************************************************
@@ -1225,6 +1327,7 @@ int printh(lua_State *L)
     const char *str = lua_tostring(L, 1);
 
     printf("%s\r\n", str);
+    fflush(stdout);
 
     return 0;
 }
@@ -1282,7 +1385,7 @@ case STAT_MEM_USAGE: {
         break;
     }
     case STAT_PARAM:
-        lua_pushstring(L, "");
+        lua_pushstring(L, m_param_string);
         break;
     case STAT_FRAMERATE:
         lua_pushinteger(L, m_actual_fps);
@@ -1567,6 +1670,7 @@ void lua_register_functions(lua_State *L)
     // ****************************************************************
     lua_register(L, "menuitem", menuitem);
     // lua_register(L, "extcmd", extcmd);
+    lua_register(L, "load", _load);
     lua_register(L, "reset", reset);
     lua_register(L, "run", run);
     lua_register(L, "serial", serial);
@@ -1581,6 +1685,37 @@ void lua_register_functions(lua_State *L)
     // ****************************************************************
     // *** Misc ***
     // ****************************************************************
+
+    // ****************************************************************
+    // *** P8SCII glyphs ***
+    // ****************************************************************
+    lua_pushnumber(L, 0); lua_setglobal(L, "\x8b");  // 139 ⬅️ left
+    lua_pushnumber(L, 1); lua_setglobal(L, "\x91");  // 145 ➡️ right
+    lua_pushnumber(L, 2); lua_setglobal(L, "\x94");  // 148 ⬆️ up
+    lua_pushnumber(L, 3); lua_setglobal(L, "\x83");  // 131 ⬇️ down
+    lua_pushnumber(L, 4); lua_setglobal(L, "\x8e");  // 142 🅾️ O/Z
+    lua_pushnumber(L, 5); lua_setglobal(L, "\x97");  // 151 ❎ X
+
+    lua_pushnumber(L, z8::fix32::frombits(0x00000000)); lua_setglobal(L, "\x80");  // 128 █
+    lua_pushnumber(L, z8::fix32::frombits(0x5a5a8000)); lua_setglobal(L, "\x81");  // 129 ▒
+    lua_pushnumber(L, z8::fix32::frombits(0x511f8000)); lua_setglobal(L, "\x82");  // 130 🐱
+    lua_pushnumber(L, z8::fix32::frombits(0x7d7d8000)); lua_setglobal(L, "\x84");  // 132 ░
+    lua_pushnumber(L, z8::fix32::frombits(0xb81d8000)); lua_setglobal(L, "\x85");  // 133 ✽
+    lua_pushnumber(L, z8::fix32::frombits(0xf99f8000)); lua_setglobal(L, "\x86");  // 134 ●
+    lua_pushnumber(L, z8::fix32::frombits(0x51bf8000)); lua_setglobal(L, "\x87");  // 135 ♥
+    lua_pushnumber(L, z8::fix32::frombits(0xb5bf8000)); lua_setglobal(L, "\x88");  // 136 ☉
+    lua_pushnumber(L, z8::fix32::frombits(0x999f8000)); lua_setglobal(L, "\x89");  // 137 웃
+    lua_pushnumber(L, z8::fix32::frombits(0xb11f8000)); lua_setglobal(L, "\x8a");  // 138 ⌂
+    lua_pushnumber(L, z8::fix32::frombits(0xa0e08000)); lua_setglobal(L, "\x8c");  // 140 😐
+    lua_pushnumber(L, z8::fix32::frombits(0x9b3f8000)); lua_setglobal(L, "\x8d");  // 141 ♪
+    lua_pushnumber(L, z8::fix32::frombits(0xb1bf8000)); lua_setglobal(L, "\x8f");  // 143 ◆
+    lua_pushnumber(L, z8::fix32::frombits(0xf5ff8000)); lua_setglobal(L, "\x90");  // 144 …
+    lua_pushnumber(L, z8::fix32::frombits(0xb15f8000)); lua_setglobal(L, "\x92");  // 146 ★
+    lua_pushnumber(L, z8::fix32::frombits(0x1b1f8000)); lua_setglobal(L, "\x93");  // 147 ⧗
+    lua_pushnumber(L, z8::fix32::frombits(0xf5bf8000)); lua_setglobal(L, "\x95");  // 149 ˇ
+    lua_pushnumber(L, z8::fix32::frombits(0x7adf8000)); lua_setglobal(L, "\x96");  // 150 ∧
+    lua_pushnumber(L, z8::fix32::frombits(0x0f0f8000)); lua_setglobal(L, "\x98");  // 152 ▤
+    lua_pushnumber(L, z8::fix32::frombits(0x55558000)); lua_setglobal(L, "\x99");  // 153 ▥
 }
 
 void lua_load_api()
@@ -1592,7 +1727,7 @@ void lua_load_api()
 
     luaL_openlibs(L);
 
-    printf("Loading extended PICO-8 Api\r\n");
+    lua_register_functions(L);
 
     if (luaL_dostring(L, lua_api_string))
         lua_print_error("Error loading extended PICO-8 Api");
@@ -1630,8 +1765,6 @@ void lua_init_script(const char *script)
 {
     if (!L)
         L = luaL_newstate();
-
-    lua_register_functions(L);
 
     if (luaL_loadstring(L, script))
         lua_print_error("luaL_loadString");

@@ -253,6 +253,23 @@ static int luaB_ipairs (lua_State *L) {
 }
 
 
+static int luaB_inext (lua_State *L) {
+  int i;
+  luaL_checktype(L, 1, LUA_TTABLE);
+
+  if (lua_isnoneornil(L, 2)) {
+    i = 0;
+  } else {
+    i = luaL_checkint(L, 2);
+  }
+
+  lua_settop(L, 1);
+  lua_pushinteger(L, i);
+
+  return ipairsaux(L);
+}
+
+
 static int load_aux (lua_State *L, int status, int envidx) {
   if (status == LUA_OK) {
     if (envidx != 0) {  /* 'env' parameter? */
@@ -431,6 +448,7 @@ static const luaL_Reg base_funcs[] = {
   {"dofile", luaB_dofile},
   {"error", luaB_error},
   {"getmetatable", luaB_getmetatable},
+  {"inext", luaB_inext},
   {"ipairs", luaB_ipairs},
   {"loadfile", luaB_loadfile},
   {"load", luaB_load},

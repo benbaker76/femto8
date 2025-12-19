@@ -76,10 +76,20 @@ unsigned m_frames = 0;
 
 p8_clock_t m_start_time;
 
-jmp_buf jmpbuf;
+jmp_buf jmpbuf_restart;
 static bool restart;
+
+static jmp_buf jmpbuf_load;
+bool m_load_available = false;
+static bool load_requested = false;
+static char *load_filename = NULL;
+static char *load_param = NULL;
+char *current_cart_dir = NULL;
+
 static bool skip_compat_check = false;
 static bool skip_main_loop_if_no_callbacks = false;
+
+const char *m_param_string = "";
 
 #ifdef SDL
 SDL_Surface *m_screen = NULL;
@@ -211,10 +221,11 @@ static void p8_init_common(const char *file_name, const char *lua_script)
         exit(1);
     }
 
-    lua_load_api();
+    if (setjmp(jmpbuf_restart)) {
+        if (!restart)
+            return;
+    }
 
-    if (setjmp(jmpbuf) && !restart)
-        return;
     if (!restart && !skip_compat_check) {
         int ret = check_compatibility(file_name, lua_script);
         if (ret != COMPAT_OK)
@@ -241,15 +252,58 @@ static void p8_init_common(const char *file_name, const char *lua_script)
         p8_main_loop();
 }
 
-int p8_init_file(const char *file_name)
+int p8_init_file_with_param(const char *file_name, const char *param)
 {
     if (!m_initialized)
         p8_init();
 
+    m_param_string = param ? param : "";
+    m_load_available = true;
+
     const char *lua_script = NULL;
     uint8_t *file_buffer = NULL;
 
-    parse_cart_file(file_name, m_cart_memory, &lua_script, &file_buffer);
+    if (setjmp(jmpbuf_load)) {
+        load_requested = false;
+
+#ifdef OS_FREERTOS
+        rh_free(file_buffer);
+#else
+        free(file_buffer);
+#endif
+
+        lua_shutdown_api();
+
+        m_param_string = load_param ? load_param : "";
+        file_name = load_filename;
+    }
+
+    if (current_cart_dir) {
+#ifdef OS_FREERTOS
+        rh_free(current_cart_dir);
+#else
+        free(current_cart_dir);
+#endif
+    }
+    
+    const char *last_slash = strrchr(file_name, '/');
+    if (last_slash) {
+        size_t dir_len = last_slash - file_name;
+#ifdef OS_FREERTOS
+        current_cart_dir = rh_malloc(dir_len + 1);
+#else
+        current_cart_dir = malloc(dir_len + 1);
+#endif
+        memcpy(current_cart_dir, file_name, dir_len);
+        current_cart_dir[dir_len] = '\0';
+    } else {
+        current_cart_dir = strdup(".");
+    }
+
+    lua_load_api();
+
+    printf("Loading %s\n", file_name);
+    parse_cart_file(file_name, m_cart_memory, &lua_script, &file_buffer, NULL);
 
     p8_init_common(file_name, lua_script);
 
@@ -266,6 +320,8 @@ int p8_init_ram(uint8_t *buffer, int size)
 {
     if (!m_initialized)
         p8_init();
+
+    lua_load_api();
 
     const char *lua_script = NULL;
     uint8_t *decompression_buffer = NULL;
@@ -813,13 +869,54 @@ void p8_reset(void)
 
 static void __attribute__ ((noreturn)) p8_abort()
 {
-    longjmp(jmpbuf, 1);
+    longjmp(jmpbuf_restart, 1);
 }
 
 void __attribute__ ((noreturn)) p8_restart()
 {
     restart = true;
     p8_abort();
+}
+
+char *p8_resolve_relative_path(const char *filename)
+{
+    if (filename[0] == '/' || filename[1] == ':')
+        return strdup(filename);
+
+    if (!current_cart_dir)
+        return strdup(filename);
+
+    size_t len = strlen(current_cart_dir) + strlen(filename) + 2;
+    char *resolved_path = malloc(len);
+    if (resolved_path)
+        snprintf(resolved_path, len, "%s/%s", current_cart_dir, filename);
+    return resolved_path;
+}
+
+void __attribute__ ((noreturn)) p8_load_new(const char *filename, const char *param)
+{
+    assert(m_load_available);
+
+    if (load_filename) {
+#ifdef OS_FREERTOS
+        rh_free(load_filename);
+#else
+        free(load_filename);
+#endif
+    }
+    if (load_param) {
+#ifdef OS_FREERTOS
+        rh_free(load_param);
+#else
+        free(load_param);
+#endif
+    }
+
+    load_filename = strdup(filename);
+    load_param = param ? strdup(param) : NULL;
+    load_requested = true;
+
+    longjmp(jmpbuf_load, 1);
 }
 
 void p8_set_skip_compat_check(bool skip)
