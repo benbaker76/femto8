@@ -1685,6 +1685,37 @@ void lua_register_functions(lua_State *L)
     // ****************************************************************
     // *** Misc ***
     // ****************************************************************
+
+    // ****************************************************************
+    // *** P8SCII glyphs ***
+    // ****************************************************************
+    lua_pushnumber(L, 0); lua_setglobal(L, "\x8b");  // 139 ⬅️ left
+    lua_pushnumber(L, 1); lua_setglobal(L, "\x91");  // 145 ➡️ right
+    lua_pushnumber(L, 2); lua_setglobal(L, "\x94");  // 148 ⬆️ up
+    lua_pushnumber(L, 3); lua_setglobal(L, "\x83");  // 131 ⬇️ down
+    lua_pushnumber(L, 4); lua_setglobal(L, "\x8e");  // 142 🅾️ O/Z
+    lua_pushnumber(L, 5); lua_setglobal(L, "\x97");  // 151 ❎ X
+
+    lua_pushnumber(L, z8::fix32::frombits(0x00000000)); lua_setglobal(L, "\x80");  // 128 █
+    lua_pushnumber(L, z8::fix32::frombits(0x5a5a8000)); lua_setglobal(L, "\x81");  // 129 ▒
+    lua_pushnumber(L, z8::fix32::frombits(0x511f8000)); lua_setglobal(L, "\x82");  // 130 🐱
+    lua_pushnumber(L, z8::fix32::frombits(0x7d7d8000)); lua_setglobal(L, "\x84");  // 132 ░
+    lua_pushnumber(L, z8::fix32::frombits(0xb81d8000)); lua_setglobal(L, "\x85");  // 133 ✽
+    lua_pushnumber(L, z8::fix32::frombits(0xf99f8000)); lua_setglobal(L, "\x86");  // 134 ●
+    lua_pushnumber(L, z8::fix32::frombits(0x51bf8000)); lua_setglobal(L, "\x87");  // 135 ♥
+    lua_pushnumber(L, z8::fix32::frombits(0xb5bf8000)); lua_setglobal(L, "\x88");  // 136 ☉
+    lua_pushnumber(L, z8::fix32::frombits(0x999f8000)); lua_setglobal(L, "\x89");  // 137 웃
+    lua_pushnumber(L, z8::fix32::frombits(0xb11f8000)); lua_setglobal(L, "\x8a");  // 138 ⌂
+    lua_pushnumber(L, z8::fix32::frombits(0xa0e08000)); lua_setglobal(L, "\x8c");  // 140 😐
+    lua_pushnumber(L, z8::fix32::frombits(0x9b3f8000)); lua_setglobal(L, "\x8d");  // 141 ♪
+    lua_pushnumber(L, z8::fix32::frombits(0xb1bf8000)); lua_setglobal(L, "\x8f");  // 143 ◆
+    lua_pushnumber(L, z8::fix32::frombits(0xf5ff8000)); lua_setglobal(L, "\x90");  // 144 …
+    lua_pushnumber(L, z8::fix32::frombits(0xb15f8000)); lua_setglobal(L, "\x92");  // 146 ★
+    lua_pushnumber(L, z8::fix32::frombits(0x1b1f8000)); lua_setglobal(L, "\x93");  // 147 ⧗
+    lua_pushnumber(L, z8::fix32::frombits(0xf5bf8000)); lua_setglobal(L, "\x95");  // 149 ˇ
+    lua_pushnumber(L, z8::fix32::frombits(0x7adf8000)); lua_setglobal(L, "\x96");  // 150 ∧
+    lua_pushnumber(L, z8::fix32::frombits(0x0f0f8000)); lua_setglobal(L, "\x98");  // 152 ▤
+    lua_pushnumber(L, z8::fix32::frombits(0x55558000)); lua_setglobal(L, "\x99");  // 153 ▥
 }
 
 void lua_load_api()
