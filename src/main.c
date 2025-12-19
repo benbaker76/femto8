@@ -11,6 +11,8 @@
 #include "p8_parser.h"
 #include "p8_emu.h"
 
+#define VERSION "1.0.00"
+
 int main(int argc, char *argv[])
 {
     const char *file_name = NULL;
@@ -19,7 +21,10 @@ int main(int argc, char *argv[])
     bool skip_main_loop = false;
 
     for (int i = 1; i < argc; i++) {
-        if (strcmp(argv[i], "--skip-compat-check") == 0) {
+        if (strcmp(argv[i], "--version") == 0) {
+            printf("v%s\n", VERSION);
+            return 0;
+        } else if (strcmp(argv[i], "--skip-compat-check") == 0) {
             skip_compat = true;
         } else if (strcmp(argv[i], "-x") == 0) {
             skip_main_loop = true;
