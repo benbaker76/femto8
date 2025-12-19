@@ -1,14 +1,18 @@
-# SDL 1.2 (Option A): use system-installed SDL dev package via pkg-config (preferred)
+# SDL 1.2: use system-installed SDL dev package via pkg-config (preferred)
 # Fallback to sdl-config if pkg-config is unavailable.
-SDL_CFLAGS := $(shell pkg-config --cflags sdl 2>/dev/null || sdl-config --cflags 2>/dev/null)
-SDL_LIBS   := $(shell pkg-config --libs   sdl 2>/dev/null || sdl-config --libs   2>/dev/null)
+SDL_CFLAGS_RAW := $(shell pkg-config --cflags sdl 2>/dev/null || sdl-config --cflags 2>/dev/null)
+SDL_LIBS_RAW   := $(shell pkg-config --libs   sdl 2>/dev/null || sdl-config --libs   2>/dev/null)
 
-ifeq ($(strip $(SDL_CFLAGS)),)
+ifeq ($(strip $(SDL_CFLAGS_RAW)),)
   $(error SDL development files not found. In MSYS2 UCRT64 install mingw-w64-ucrt-x86_64-SDL and mingw-w64-ucrt-x86_64-pkgconf.)
 endif
 
-DEFINES += -DLUA_USE_WINDOWS -D_CRT_SECURE_NO_WARNINGS
-fpic := -fPIC
+DEFINES += -DLUA_USE_WINDOWS -D_CRT_SECURE_NO_WARNINGS -DNO_STDIO_REDIRECT
 
-# Keep your extra system libs; SDL_LIBS will provide -lmingw32/-lSDLmain/-lSDL as needed.
+SDL_CFLAGS := $(filter-out -Dmain=SDL_main,$(SDL_CFLAGS_RAW))
+
+SDL_LIBS := $(filter-out -lSDLmain -lmingw32 -mwindows,$(SDL_LIBS_RAW))
+
+LDFLAGS += -mconsole
+
 LIBS += $(SDL_LIBS) -lpsapi -lws2_32 -lwinmm
