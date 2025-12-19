@@ -345,7 +345,7 @@ int pal(lua_State *L)
             int c0 = lua_tointeger(L, -2);
             int c1 = lua_tointeger(L, -1);
             uint8_t old_val = color_get(p, c0);
-            uint8_t new_val = (c1 & 0x0F) | (old_val & 0x10);
+            uint8_t new_val = (c1 & 0x8f) | (old_val & 0x10);
             color_set(p, c0, new_val);
             lua_pop(L, 1);
         }
@@ -358,7 +358,7 @@ int pal(lua_State *L)
         int p = lua_gettop(L) == 3 ? lua_tointeger(L, 3) : PALTYPE_DRAW;
 
         uint8_t old_val = color_get(p, c0);
-        uint8_t new_val = (c1 & 0x0F) | (old_val & 0x10);
+        uint8_t new_val = (c1 & 0x8f) | (old_val & 0x10);
         color_set(p, c0, new_val);
     }
 
