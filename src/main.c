@@ -11,34 +11,10 @@
 #include "p8_parser.h"
 #include "p8_emu.h"
 
-#ifdef _WIN32
-#define WIN32_LEAN_AND_MEAN
-#include <windows.h>
-#include <stdio.h>
-
-static void attach_parent_console(void)
-{
-    // If launched from cmd/powershell/Actions, attach to that console.
-    if (AttachConsole(ATTACH_PARENT_PROCESS) || GetLastError() == ERROR_ACCESS_DENIED) {
-        FILE* f;
-        freopen_s(&f, "CONOUT$", "w", stdout);
-        freopen_s(&f, "CONOUT$", "w", stderr);
-        setvbuf(stdout, NULL, _IONBF, 0);
-        setvbuf(stderr, NULL, _IONBF, 0);
-    }
-    // If you *also* want a console when launched from Explorer, optionally:
-    // else if (GetEnvironmentVariableA("FEMTO8_ALLOC_CONSOLE", NULL, 0) > 0) { AllocConsole(); ... }
-}
-#endif
-
 #define VERSION "1.0.00"
 
 int main(int argc, char *argv[])
 {
-#ifdef _WIN32
-    attach_parent_console();
-#endif
-
     const char *file_name = NULL;
     const char *param_string = NULL;
     bool skip_compat = false;
