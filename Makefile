@@ -61,11 +61,11 @@ $(OBJECTS_C): $(BUILD_DIR)/%.o: src/%.c
 
 $(OBJECTS_CXX): $(BUILD_DIR)/%.o: src/%.cpp
 	$(CXX) $(CXXFLAGS) -c $< -o $@
-	$(CXX) -MM $(CFLAGS) -MT $@ -MF $(BUILD_DIR)/$*.d $<
+	$(CXX) -MM $(CXXFLAGS) -MT $@ -MF $(BUILD_DIR)/$*.d $<
 
 $(OBJECTS_LUA): $(BUILD_DIR)/%.o: src/%.c
 	$(CXX) $(CXXFLAGS) -c $< -o $@
-	$(CXX) -MM $(CFLAGS) -MT $@ -MF $(BUILD_DIR)/$*.d $<
+	$(CXX) -MM $(CXXFLAGS) -MT $@ -MF $(BUILD_DIR)/$*.d $<
 
 clean:
 	rm -f $(OBJECTS) $(OBJECTS:.o=.d) $(TARGET)

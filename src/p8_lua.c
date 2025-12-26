@@ -1360,9 +1360,14 @@ case STAT_MEM_USAGE: {
     }
 
 #elif defined(__GLIBC__)
-  #if defined(__GLIBC_PREREQ) && __GLIBC_PREREQ(2,33)
-    struct mallinfo2 mi = mallinfo2();
-    kb = (double)mi.uordblks / 1024.0;
+  #if defined(__GLIBC_PREREQ)
+    #if defined(__GLIBC_PREREQ) && __GLIBC_PREREQ(2,33)
+      struct mallinfo2 mi = mallinfo2();
+      kb = (double)mi.uordblks / 1024.0;
+    #else
+      struct mallinfo mi = mallinfo();
+      kb = (double)mi.uordblks / 1024.0;
+    #endif
   #else
     struct mallinfo mi = mallinfo();
     kb = (double)mi.uordblks / 1024.0;
