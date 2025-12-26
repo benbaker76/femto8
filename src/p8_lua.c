@@ -1294,8 +1294,10 @@ int _load(lua_State *L)
     if (strstr(filename, ".p8") == NULL && strstr(filename, ".P8") == NULL) {
         size_t len = strlen(filename) + 4;
         full_filename = (char *)malloc(len);
-        if (!full_filename)
+        if (!full_filename) {
             luaL_error(L, "out of memory");
+            return 0;
+        }
         snprintf(full_filename, len, "%s.p8", filename);
         filename = full_filename;
     }
