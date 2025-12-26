@@ -59,6 +59,8 @@ static inline int left_margin_get(void);
 
 static inline void clear_screen(int color)
 {
+    color = color_get(PALTYPE_DRAW, color);
+
     for (int y = 0; y < P8_HEIGHT; y++)
         for (int x = 0; x < P8_WIDTH; x++)
             gfx_set(x, y, MEMORY_SCREEN, MEMORY_SCREEN_SIZE, color);
@@ -268,52 +270,58 @@ static inline void draw_ovalfill(int x0, int y0, int x1, int y1, int col, int fi
 
 static inline void pixel_set(int x, int y, int c, int fillp, int draw_type)
 {
-    int cx, cy;
-    camera_get(&cx, &cy);
-    x -= cx;
-    y -= cy;
-    int x0, y0, x1, y1;
-    clip_get(&x0, &y0, &x1, &y1);
+    if (m_overlay_enabled) {
+        gfx_set(x, y, MEMORY_SCREEN, MEMORY_SCREEN_SIZE, c);
+    } else {
+        int cx, cy;
+        camera_get(&cx, &cy);
+        x -= cx;
+        y -= cy;
+        int x0, y0, x1, y1;
+        clip_get(&x0, &y0, &x1, &y1);
 
-    if (x >= x0 && x < x1 && y >= y0 && y < y1)
-    {
-        bool fillp_sprites, fillp_graphics_secondary, transparency, invert;
-        if (c & 0x1000) {
-            transparency = (c & 0x100) != 0;
-            fillp_sprites = (c & 0x200) != 0;
-            fillp_graphics_secondary = (c & 0x400) != 0;
-            invert = (c & 0x800) != 0;
-        } else {
-            fillp = m_memory[MEMORY_FILLP] | (m_memory[MEMORY_FILLP + 1] << 8);
-            transparency = (m_memory[MEMORY_FILLP_ATTR] & 1) != 0;
-            fillp_sprites = (m_memory[MEMORY_FILLP_ATTR] & 2) != 0;
-            fillp_graphics_secondary = (m_memory[MEMORY_FILLP_ATTR] & 4) != 0;
-            invert = false;
-        }
-        unsigned bit = ((3-y) & 0x3) * 4 + ((3-x) & 0x3);
-        bool on = (fillp & (1 << bit)) != 0;
-        if (invert) on = !on;
-        bool use_fillp = (draw_type == DRAWTYPE_GRAPHIC) || (draw_type == DRAWTYPE_SPRITE && fillp_sprites);
-        bool use_secondary_palette = (draw_type == DRAWTYPE_SPRITE  && fillp_sprites) || (draw_type == DRAWTYPE_GRAPHIC && fillp_graphics_secondary);
-        if (!use_fillp || (use_fillp && !transparency) || !on) {
-            uint8_t col;
-            if (use_secondary_palette) {
-                uint8_t col_draw = color_get(PALTYPE_DRAW, (uint8_t)c);
-                uint8_t col_secondary = color_get(PALTYPE_SECONDARY, col_draw);
-                if (on)
-                    col = (col_secondary >> 4) & 0xf;
-                else
-                    col = col_secondary & 0xf;
+        if (x >= x0 && x < x1 && y >= y0 && y < y1)
+        {
+            bool fillp_sprites, fillp_graphics_secondary, transparency, invert;
+            if (c & 0x1000) {
+                transparency = (c & 0x100) != 0;
+                fillp_sprites = (c & 0x200) != 0;
+                fillp_graphics_secondary = (c & 0x400) != 0;
+                invert = (c & 0x800) != 0;
             } else {
-                if (use_fillp) {
-                    if (on)
-                        c = (c >> 4) & 0xf;
-                    else
-                        c = c & 0xf;
-                }
-                col = color_get(PALTYPE_DRAW, c);
+                fillp = m_memory[MEMORY_FILLP] | (m_memory[MEMORY_FILLP + 1] << 8);
+                transparency = (m_memory[MEMORY_FILLP_ATTR] & 1) != 0;
+                fillp_sprites = (m_memory[MEMORY_FILLP_ATTR] & 2) != 0;
+                fillp_graphics_secondary = (m_memory[MEMORY_FILLP_ATTR] & 4) != 0;
+                invert = false;
             }
-            gfx_set(x, y, MEMORY_SCREEN, MEMORY_SCREEN_SIZE, col);
+            unsigned bit = ((3-y) & 0x3) * 4 + ((3-x) & 0x3);
+            bool on = (fillp & (1 << bit)) != 0;
+            if (invert) on = !on;
+            bool use_fillp = (draw_type == DRAWTYPE_GRAPHIC) || (draw_type == DRAWTYPE_SPRITE && fillp_sprites);
+            bool use_secondary_palette = (draw_type == DRAWTYPE_SPRITE  && fillp_sprites) || (draw_type == DRAWTYPE_GRAPHIC && fillp_graphics_secondary);
+            if (!use_fillp || (use_fillp && !transparency) || !on) {
+                uint8_t col;
+                if (c == -1)
+                    c = pencolor_get();
+                if (use_secondary_palette) {
+                    uint8_t col_draw = color_get(PALTYPE_DRAW, (uint8_t)c);
+                    uint8_t col_secondary = color_get(PALTYPE_SECONDARY, col_draw);
+                    if (on)
+                        col = (col_secondary >> 4) & 0xf;
+                    else
+                        col = col_secondary & 0xf;
+                } else {
+                    if (use_fillp) {
+                        if (on)
+                            c = (c >> 4) & 0xf;
+                        else
+                            c = c & 0xf;
+                    }
+                    col = color_get(PALTYPE_DRAW, c);
+                }
+                gfx_set(x, y, MEMORY_SCREEN, MEMORY_SCREEN_SIZE, col);
+            }
         }
     }
 }
@@ -452,10 +460,19 @@ static inline void gfx_set(int x, int y, int location, int size, int col)
 {
     if (x < 0 || y < 0 || x > P8_WIDTH || y > P8_HEIGHT)
         return;
-    int offset = gfx_addr_remap(location) + (x >> 1) + y * 64;
 
-    uint8_t color = (col == -1 ? pencolor_get() : color_get(PALTYPE_DRAW, col));
-    m_memory[offset] = IS_EVEN(x) ? (m_memory[offset] & 0xF0) | (color & 0xF) : (color << 4) | (m_memory[offset] & 0xF);
+    bool use_overlay = m_overlay_enabled && (location == MEMORY_SCREEN);
+
+    if (use_overlay)
+    {
+        int offset = (x >> 1) + y * 64;
+        m_overlay_memory[offset] = IS_EVEN(x) ? (m_overlay_memory[offset] & 0xF0) | (col & 0xF) : (col << 4) | (m_overlay_memory[offset] & 0xF);
+    }
+    else
+    {
+        int offset = gfx_addr_remap(location) + (x >> 1) + y * 64;
+        m_memory[offset] = IS_EVEN(x) ? (m_memory[offset] & 0xF0) | (col & 0xF) : (col << 4) | (m_memory[offset] & 0xF);
+    }
 }
 
 static inline void camera_get(int *x, int *y)
@@ -606,60 +623,16 @@ static inline void reset_color()
 
 static inline bool is_button_set(int index, int button, bool btnp)
 {
-    uint8_t mask = (btnp?m_buttonsp:m_buttons)[index];
-
-    if (mask == 0)
-        return false;
-
-    switch (button)
-    {
-    case 0:
-        return (mask & BUTTON_LEFT);
-    case 1:
-        return (mask & BUTTON_RIGHT);
-    case 2:
-        return (mask & BUTTON_UP);
-    case 3:
-        return (mask & BUTTON_DOWN);
-    case 4:
-        return (mask & BUTTON_ACTION1);
-    case 5:
-        return (mask & BUTTON_ACTION2);
-    }
-
-    return false;
+    uint16_t mask = (btnp?m_buttonsp:m_buttons)[index];
+    return mask & (1 << button);
 }
 
 static inline void update_buttons(int index, int button, bool state)
 {
-    uint8_t mask = m_buttons[index];
-
-    switch (button)
-    {
-    case 0:
-        mask = state ? mask | BUTTON_LEFT : mask & ~BUTTON_LEFT;
-        break;
-    case 1:
-        mask = state ? mask | BUTTON_RIGHT : mask & ~BUTTON_RIGHT;
-        break;
-    case 2:
-        mask = state ? mask | BUTTON_UP : mask & ~BUTTON_UP;
-        break;
-    case 3:
-        mask = state ? mask | BUTTON_DOWN : mask & ~BUTTON_DOWN;
-        break;
-    case 4:
-        mask = state ? mask | BUTTON_ACTION1 : mask & ~BUTTON_ACTION1;
-        break;
-    case 5:
-        mask = state ? mask | BUTTON_ACTION2 : mask & ~BUTTON_ACTION2;
-        break;
-    default:
-        break;
-    }
-
+    uint16_t mask = m_buttons[index];
+    mask = state ? mask | (1 << button) : mask & ~(1 << button);
     m_buttons[index] = mask;
-    m_memory[MEMORY_BUTTON_STATE + index] = mask;
+    m_memory[MEMORY_BUTTON_STATE + index] = mask & 0xff;
 }
 
 static inline void scroll(void)

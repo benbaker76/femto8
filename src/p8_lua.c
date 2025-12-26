@@ -736,7 +736,7 @@ int btn(lua_State *L)
     // mask
     else
     {
-        lua_pushinteger(L, m_buttons[0] | (m_buttons[1] << 8));
+        lua_pushinteger(L, (m_buttons[0] & 0xff) | ((m_buttons[1] & 0xff) << 8));
     }
 
     return 1;
@@ -754,12 +754,15 @@ int btnp(lua_State *L)
         if (p >= PLAYER_COUNT)
             p = 0;
 
-        lua_pushboolean(L, is_button_set(p, i, true));
+        if (i < BUTTON_COUNT)
+            lua_pushboolean(L, is_button_set(p, i, true));
+        else
+            lua_pushboolean(L, false);
     }
     // mask
     else
     {
-        lua_pushinteger(L, m_buttonsp[0] | (m_buttons[1] << 8));
+        lua_pushinteger(L, (m_buttonsp[0] & 0xff) | ((m_buttons[1] & 0xff) << 8));
     }
 
     return 1;
@@ -1723,6 +1726,13 @@ void lua_register_functions(lua_State *L)
     lua_pushnumber(L, z8::fix32::frombits(0x55558000)); lua_setglobal(L, "\x99");  // 153 ▥
 }
 
+static void lua_event_pump_hook(lua_State *L, lua_Debug *ar)
+{
+    (void)L;
+    (void)ar;
+    p8_pump_events();
+}
+
 void lua_load_api()
 {
     if (!L)
@@ -1734,10 +1744,15 @@ void lua_load_api()
 
     lua_register_functions(L);
 
+    // Set debug hook to pump events every ~3000 instructions
+    lua_sethook(L, lua_event_pump_hook, LUA_MASKCOUNT, 3000);
+
     if (luaL_dostring(L, lua_api_string))
         lua_print_error("Error loading extended PICO-8 Api");
 
     lua_setpico8memory(L, m_memory);
+
+    lua_sethook(L, lua_event_pump_hook, LUA_MASKCOUNT, 5000);
 }
 
 void lua_shutdown_api()
@@ -1763,7 +1778,6 @@ void lua_print_error(const char *where)
             printf("%s\r\n", message);
         }
     }
-    getchar();
 }
 
 void lua_init_script(const char *script)
