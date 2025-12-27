@@ -1468,6 +1468,37 @@ case STAT_MEM_USAGE: {
         }
         break;
     }
+    case STAT_YEAR_UTC:
+    case STAT_MONTH_UTC:
+    case STAT_DAY_UTC:
+    case STAT_HOUR_UTC:
+    case STAT_MINUTE_UTC:
+    case STAT_SECOND_UTC: {
+        time_t t = time(NULL);
+        struct tm *tm = gmtime(&t);
+        switch (n)
+        {
+        case STAT_YEAR_UTC:
+            lua_pushinteger(L, tm->tm_year + 1900);
+            break;
+        case STAT_MONTH_UTC:
+            lua_pushinteger(L, tm->tm_mon + 1);
+            break;
+        case STAT_DAY_UTC:
+            lua_pushinteger(L, tm->tm_mday);
+            break;
+        case STAT_HOUR_UTC:
+            lua_pushinteger(L, tm->tm_hour);
+            break;
+        case STAT_MINUTE_UTC:
+            lua_pushinteger(L, tm->tm_min);
+            break;
+        case STAT_SECOND_UTC:
+            lua_pushinteger(L, tm->tm_sec);
+            break;
+        }
+        break;
+    }
     case STAT_PCM_BUFFER_SIZE:
         lua_pushinteger(L, audio_pcm_buffered());
         break;
