@@ -177,7 +177,7 @@ function test_case(name, f)
     if current_test_case_failed then
         printh(current_test_case_name .. ": FAIL")
     else
-        --printh(current_test_case_name .. ": PASS")
+        printh(current_test_case_name .. ": PASS")
     end
 end
 
