@@ -8,6 +8,8 @@
 #if defined(__APPLE__)
   #include <stdlib.h>
   #include <malloc/malloc.h>
+#elif defined(__OpenBSD__)
+  #include <stdlib.h>
 #else
   #include <malloc.h>
 #endif
