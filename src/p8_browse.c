@@ -46,20 +46,42 @@ static void clear_dir_contents(void) {
 static void append_dir_entry(const char *file_name, bool is_dir)
 {
     if (nitems == capacity) {
+        int new_capacity;
         if (capacity == 0)
-            capacity = 10;
+            new_capacity = 10;
         else
-            capacity *= 2;
-        dir_contents = realloc(dir_contents, sizeof(dir_contents[0]) * capacity);
+            new_capacity = capacity * 2;
+        struct dir_entry *new_contents = realloc(dir_contents, sizeof(dir_contents[0]) * new_capacity);
+        if (!new_contents) {
+            fputs("Out of memory\n", stderr);
+            return;
+        }
+        dir_contents = new_contents;
+        capacity = new_capacity;
     }
-    struct dir_entry *dir_entry = &dir_contents[nitems++];
+    struct dir_entry *dir_entry = &dir_contents[nitems];
     dir_entry->file_name = strdup(file_name);
+    if (!dir_entry->file_name) {
+        fputs("Out of memory\n", stderr);
+        return;
+    }
     dir_entry->is_dir = is_dir;
+    nitems++;
 }
 static const char *make_full_path(const char *dir_path, const char *file_name)
 {
+    if (!dir_path || !file_name)
+        return NULL;
+
     size_t dir_len = strlen(dir_path);
-    char *ret = malloc(dir_len + 1 + strlen(file_name) + 1);
+    size_t file_len = strlen(file_name);
+    if (dir_len > 256 || file_len > 256)
+        return NULL;
+
+    char *ret = malloc(dir_len + 1 + file_len + 1);
+    if (!ret)
+        return NULL;
+
     if (strcmp(file_name, "..") == 0) {
         strcpy(ret, dir_path);
         char *slash = strrchr(ret, '/');
@@ -129,6 +151,10 @@ static void list_dir(const char* path) {
                 break;
             }
             const char *full_path = make_full_path(path, dirent->d_name);
+            if (!full_path) {
+                fputs("Out of memory\n", stderr);
+                continue;
+            }
             bool is_dir = false;
             if (full_path[0] == '\0' ||
                 (full_path[1] == ':' &&
@@ -217,11 +243,15 @@ const char *browse_for_cart(void)
         if (buttons & (BUTTON_MASK_ACTION1 | BUTTON_MASK_RETURN)) {
             struct dir_entry *dir_entry = &dir_contents[current_item];
             const char *full_path = make_full_path(pwd, dir_entry->file_name);
+            if (!full_path) {
+                fputs("Out of memory\n", stderr);
+                continue;
+            }
             if (dir_entry->is_dir) {
                 list_dir(full_path);
                 free((char *)full_path);
             } else {
-                cart_path = strdup(full_path);
+                cart_path = full_path;
                 break;
             }
         }
