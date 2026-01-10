@@ -1431,6 +1431,9 @@ case STAT_MEM_USAGE: {
     case STAT_MOUSE_BUTTONS:
         lua_pushinteger(L, m_mouse_buttons);
         break;
+    case STAT_MOUSE_WHEEL:
+        lua_pushinteger(L, m_mouse_wheel);
+        break;
     case STAT_MOUSE_XREL:
         lua_pushinteger(L, m_mouse_xrel);
         break;

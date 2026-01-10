@@ -452,6 +452,7 @@ bool is_unsupported_stat(unsigned address) {
         address == STAT_MOUSE_X ||
         address == STAT_MOUSE_Y  ||
         address == STAT_MOUSE_BUTTONS ||
+        address == STAT_MOUSE_WHEEL ||
         address == STAT_MOUSE_XREL ||
         address == STAT_MOUSE_YREL ||
         (address >= 16 && address <= 26) ||
@@ -460,7 +461,8 @@ bool is_unsupported_stat(unsigned address) {
         (address >= STAT_YEAR_UTC && address <= STAT_SECOND_UTC) ||
         (address >= STAT_YEAR && address <= STAT_SECOND) ||
         address == STAT_PCM_BUFFER_SIZE ||
-        address == STAT_PCM_APP_BUFFER)
+        address == STAT_PCM_APP_BUFFER ||
+        address == STAT_RAW_KEYBOARD)
         return false;
 
     return true;

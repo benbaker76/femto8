@@ -104,8 +104,10 @@ SemaphoreHandle_t m_drawSemaphore;
 #endif
 
 int16_t m_mouse_x, m_mouse_y;
+int16_t mouse_x4, mouse_y4;
 int16_t m_mouse_xrel, m_mouse_yrel;
 uint8_t m_mouse_buttons;
+int8_t m_mouse_wheel;
 uint8_t m_keypress;
 bool m_scancodes[NUM_SCANCODES];
 
@@ -676,22 +678,54 @@ void p8_update_input()
     }
 
 #ifdef SDL
+    m_mouse_xrel = 0;
+    m_mouse_yrel = 0;
+    m_mouse_wheel = 0;
+
     SDL_Event event;
     while (SDL_PollEvent(&event))
     {
         switch (event.type)
         {
         case SDL_MOUSEMOTION:
-            m_mouse_x = event.motion.x;
-            m_mouse_y = event.motion.y;
-            m_mouse_xrel += event.motion.xrel;
-            m_mouse_yrel += event.motion.yrel;
+            m_mouse_x = event.motion.x * P8_WIDTH / SCREEN_WIDTH;
+            m_mouse_y = event.motion.y * P8_HEIGHT / SCREEN_HEIGHT;
+            m_mouse_xrel += event.motion.xrel * P8_WIDTH / SCREEN_WIDTH;
+            m_mouse_yrel += event.motion.yrel * P8_HEIGHT / SCREEN_HEIGHT;
             break;
         case SDL_MOUSEBUTTONDOWN:
-            m_mouse_buttons |= 1 << event.button.button;
+            if (event.button.button == 1) {
+                m_mouse_buttons |= 0x1;
+                if (m_memory[MEMORY_DEVKIT_MODE] & 0x2)
+                    update_buttons(0, BUTTON_ACTION1, true);
+            } else if (event.button.button == 3) {
+                m_mouse_buttons |= 0x2;
+                if (m_memory[MEMORY_DEVKIT_MODE] & 0x2)
+                    update_buttons(0, BUTTON_ACTION2, true);
+            } else if (event.button.button == 2) {
+                m_mouse_buttons |= 0x4;
+                if (m_memory[MEMORY_DEVKIT_MODE] & 0x2)
+                    update_buttons(0, BUTTON_PAUSE, true);
+            } else if (event.button.button == 4) {
+                m_mouse_wheel += 1;
+            } else if (event.button.button == 5) {
+                m_mouse_wheel -= 1;
+            }
             break;
         case SDL_MOUSEBUTTONUP:
-            m_mouse_buttons &= ~(1 << event.button.button);
+            if (event.button.button == 1) {
+                m_mouse_buttons &= ~0x1;
+                if (m_memory[MEMORY_DEVKIT_MODE] & 0x2)
+                    update_buttons(0, BUTTON_ACTION1, false);
+            } else if (event.button.button == 3) {
+                m_mouse_buttons &= ~0x2;
+                if (m_memory[MEMORY_DEVKIT_MODE] & 0x2)
+                    update_buttons(0, BUTTON_ACTION2, false);
+            } else if (event.button.button == 2) {
+                m_mouse_buttons &= ~0x4;
+                if (m_memory[MEMORY_DEVKIT_MODE] & 0x2)
+                    update_buttons(0, BUTTON_PAUSE, false);
+            }
             break;
         case SDL_KEYDOWN:
             switch (event.key.keysym.sym)

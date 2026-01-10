@@ -141,6 +141,7 @@
 #define STAT_MOUSE_X 32
 #define STAT_MOUSE_Y 33
 #define STAT_MOUSE_BUTTONS 34
+#define STAT_MOUSE_WHEEL 36
 #define STAT_MOUSE_XREL 38
 #define STAT_MOUSE_YREL 39
 #define STAT_YEAR_UTC 80
@@ -239,6 +240,7 @@ extern uint8_t m_overlay_transparent_color;
 extern int16_t m_mouse_x, m_mouse_y;
 extern int16_t m_mouse_xrel, m_mouse_yrel;
 extern uint8_t m_mouse_buttons;
+extern int8_t m_mouse_wheel;
 extern uint8_t m_keypress;
 extern bool m_scancodes[NUM_SCANCODES];
 
