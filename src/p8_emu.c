@@ -300,7 +300,7 @@ int p8_init_file_with_param(const char *file_name, const char *param)
         free(current_cart_dir);
 #endif
     }
-    
+
     const char *last_slash = strrchr(file_name, '/');
     if (last_slash) {
         size_t dir_len = last_slash - file_name;
