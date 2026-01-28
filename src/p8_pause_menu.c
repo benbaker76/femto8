@@ -9,7 +9,7 @@
 
 #include "p8_pause_menu.h"
 #include "p8_emu.h"
-#include "p8_lua_helper.h"
+#include "p8_overlay_helper.h"
 
 #define MENU_ITEMS 3
 static const char *menu_items[MENU_ITEMS] = {
@@ -28,21 +28,21 @@ bool m_pause_menu_showing;
 
 static void draw_pause_menu(int current_item)
 {
-    draw_rect(MENU_X - 2, MENU_Y - 2, MENU_X + MENU_WIDTH + 1, MENU_Y + MENU_HEIGHT + 1, 1, 0);
-    draw_rect(MENU_X - 1, MENU_Y - 1, MENU_X + MENU_WIDTH, MENU_Y + MENU_HEIGHT, 7, 0);
-    draw_rectfill(MENU_X, MENU_Y, MENU_X + MENU_WIDTH - 1, MENU_Y + MENU_HEIGHT - 1, 1, 0);
+    overlay_draw_rect(MENU_X - 2, MENU_Y - 2, MENU_X + MENU_WIDTH + 1, MENU_Y + MENU_HEIGHT + 1, 1);
+    overlay_draw_rect(MENU_X - 1, MENU_Y - 1, MENU_X + MENU_WIDTH, MENU_Y + MENU_HEIGHT, 7);
+    overlay_draw_rectfill(MENU_X, MENU_Y, MENU_X + MENU_WIDTH - 1, MENU_Y + MENU_HEIGHT - 1, 1);
     
     for (int i = 0; i < MENU_ITEMS; i++) {
         int item_y = MENU_Y + 2 + i * MENU_ITEM_HEIGHT;
         bool highlighted = (current_item == i);
         
         if (highlighted) {
-            draw_rectfill(MENU_X + 1, item_y, MENU_X + MENU_WIDTH - 2, 
-                         item_y + MENU_ITEM_HEIGHT - 1, 10, 0);
+            overlay_draw_rectfill(MENU_X + 1, item_y, MENU_X + MENU_WIDTH - 2,
+                         item_y + MENU_ITEM_HEIGHT - 1, 10);
         }
         
         int fg = highlighted ? 1 : 7;
-        draw_simple_text(menu_items[i], MENU_X + 3, item_y + 1, fg);
+        overlay_draw_simple_text(menu_items[i], MENU_X + 3, item_y + 1, fg);
     }
 }
 
@@ -51,11 +51,6 @@ void p8_show_pause_menu(void)
     if (m_pause_menu_showing)
         return;
     m_pause_menu_showing = true;
-
-    m_overlay_enabled = true;
-    m_overlay_transparent_color = 0;
-
-    memset(m_overlay_memory, 0, MEMORY_SCREEN_SIZE);
 
     int current_item = 0;
     draw_pause_menu(current_item);
@@ -77,7 +72,7 @@ void p8_show_pause_menu(void)
         p8_flip();
     }
 
-    m_overlay_enabled = false;
+    overlay_clear();
     m_pause_menu_showing = false;
     p8_flip();
 
