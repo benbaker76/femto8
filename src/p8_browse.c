@@ -205,7 +205,7 @@ static void display_dir_contents()
 {
     clear_screen(1);
     draw_rectfill(0, 0, P8_WIDTH, GLYPH_HEIGHT - 1, 7, 0);
-    draw_file_name(pwd, 1, 0, 1);
+    if (pwd != NULL) draw_file_name(pwd, 1, 0, 1);
     draw_rectfill(0, FOOTER_TOP, P8_WIDTH - 1, P8_HEIGHT - 1, 7, 0);
     draw_simple_text("z/fire: select file", 1, FOOTER_TOP, 1);
     clip_set(0, LIST_TOP, P8_WIDTH, LIST_HEIGHT);
