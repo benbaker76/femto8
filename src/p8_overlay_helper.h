@@ -159,10 +159,8 @@ static inline void overlay_draw_simple_text(const char *str, int x, int y, int c
 {
     int cursor_x = x;
     for (const char *c = str; *c != '\0'; c++) {
-        if (*c >= 0x20 && *c < 0x7F) {
-            overlay_draw_char(*c, cursor_x, y, col);
-            cursor_x += GLYPH_WIDTH;
-        }
+        overlay_draw_char((uint8_t)*c, cursor_x, y, col);
+        cursor_x += GLYPH_WIDTH;
     }
 }
 

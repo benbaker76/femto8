@@ -419,10 +419,8 @@ static inline void draw_simple_text(const char *str, int x, int y, int col)
 {
     int cursor_x = x;
     for (const char *c = str; *c != '\0'; c++) {
-        if (*c >= 0x20 && *c < 0x7F) {
-            draw_char(*c, cursor_x, y, col);
-            cursor_x += GLYPH_WIDTH;
-        }
+        draw_char((uint8_t)*c, cursor_x, y, col);
+        cursor_x += GLYPH_WIDTH;
     }
 }
 

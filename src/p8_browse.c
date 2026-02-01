@@ -207,7 +207,7 @@ static void display_dir_contents()
     draw_rectfill(0, 0, P8_WIDTH, GLYPH_HEIGHT - 1, 7, 0);
     if (pwd != NULL) draw_file_name(pwd, 1, 0, 1);
     draw_rectfill(0, FOOTER_TOP, P8_WIDTH - 1, P8_HEIGHT - 1, 7, 0);
-    draw_simple_text("z/fire: select file", 1, FOOTER_TOP, 1);
+    draw_simple_text("\216: select file", 1, FOOTER_TOP, 1);
     clip_set(0, LIST_TOP, P8_WIDTH, LIST_HEIGHT);
     int y = LIST_TOP;
     int scroll = current_item * GLYPH_HEIGHT + (GLYPH_HEIGHT - LIST_HEIGHT) / 2;
