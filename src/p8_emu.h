@@ -198,6 +198,7 @@ enum
     BUTTON_PAUSE = 6,
     BUTTON_ESCAPE = 8,
     BUTTON_RETURN = 9,
+    BUTTON_SPACE = 10,
 };
 
 enum
@@ -211,6 +212,7 @@ enum
     BUTTON_MASK_PAUSE   = (1 << BUTTON_PAUSE),
     BUTTON_MASK_ESCAPE  = (1 << BUTTON_ESCAPE),
     BUTTON_MASK_RETURN  = (1 << BUTTON_RETURN),
+    BUTTON_MASK_SPACE   = (1 << BUTTON_SPACE),
 };
 
 enum {

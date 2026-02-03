@@ -12,9 +12,39 @@
 #include "p8_emu.h"
 #include "pico_font.h"
 
+/* Overlay clip region (global state) */
+static int overlay_clip_x0 = 0;
+static int overlay_clip_y0 = 0;
+static int overlay_clip_x1 = P8_WIDTH;
+static int overlay_clip_y1 = P8_HEIGHT;
+
+static inline void overlay_clip_set(int x, int y, int w, int h)
+{
+    overlay_clip_x0 = x;
+    overlay_clip_y0 = y;
+    overlay_clip_x1 = x + w;
+    overlay_clip_y1 = y + h;
+}
+
+static inline void overlay_clip_reset(void)
+{
+    overlay_clip_x0 = 0;
+    overlay_clip_y0 = 0;
+    overlay_clip_x1 = P8_WIDTH;
+    overlay_clip_y1 = P8_HEIGHT;
+}
+
+static inline void overlay_clip_get(int *x, int *y, int *w, int *h)
+{
+    *x = overlay_clip_x0;
+    *y = overlay_clip_y0;
+    *w = overlay_clip_x1 - overlay_clip_x0;
+    *h = overlay_clip_y1 - overlay_clip_y0;
+}
+
 static inline void overlay_draw_hline(int x0, int x1, int y, int col)
 {
-    if (y < 0 || y >= P8_HEIGHT)
+    if (y < overlay_clip_y0 || y >= overlay_clip_y1)
         return;
 
     if (x0 > x1) {
@@ -23,14 +53,15 @@ static inline void overlay_draw_hline(int x0, int x1, int y, int col)
         x1 = tmp;
     }
 
-    if (x0 < 0) x0 = 0;
-    if (x1 >= P8_WIDTH) x1 = P8_WIDTH - 1;
+    if (x0 < overlay_clip_x0) x0 = overlay_clip_x0;
+    if (x1 >= overlay_clip_x1) x1 = overlay_clip_x1 - 1;
 
     uint8_t *dest = m_overlay_memory + ((x0 >> 1) + y * 64);
 
+
     // Handle odd start
     if (x0 & 1) {
-        *dest = (col << 4) | (m_overlay_memory[*dest] & 0xF);
+        *dest = (col << 4) | (*dest & 0xF);
         dest++;
         x0++;
     }
@@ -44,7 +75,7 @@ static inline void overlay_draw_hline(int x0, int x1, int y, int col)
 
 static inline void overlay_draw_vline(int x, int y0, int y1, int col)
 {
-    if (x < 0 || x >= P8_WIDTH)
+    if (x < overlay_clip_x0 || x >= overlay_clip_x1)
         return;
 
     if (y0 > y1) {
@@ -53,8 +84,8 @@ static inline void overlay_draw_vline(int x, int y0, int y1, int col)
         y1 = tmp;
     }
 
-    if (y0 < 0) y0 = 0;
-    if (y1 >= P8_HEIGHT) y1 = P8_HEIGHT - 1;
+    if (y0 < overlay_clip_y0) y0 = overlay_clip_y0;
+    if (y1 >= overlay_clip_y1) y1 = overlay_clip_y1 - 1;
 
     uint8_t *dest = m_overlay_memory + (x >> 1) + y0 * 64;
 
@@ -93,10 +124,10 @@ static inline void overlay_draw_rectfill(int x0, int y0, int x1, int y1, int col
         y1 = tmp;
     }
 
-    if (x0 < 0) x0 = 0;
-    if (y0 < 0) y0 = 0;
-    if (x1 >= P8_WIDTH) x1 = P8_WIDTH - 1;
-    if (y1 >= P8_HEIGHT) y1 = P8_HEIGHT - 1;
+    if (x0 < overlay_clip_x0) x0 = overlay_clip_x0;
+    if (y0 < overlay_clip_y0) y0 = overlay_clip_y0;
+    if (x1 >= overlay_clip_x1) x1 = overlay_clip_x1 - 1;
+    if (y1 >= overlay_clip_y1) y1 = overlay_clip_y1 - 1;
 
     if (x0 & 1) {
         uint8_t *dest = m_overlay_memory + ((x0 >> 1) + y0 * 64);
@@ -124,7 +155,7 @@ static inline void overlay_draw_rectfill(int x0, int y0, int x1, int y1, int col
 
 static inline void overlay_pixel(int x, int y, int col)
 {
-    if (x < 0 || y < 0 || x >= P8_WIDTH || y >= P8_HEIGHT)
+    if (x < overlay_clip_x0 || y < overlay_clip_y0 || x >= overlay_clip_x1 || y >= overlay_clip_y1)
         return;
 
     uint8_t *dest = m_overlay_memory + (x >> 1) + y * 64;

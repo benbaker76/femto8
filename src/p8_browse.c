@@ -21,6 +21,7 @@
 #include <unistd.h>
 
 #include "p8_browse.h"
+#include "p8_dialog.h"
 #include "p8_emu.h"
 #include "p8_lua_helper.h"
 #include "p8_pause_menu.h"
@@ -236,10 +237,10 @@ static void display_dir_contents()
 const char *browse_for_cart(void)
 {
     p8_init();
-    m_pause_menu_showing = true;
+    m_dialog_showing = true;
     p8_reset();
     if (setjmp(jmpbuf_restart)) {
-        m_pause_menu_showing = false;
+        m_dialog_showing = false;
         return NULL;
     }
     display_dir_contents();
@@ -282,6 +283,6 @@ const char *browse_for_cart(void)
     free(dir_contents);
     free((char *)pwd);
     m_button_down_time[0][BUTTON_ACTION1] = UINT_MAX;
-    m_pause_menu_showing = false;
+    m_dialog_showing = false;
     return cart_path;
 }

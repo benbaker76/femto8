@@ -9,6 +9,7 @@
 
 #include "p8_pause_menu.h"
 #include "p8_emu.h"
+#include "p8_dialog.h"
 #include "p8_overlay_helper.h"
 
 #define MENU_ITEMS 3
@@ -23,8 +24,6 @@ static const char *menu_items[MENU_ITEMS] = {
 #define MENU_HEIGHT (MENU_ITEMS * MENU_ITEM_HEIGHT + 4)
 #define MENU_X ((P8_WIDTH - MENU_WIDTH) / 2)
 #define MENU_Y ((P8_HEIGHT - MENU_HEIGHT) / 2)
-
-bool m_pause_menu_showing;
 
 static void draw_pause_menu(int current_item)
 {
@@ -48,9 +47,9 @@ static void draw_pause_menu(int current_item)
 
 void p8_show_pause_menu(void)
 {
-    if (m_pause_menu_showing)
+    if (m_dialog_showing)
         return;
-    m_pause_menu_showing = true;
+    m_dialog_showing = true;
 
     int current_item = 0;
     draw_pause_menu(current_item);
@@ -73,8 +72,8 @@ void p8_show_pause_menu(void)
     }
 
     overlay_clear();
-    m_pause_menu_showing = false;
     p8_flip();
+    m_dialog_showing = false;
 
     switch (current_item) {
         case 0: // Continue

@@ -31,6 +31,7 @@
 #endif
 #include "p8_audio.h"
 #include "p8_compat.h"
+#include "p8_dialog.h"
 #include "p8_emu.h"
 #include "p8_lua.h"
 #include "p8_lua_helper.h"
@@ -760,6 +761,9 @@ void p8_update_input()
             case SDLK_p:
                 update_buttons(0, BUTTON_PAUSE, true);
                 break;
+            case SDLK_SPACE:
+                update_buttons(0, BUTTON_SPACE, true);
+                break;
             default:
                 break;
             }
@@ -794,6 +798,9 @@ void p8_update_input()
                 break;
             case SDLK_p:
                 update_buttons(0, BUTTON_PAUSE, false);
+                break;
+            case SDLK_SPACE:
+                update_buttons(0, BUTTON_SPACE, false);
                 break;
             case INPUT_ESCAPE:
                 update_buttons(0, BUTTON_ESCAPE, false);
@@ -888,10 +895,10 @@ void p8_update_input()
         }
     }
 
-    if ((m_buttons[0] & BUTTON_MASK_ESCAPE) != 0)
-        p8_abort();
+    if (!m_dialog_showing) {
+        if ((m_buttons[0] & BUTTON_MASK_ESCAPE) != 0)
+            p8_abort();
 
-    if (!m_pause_menu_showing) {
         if ((m_buttonsp[0] & BUTTON_MASK_PAUSE) != 0) {
             p8_show_pause_menu();
         }
@@ -1164,7 +1171,7 @@ void p8_close_cartdata(void)
 
 static void p8_show_compatibility_error(int severity)
 {
-    m_pause_menu_showing = true;
+    m_dialog_showing = true;
     p8_reset();
     clear_screen(0);
     draw_rect(10, 51, 118, 78, 7, 0);
@@ -1183,7 +1190,7 @@ static void p8_show_compatibility_error(int severity)
     } while ((m_buttons[0] & (BUTTON_MASK_ACTION1 | BUTTON_MASK_RETURN)) == 0);
     clear_screen(0);
     m_button_down_time[0][BUTTON_ACTION1] = UINT_MAX;
-    m_pause_menu_showing = false;
+    m_dialog_showing = false;
 }
 
 void p8_show_io_icon(bool show)
