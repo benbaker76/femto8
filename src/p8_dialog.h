@@ -26,7 +26,8 @@ typedef enum {
 typedef enum {
     BUTTONBAR_OK_ONLY,     // Single Ok button
     BUTTONBAR_OK_CANCEL,   // Ok and Cancel buttons
-    BUTTONBAR_YES_NO       // Yes and No buttons
+    BUTTONBAR_YES_NO,      // Yes and No buttons
+    BUTTONBAR_CANCEL_ONLY  // Single Cancel button
 } p8_dialog_buttonbar_type_t;
 
 /* Dialog Control Structure */
@@ -64,7 +65,7 @@ typedef struct {
             int visible_lines;   // Number of visible lines (0 = auto)
             int scroll_offset;   // Current scroll position (internal)
             bool draw_border;    // Whether to draw border around listbox
-            void (*render_callback)(void *user_data, int index, bool selected, int x, int y, int width, int height);
+            void (*render_callback)(void *user_data, int index, bool selected, int x, int y, int width, int height, int fg_color, int bg_color);
         } listbox;
     } data;
 
@@ -107,15 +108,6 @@ typedef struct {
     p8_dialog_result_t type;
     int action_id;              // For DIALOG_RESULT_BUTTON
 } p8_dialog_action_t;
-
-/* Standard Action IDs */
-enum {
-    DIALOG_ACTION_CANCEL = 0,  // Standard Cancel/Reject/No action
-    DIALOG_ACTION_OK = 1,      // Standard Ok/Accept/Yes action
-    // Aliases for clarity
-    DIALOG_ACTION_NO = DIALOG_ACTION_CANCEL,
-    DIALOG_ACTION_YES = DIALOG_ACTION_OK
-};
 
 /* Color Scheme */
 #define DIALOG_BORDER_OUTER       1   // Dark blue (outer border)
@@ -226,6 +218,16 @@ extern bool m_dialog_showing;
       .inverted = false }
 
 /**
+ * Create a button bar with only a Cancel button.
+ * Use this for waiting dialogs where the user can only cancel.
+ */
+#define DIALOG_BUTTONBAR_CANCEL_ONLY() \
+    { .type = DIALOG_BUTTONBAR, .label = NULL, \
+      .data.buttonbar.type = BUTTONBAR_CANCEL_ONLY, \
+      .selectable = true, .enabled = true, \
+      .inverted = false }
+
+/**
  * Create a scrollable list box.
  * Use Up/Down to navigate, O/Space to select (quick dialog mode only).
  * visible_lines: number of lines to display (0 for auto-sizing based on item_count)
@@ -317,6 +319,11 @@ void p8_dialog_init(p8_dialog_t *dialog,
  * @param dialog     Pointer to dialog to render
  */
 void p8_dialog_draw(const p8_dialog_t *dialog);
+
+/**
+ * Draw all currently showing dialogs in the stack (for refreshing underlying dialogs).
+ */
+void p8_dialog_draw_stack(void);
 
 /**
  * Process input for the dialog and update its state.

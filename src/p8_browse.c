@@ -24,6 +24,7 @@
 #include "p8_dialog.h"
 #include "p8_emu.h"
 #include "p8_lua_helper.h"
+#include "p8_overlay_helper.h"
 #include "p8_pause_menu.h"
 
 #define FALLBACK_CARTS_PATH "."
@@ -185,84 +186,84 @@ static void draw_file_name(const char *str, int x, int y, int col)
     for (const char *c = str; *c != '\0'; c++) {
         if (*c >= 0x20 && *c < 0x7F) {
             if (*c >= 'a' && *c <= 'z') {
-                draw_char(*c - ('a' - 'A'), cursor_x, y, col);
+                overlay_draw_char(*c - ('a' - 'A'), cursor_x, y, col);
             } else if (*c >= 'A' && *c <= 'Z') {
-                draw_char(*c + ('a' - 'A'), cursor_x, y, col);
+                overlay_draw_char(*c + ('a' - 'A'), cursor_x, y, col);
             } else {
-                draw_char(*c, cursor_x, y, col);
+                overlay_draw_char(*c, cursor_x, y, col);
             }
             cursor_x += GLYPH_WIDTH;
         }
     }
 }
 
-#define HEADER_HEIGHT GLYPH_HEIGHT
-#define FOOTER_HEIGHT GLYPH_HEIGHT
-#define LIST_TOP      HEADER_HEIGHT
-#define LIST_HEIGHT   (P8_HEIGHT - HEADER_HEIGHT - FOOTER_HEIGHT)
-#define FOOTER_TOP    (P8_HEIGHT - FOOTER_HEIGHT)
-
-static void display_dir_contents()
+static void render_file_item(void *user_data, int index, bool selected, int x, int y, int width, int height, int fg_color, int bg_color)
 {
-    clear_screen(1);
-    draw_rectfill(0, 0, P8_WIDTH, GLYPH_HEIGHT - 1, 7, 0);
-    if (pwd != NULL) draw_file_name(pwd, 1, 0, 1);
-    draw_rectfill(0, FOOTER_TOP, P8_WIDTH - 1, P8_HEIGHT - 1, 7, 0);
-    draw_simple_text("\216: select file", 1, FOOTER_TOP, 1);
-    clip_set(0, LIST_TOP, P8_WIDTH, LIST_HEIGHT);
-    int y = LIST_TOP;
-    int scroll = current_item * GLYPH_HEIGHT + (GLYPH_HEIGHT - LIST_HEIGHT) / 2;
-    if (scroll > nitems * GLYPH_HEIGHT - LIST_HEIGHT) scroll = nitems * GLYPH_HEIGHT - LIST_HEIGHT;
-    if (scroll < 0) scroll = 0;
-    for (int i=0;i<nitems;++i) {
-        struct dir_entry *dir_entry = &dir_contents[i];
-        if (y - scroll > -GLYPH_HEIGHT && y - scroll < P8_HEIGHT) {
-            bool highlighted = (current_item == i);
-            if (highlighted)
-                draw_rectfill(0, y - scroll, P8_WIDTH - 1, y - scroll + GLYPH_HEIGHT - 1, 10, 0);
-            if (dir_entry->is_dir)
-                clip_set(0, LIST_TOP, P8_WIDTH - GLYPH_WIDTH * 6, LIST_HEIGHT);
-            int fg = highlighted ? 1 : 7;
-            draw_file_name(dir_entry->file_name, 1, y - scroll, fg);
-            if (dir_entry->is_dir)
-                clip_set(0, LIST_TOP, P8_WIDTH, LIST_HEIGHT);
-            if (dir_entry->is_dir) {
-                draw_simple_text(" <dir>", 128 - GLYPH_WIDTH * 6, y - scroll, fg);
-            }
-        }
-        y += GLYPH_HEIGHT;
-    }
+    (void)user_data;
+    struct dir_entry *dir_entry = &dir_contents[index];
+
+    if (selected)
+        overlay_draw_rectfill(x, y - 1, x + width - 1, y + height - 1, bg_color);
+
+    // Clip to avoid drawing filename over " <dir>" suffix
+    int clip_x, clip_y, clip_w, clip_h;
+    overlay_clip_get(&clip_x, &clip_y, &clip_w, &clip_h);
+    if (dir_entry->is_dir)
+        overlay_clip_set(x, y, width - GLYPH_WIDTH * 6, height);
+    else
+        overlay_clip_set(x, y, width, height);
+
+    // Draw filename with case conversion
+    draw_file_name(dir_entry->file_name, x, y, fg_color);
+
+    overlay_clip_set(clip_x, clip_y, clip_w, clip_h);
+
+    // Draw " <dir>" suffix for directories
+    if (dir_entry->is_dir)
+        overlay_draw_simple_text(" <dir>", x + width - GLYPH_WIDTH * 6, y, fg_color);
 }
 
 const char *browse_for_cart(void)
 {
     p8_init();
-    m_dialog_showing = true;
     p8_reset();
     if (setjmp(jmpbuf_restart)) {
-        m_dialog_showing = false;
         return NULL;
     }
-    display_dir_contents();
-    p8_flip();
+
     if (access(DEFAULT_CARTS_PATH, F_OK) == 0)
         list_dir(DEFAULT_CARTS_PATH);
     else
         list_dir(FALLBACK_CARTS_PATH);
-    uint16_t buttons = 0;
+
     const char *cart_path = NULL;
+    int selected_index = 0;
+
+    // Create dialog with custom listbox renderer
+    p8_dialog_control_t controls[] = {
+        DIALOG_LABEL_INVERTED(""),
+        DIALOG_LISTBOX_CUSTOM_FULLSCREEN(NULL, NULL, nitems, &selected_index, render_file_item),
+        DIALOG_LABEL_INVERTED("\216: select file"),
+    };
+
+    p8_dialog_t dialog;
+    p8_dialog_init(&dialog, NULL, controls, 3, P8_WIDTH);
+    dialog.draw_border = false;
+    dialog.padding = 0;
+
     for (;;) {
-        buttons = m_buttonsp[0];
-        if (buttons & BUTTON_MASK_UP) {
-            if (current_item > 0)
-                current_item--;
+        selected_index = 0;
+        controls[0].label = pwd;
+        controls[1].data.listbox.item_count = nitems;
+
+        p8_dialog_action_t result = p8_dialog_run(&dialog);
+
+        if (result.type == DIALOG_RESULT_CANCELLED) {
+            break;
         }
-        if (buttons & BUTTON_MASK_DOWN) {
-            if (current_item < nitems - 1)
-                current_item++;
-        }
-        if (buttons & (BUTTON_MASK_ACTION1 | BUTTON_MASK_RETURN)) {
-            struct dir_entry *dir_entry = &dir_contents[current_item];
+
+        if (result.type == DIALOG_RESULT_ACCEPTED && selected_index >= 0 && selected_index < nitems) {
+            struct dir_entry *dir_entry = &dir_contents[selected_index];
             const char *full_path = make_full_path(pwd, dir_entry->file_name);
             if (!full_path) {
                 fputs("Out of memory\n", stderr);
@@ -271,18 +272,19 @@ const char *browse_for_cart(void)
             if (dir_entry->is_dir) {
                 list_dir(full_path);
                 free((char *)full_path);
+                selected_index = 0;
             } else {
                 cart_path = full_path;
                 break;
             }
         }
-        display_dir_contents();
-        p8_flip();
     }
+
+    p8_dialog_cleanup(&dialog);
+
     clear_dir_contents();
     free(dir_contents);
     free((char *)pwd);
-    m_button_down_time[0][BUTTON_ACTION1] = UINT_MAX;
-    m_dialog_showing = false;
+
     return cart_path;
 }

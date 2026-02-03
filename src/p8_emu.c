@@ -241,6 +241,8 @@ static int p8_init_lcd(void)
 
 static void p8_init_common(const char *file_name, const char *lua_script)
 {
+    p8_show_io_icon(false);
+
     if (lua_script == NULL) {
         if (file_name) fprintf(stderr, "%s: ", file_name);
         fprintf(stderr, "invalid cart\n");
@@ -267,7 +269,6 @@ static void p8_init_common(const char *file_name, const char *lua_script)
 
     p8_reset();
     clear_screen(0);
-    p8_show_io_icon(false);
 
     p8_update_input();
 
@@ -1173,31 +1174,97 @@ static void p8_show_compatibility_error(int severity)
 {
     m_dialog_showing = true;
     p8_reset();
-    clear_screen(0);
-    draw_rect(10, 51, 118, 78, 7, 0);
-    if (severity <= COMPAT_SOME) {
-        draw_simple_text("this cart may not be", 24, 55, 7);
-        draw_simple_text("fully compatible with", 22, 62, 7);
-        draw_simple_text(PROGNAME, 64-strlen(PROGNAME)*GLYPH_WIDTH/2, 69, 7);
-    } else {
-        draw_simple_text("this cart is not", 32, 55, 7);
-        draw_simple_text("compatible with", 34, 62, 7);
-        draw_simple_text(PROGNAME, 64-strlen(PROGNAME)*GLYPH_WIDTH/2, 69, 7);
-    }
-    p8_flip();
-    do {
-        p8_update_input();
-    } while ((m_buttons[0] & (BUTTON_MASK_ACTION1 | BUTTON_MASK_RETURN)) == 0);
-    clear_screen(0);
+
+
+    p8_dialog_control_t compat_controls_some[] = {
+        DIALOG_LABEL("this cart may not be"),
+        DIALOG_LABEL("fully compatible with"),
+        DIALOG_LABEL(PROGNAME),
+        DIALOG_SPACING(),
+        DIALOG_BUTTONBAR_OK_ONLY(),
+    };
+
+    p8_dialog_control_t compat_controls_none[] = {
+        DIALOG_LABEL("this cart is not"),
+        DIALOG_LABEL("compatible with"),
+        DIALOG_LABEL(PROGNAME),
+        DIALOG_SPACING(),
+        DIALOG_BUTTONBAR_OK_ONLY(),
+    };
+
+    p8_dialog_t compat_dialog;
+    if (severity <= COMPAT_SOME)
+        p8_dialog_init(&compat_dialog, NULL, compat_controls_some, 5, 0);
+    else
+        p8_dialog_init(&compat_dialog, NULL, compat_controls_none, 5, 0);
+
+    p8_dialog_run(&compat_dialog);
+    p8_dialog_cleanup(&compat_dialog);
+
     m_button_down_time[0][BUTTON_ACTION1] = UINT_MAX;
     m_dialog_showing = false;
 }
 
 void p8_show_io_icon(bool show)
 {
-    if (show)
+    if (show) {
         overlay_draw_icon(io_icon, P8_WIDTH - 8, 0);
-    else
+    } else {
         overlay_draw_rectfill(P8_WIDTH - 8, 0, P8_WIDTH-1, 7, OVERLAY_TRANSPARENT_COLOR);
+        p8_dialog_draw_stack();
+    }
     p8_flip();
 }
+
+void p8_show_error_dialog(const char **lines, int line_count, p8_error_severity_t severity)
+{
+    assert(line_count <= 4);
+
+    int control_count = line_count + 2;
+    p8_dialog_control_t controls[6];
+
+    /* Add label controls for each line */
+    for (int i = 0; i < line_count; i++) {
+        controls[i] = (p8_dialog_control_t)DIALOG_LABEL(lines[i]);
+    }
+
+    /* Add spacing and button bar */
+    controls[line_count] = (p8_dialog_control_t)DIALOG_SPACING();
+    controls[line_count + 1] = (p8_dialog_control_t)DIALOG_BUTTONBAR_OK_ONLY();
+
+    p8_dialog_t error_dialog;
+    const char *title = (severity == P8_ERROR_WARNING) ? "warning" : "error";
+    p8_dialog_init(&error_dialog, title, controls, control_count, 120);
+    p8_dialog_run(&error_dialog);
+    p8_dialog_cleanup(&error_dialog);
+}
+
+#ifdef ENABLE_BBS_DOWNLOAD
+char *p8_download_bbs_cart(const char *cart_id)
+{
+    /* Download cart from BBS */
+    p8_show_disk_icon(true);
+    printf("Downloading cart %s from BBS...\n", cart_id);
+    char cached_filename[256] = {'\0'};
+    int ret = cache_download(cart_id, cached_filename, sizeof(cached_filename));
+    p8_show_disk_icon(false);
+    if (ret < 0) {
+        printf("Failed to download cart %s from BBS, error %d\n", cart_id, errno);
+        /* Show error dialog */
+        const char *error_lines[] = {
+            "failed to download cart",
+            "from bbs."
+        };
+        p8_show_error_dialog(error_lines, 2, P8_ERROR_ERROR);
+        return NULL;
+    } else {
+        /* Successfully downloaded - set BBS cart ID */
+        if (m_bbs_cart_id)
+            free(m_bbs_cart_id);
+        m_bbs_cart_id = strdup(cart_id);
+        printf("Downloaded cart to %s\n", cached_filename);
+        return strdup(cached_filename);
+    }
+}
+#endif
+

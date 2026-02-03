@@ -221,6 +221,12 @@ enum {
     COMPAT_NONE
 };
 
+/* Error dialog severity levels */
+typedef enum {
+    P8_ERROR_WARNING,
+    P8_ERROR_ERROR
+} p8_error_severity_t;
+
 extern unsigned m_fps;
 extern unsigned m_actual_fps;
 extern unsigned m_frames;

@@ -16,8 +16,11 @@
 #define SEPARATOR_HEIGHT          2
 #define SPACING_HEIGHT            2
 
+#define MAX_DIALOG_NESTING        4     // Maximum depth of nested dialogs
+
 /* Global Dialog State */
 static int m_dialog_nest_count = 0;
+static p8_dialog_t *m_dialog_stack[MAX_DIALOG_NESTING];
 bool m_dialog_showing = false;
 
 /* Helper function to get control height */
@@ -54,20 +57,22 @@ static int get_control_height(const p8_dialog_control_t *control)
 static bool is_quick_dialog_mode(const p8_dialog_t *dialog)
 {
     int selectable_count = 0;
+    int listbox_or_inputbox_count = 0;
     int buttonbar_count = 0;
 
     for (int i = 0; i < dialog->control_count; i++) {
         if (dialog->controls[i].selectable) {
             selectable_count++;
+            if (dialog->controls[i].type == DIALOG_LISTBOX ||
+                dialog->controls[i].type == DIALOG_INPUTBOX)
+                listbox_or_inputbox_count++;
             if (dialog->controls[i].type == DIALOG_BUTTONBAR)
                 buttonbar_count++;
         }
     }
 
-    // Quick mode if no selectable controls, or only buttonbar
-    if (selectable_count == 0)
-        return true;
-    if (selectable_count == 1 && buttonbar_count == 1)
+    if (selectable_count == buttonbar_count + listbox_or_inputbox_count &&
+        buttonbar_count == 1 && listbox_or_inputbox_count <= 1)
         return true;
 
     return false;
@@ -265,6 +270,9 @@ static void draw_control(const p8_dialog_t *dialog, int control_idx, int x, int 
                     left_text = show_shortcuts ? "\x8e yes" : "yes";
                     right_text = show_shortcuts ? "\x97 no" : "no";
                     break;
+                case BUTTONBAR_CANCEL_ONLY:
+                    left_text = show_shortcuts ? "\x97 cancel" : "cancel";
+                    break;
             }
 
             if (!quick_mode && focused) {
@@ -339,6 +347,24 @@ static void draw_control(const p8_dialog_t *dialog, int control_idx, int x, int 
                 int item_y = y + item_offset_y + 1 + i * (GLYPH_HEIGHT + 1) - scroll_offset;
                 bool is_selected = (i == selected_idx);
 
+                // Determine colors based on selection and focus state
+                int item_bg_color, item_fg_color;
+                if (is_selected) {
+                    if (focused) {
+                        // Focused listbox with selected item: yellow background
+                        item_bg_color = DIALOG_BG_HIGHLIGHT;
+                        item_fg_color = DIALOG_TEXT_HIGHLIGHT;
+                    } else {
+                        // Unfocused listbox with selected item: white background (inverted label style)
+                        item_bg_color = DIALOG_BG_INVERTED;
+                        item_fg_color = DIALOG_TEXT_INVERTED;
+                    }
+                } else {
+                    // Unselected item: normal colors
+                    item_bg_color = DIALOG_BG_NORMAL;
+                    item_fg_color = DIALOG_TEXT_NORMAL;
+                }
+
                 if (control->data.listbox.render_callback) {
                     // Use custom rendering callback
                     int item_x = x + item_offset_x;
@@ -350,19 +376,20 @@ static void draw_control(const p8_dialog_t *dialog, int control_idx, int x, int 
                         item_x,
                         item_y,
                         item_w,
-                        GLYPH_HEIGHT
+                        GLYPH_HEIGHT,
+                        item_fg_color,
+                        item_bg_color
                     );
                 } else {
                     // Default rendering for string items
                     if (is_selected) {
                         int hl_x0 = x + item_offset_x;
                         int hl_x1 = x + width - item_offset_x - 1;
-                        overlay_draw_rectfill(hl_x0, item_y - 1, hl_x1, item_y + GLYPH_HEIGHT - 1, DIALOG_BG_HIGHLIGHT);
+                        overlay_draw_rectfill(hl_x0, item_y - 1, hl_x1, item_y + GLYPH_HEIGHT - 1, item_bg_color);
                     }
 
                     const char *item_text = control->data.listbox.items[i];
-                    int item_color = is_selected ? DIALOG_TEXT_HIGHLIGHT : DIALOG_TEXT_NORMAL;
-                    overlay_draw_simple_text(item_text, x + text_offset, item_y, item_color);
+                    overlay_draw_simple_text(item_text, x + text_offset, item_y, item_fg_color);
                 }
             }
 
@@ -419,6 +446,49 @@ void p8_dialog_draw(const p8_dialog_t *dialog)
     }
 }
 
+/* Draw all currently showing dialogs in the stack (for refreshing underlying dialogs). */
+void p8_dialog_draw_stack(void)
+{
+    for (int i = 0; i < m_dialog_nest_count; i++)
+        p8_dialog_draw(m_dialog_stack[i]);
+}
+
+/* Helper function to move to next selectable control */
+static bool move_to_next_control(p8_dialog_t *dialog, bool quick_mode)
+{
+    int next = dialog->focused_control + 1;
+    while (next < dialog->control_count &&
+        (!dialog->controls[next].selectable ||
+            (quick_mode && dialog->controls[next].type == DIALOG_BUTTONBAR))) {
+        next++;
+    }
+
+    if (next < dialog->control_count) {
+        dialog->focused_control = next;
+        dialog->focused_subcontrol = 0;
+    }
+
+    return next < dialog->control_count;
+}
+
+/* Helper function to move to previous selectable control */
+static bool move_to_prev_control(p8_dialog_t *dialog, bool quick_mode)
+{
+    int prev = dialog->focused_control - 1;
+    while (prev >= 0 &&
+        (!dialog->controls[prev].selectable ||
+            (quick_mode && dialog->controls[prev].type == DIALOG_BUTTONBAR))) {
+        prev--;
+    }
+
+    if (prev >= 0) {
+        dialog->focused_control = prev;
+        dialog->focused_subcontrol = 0;
+    }
+
+    return prev >= 0;
+}
+
 /* Process dialog input and update state */
 p8_dialog_action_t p8_dialog_update(p8_dialog_t *dialog)
 {
@@ -438,18 +508,8 @@ p8_dialog_action_t p8_dialog_update(p8_dialog_t *dialog)
 
             // Handle Return
             if (buttons & BUTTON_MASK_RETURN) {
-                // Move to next selectable control
-                int next = dialog->focused_control + 1;
-                while (next < dialog->control_count &&
-                    (!dialog->controls[next].selectable ||
-                        dialog->controls[next].type == DIALOG_BUTTONBAR))
-                    next++;
-
-                if (next < dialog->control_count) {
-                    dialog->focused_control = next;
-                    dialog->focused_subcontrol = 0;
-                } else {
-                    // Accept the dialog
+                if (!move_to_next_control(dialog, quick_mode)) {
+                    // No more controls, accept the dialog
                     result.type = DIALOG_RESULT_ACCEPTED;
                 }
                 return result;
@@ -493,18 +553,8 @@ p8_dialog_action_t p8_dialog_update(p8_dialog_t *dialog)
                         break;
 
                     case DIALOG_LISTBOX:
-                        // Move to next selectable control
-                        int next = dialog->focused_control + 1;
-                        while (next < dialog->control_count &&
-                            (!dialog->controls[next].selectable ||
-                             dialog->controls[next].type == DIALOG_BUTTONBAR))
-                            next++;
-
-                        if (next < dialog->control_count) {
-                            dialog->focused_control = next;
-                            dialog->focused_subcontrol = 0;
-                        } else {
-                            // Accept the dialog
+                        if (!move_to_next_control(dialog, quick_mode)) {
+                            // No more controls, accept the dialog
                             result.type = DIALOG_RESULT_ACCEPTED;
                         }
                         break;
@@ -512,14 +562,13 @@ p8_dialog_action_t p8_dialog_update(p8_dialog_t *dialog)
                     case DIALOG_BUTTONBAR:
                         if (!quick_mode) {
                             // Activate the focused button
-                            if (dialog->focused_subcontrol == 0) {
-                                result.type = DIALOG_RESULT_BUTTON;
-                                result.action_id = (control->data.buttonbar.type == BUTTONBAR_YES_NO) ?
-                                                DIALOG_ACTION_YES : DIALOG_ACTION_OK;
+                            p8_dialog_control_t *buttonbar = &dialog->controls[dialog->focused_control];
+                            if (buttonbar->data.buttonbar.type == BUTTONBAR_CANCEL_ONLY) {
+                                result.type = DIALOG_RESULT_CANCELLED;
+                            } else if (dialog->focused_subcontrol == 0) {
+                                result.type = DIALOG_RESULT_ACCEPTED;
                             } else {
-                                result.type = DIALOG_RESULT_BUTTON;
-                                result.action_id = (control->data.buttonbar.type == BUTTONBAR_YES_NO) ?
-                                                DIALOG_ACTION_NO : DIALOG_ACTION_CANCEL;
+                                result.type = DIALOG_RESULT_CANCELLED;
                             }
                         }
                         break;
@@ -552,26 +601,12 @@ p8_dialog_action_t p8_dialog_update(p8_dialog_t *dialog)
                 int *sel = control->data.listbox.selected_index;
                 if (*sel > 0) {
                     (*sel)--;
-                    return result;
                 }
+                return result;  // Stay in listbox, don't change focus
             }
 
             // Move to previous selectable control
-            int prev = dialog->focused_control - 1;
-            while (prev >= 0 && !dialog->controls[prev].selectable)
-                prev--;
-
-            if (prev < 0) {
-                // Wrap to last selectable
-                prev = dialog->control_count - 1;
-                while (prev >= 0 && !dialog->controls[prev].selectable)
-                    prev--;
-            }
-
-            if (prev >= 0) {
-                dialog->focused_control = prev;
-                dialog->focused_subcontrol = 0;
-            }
+            move_to_prev_control(dialog, quick_mode);
         }
     }
 
@@ -583,44 +618,43 @@ p8_dialog_action_t p8_dialog_update(p8_dialog_t *dialog)
                 int *sel = control->data.listbox.selected_index;
                 if (*sel < control->data.listbox.item_count - 1) {
                     (*sel)++;
-                    return result;
                 }
+                return result;  // Stay in listbox, don't change focus
             }
 
             // Move to next selectable control
-            int next = dialog->focused_control + 1;
-            while (next < dialog->control_count && !dialog->controls[next].selectable)
-                next++;
+            move_to_next_control(dialog, quick_mode);
+        }
+    }
 
-            if (next >= dialog->control_count) {
-                // Wrap to first selectable
-                next = 0;
-                while (next < dialog->control_count && !dialog->controls[next].selectable)
-                    next++;
+    // Left/Right for button bar sub-controls and listbox navigation
+    if (dialog->focused_control >= 0) {
+        p8_dialog_control_t *control = &dialog->controls[dialog->focused_control];
+        if (control->type == DIALOG_BUTTONBAR) {
+            int max_subcontrol = (control->data.buttonbar.type == BUTTONBAR_OK_ONLY ||
+                                  control->data.buttonbar.type == BUTTONBAR_CANCEL_ONLY) ? 0 : 1;
+
+            if (buttons & BUTTON_MASK_LEFT) {
+                if (dialog->focused_subcontrol > 0) {
+                    dialog->focused_subcontrol--;
+                    return result;
+                }
             }
-
-            if (next < dialog->control_count) {
-                dialog->focused_control = next;
-                dialog->focused_subcontrol = 0;
+            if (buttons & BUTTON_MASK_RIGHT) {
+                if (dialog->focused_subcontrol < max_subcontrol) {
+                    dialog->focused_subcontrol++;
+                    return result;
+                }
             }
         }
     }
 
-    // Left/Right for button bar sub-controls
-    if (!quick_mode && dialog->focused_control >= 0) {
-        p8_dialog_control_t *control = &dialog->controls[dialog->focused_control];
-        if (control->type == DIALOG_BUTTONBAR) {
-            int max_subcontrol = (control->data.buttonbar.type == BUTTONBAR_OK_ONLY) ? 0 : 1;
-
-            if (buttons & BUTTON_MASK_LEFT) {
-                if (dialog->focused_subcontrol > 0)
-                    dialog->focused_subcontrol--;
-            }
-            if (buttons & BUTTON_MASK_RIGHT) {
-                if (dialog->focused_subcontrol < max_subcontrol)
-                    dialog->focused_subcontrol++;
-            }
-        }
+    // LEFT/RIGHT navigate to previous/next control
+    if (buttons & BUTTON_MASK_LEFT) {
+        move_to_prev_control(dialog, quick_mode);
+    }
+    if (buttons & BUTTON_MASK_RIGHT) {
+        move_to_next_control(dialog, quick_mode);
     }
 
     return result;
@@ -666,9 +700,15 @@ void p8_dialog_set_showing(p8_dialog_t *dialog, bool showing)
 {
     (void)dialog;
     if (!showing) {
-        if (m_dialog_nest_count > 0)
+        if (m_dialog_nest_count > 0) {
             m_dialog_nest_count--;
+            m_dialog_stack[m_dialog_nest_count] = NULL;
+        }
+        // Draw the dialogs underneath the closed one to refresh the screen
+        p8_dialog_draw_stack();
     } else if (showing) {
+        assert(m_dialog_nest_count < MAX_DIALOG_NESTING);
+        m_dialog_stack[m_dialog_nest_count] = dialog;
         m_dialog_nest_count++;
     }
     m_dialog_showing = m_dialog_nest_count > 0;
