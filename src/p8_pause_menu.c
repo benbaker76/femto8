@@ -20,7 +20,8 @@ void p8_show_pause_menu(void)
     p8_dialog_control_t pause_controls[] = {
         DIALOG_BUTTON("continue", 0),
         DIALOG_BUTTON("restart", 1),
-        DIALOG_BUTTON("quit", 2),
+        DIALOG_BUTTON("show version", 2),
+        DIALOG_BUTTON("quit", 3),
     };
 
     p8_dialog_t pause_dialog;
@@ -37,7 +38,10 @@ void p8_show_pause_menu(void)
         case 1: // Restart
             p8_restart();
             break;
-        case 2: // Quit
+        case 2: // Show version
+            p8_show_version_dialog();
+            break;
+        case 3: // Quit
             p8_abort();
             break;
     }

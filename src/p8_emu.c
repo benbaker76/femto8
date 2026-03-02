@@ -1239,32 +1239,21 @@ void p8_show_error_dialog(const char **lines, int line_count, p8_error_severity_
     p8_dialog_cleanup(&error_dialog);
 }
 
-#ifdef ENABLE_BBS_DOWNLOAD
-char *p8_download_bbs_cart(const char *cart_id)
+void p8_show_version_dialog(void)
 {
-    /* Download cart from BBS */
-    p8_show_disk_icon(true);
-    printf("Downloading cart %s from BBS...\n", cart_id);
-    char cached_filename[256] = {'\0'};
-    int ret = cache_download(cart_id, cached_filename, sizeof(cached_filename));
-    p8_show_disk_icon(false);
-    if (ret < 0) {
-        printf("Failed to download cart %s from BBS, error %d\n", cart_id, errno);
-        /* Show error dialog */
-        const char *error_lines[] = {
-            "failed to download cart",
-            "from bbs."
-        };
-        p8_show_error_dialog(error_lines, 2, P8_ERROR_ERROR);
-        return NULL;
-    } else {
-        /* Successfully downloaded - set BBS cart ID */
-        if (m_bbs_cart_id)
-            free(m_bbs_cart_id);
-        m_bbs_cart_id = strdup(cart_id);
-        printf("Downloaded cart to %s\n", cached_filename);
-        return strdup(cached_filename);
-    }
+    extern const char *femto8_version;
+    char femto8_version_string[50];
+    sprintf(femto8_version_string, "femto8 %s", femto8_version);
+
+    p8_dialog_control_t controls[] = {
+        DIALOG_LABEL(femto8_version_string),
+        DIALOG_SPACING(),
+        DIALOG_BUTTONBAR_OK_ONLY()
+    };
+
+    p8_dialog_t dialog;
+    p8_dialog_init(&dialog, "femto8 version", controls, sizeof(controls) / sizeof(controls[0]), 0);
+    p8_dialog_run(&dialog);
+    p8_dialog_cleanup(&dialog);
 }
-#endif
 

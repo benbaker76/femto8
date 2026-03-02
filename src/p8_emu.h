@@ -285,6 +285,8 @@ void __attribute__ ((noreturn)) p8_abort();
 void __attribute__ ((noreturn)) p8_restart();
 void p8_seed_rng_state(uint32_t seed);
 void p8_show_io_icon(bool show);
+void p8_show_error_dialog(const char **lines, int line_count, p8_error_severity_t severity);
+void p8_show_version_dialog(void);
 int p8_shutdown(void);
 void p8_update_input(void);
 #ifdef NEXTP8

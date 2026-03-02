@@ -205,7 +205,7 @@ static void render_file_item(void *user_data, int index, bool selected, int x, i
     if (selected)
         overlay_draw_rectfill(x, y - 1, x + width - 1, y + height - 1, bg_color);
 
-    // Clip to avoid drawing filename over " <dir>" suffix
+    // // Clip to avoid drawing filename over " <dir>" suffix
     int clip_x, clip_y, clip_w, clip_h;
     overlay_clip_get(&clip_x, &clip_y, &clip_w, &clip_h);
     if (dir_entry->is_dir)
@@ -221,6 +221,24 @@ static void render_file_item(void *user_data, int index, bool selected, int x, i
     // Draw " <dir>" suffix for directories
     if (dir_entry->is_dir)
         overlay_draw_simple_text(" <dir>", x + width - GLYPH_WIDTH * 6, y, fg_color);
+}
+
+static int show_menu(void)
+{
+    p8_dialog_control_t controls[] = {
+        DIALOG_MENUITEM("show version", 1),
+        DIALOG_MENUITEM("back", 2)
+    };
+
+    p8_dialog_t dialog;
+    p8_dialog_init(&dialog, NULL, controls, sizeof(controls) / sizeof(controls[0]), 0);
+    p8_dialog_action_t result = p8_dialog_run(&dialog);
+    p8_dialog_cleanup(&dialog);
+
+    if (result.type == DIALOG_RESULT_BUTTON)
+        return result.action_id;
+    else
+        return 0;
 }
 
 const char *browse_for_cart(void)
@@ -243,24 +261,48 @@ const char *browse_for_cart(void)
     p8_dialog_control_t controls[] = {
         DIALOG_LABEL_INVERTED(""),
         DIALOG_LISTBOX_CUSTOM_FULLSCREEN(NULL, NULL, nitems, &selected_index, render_file_item),
-        DIALOG_LABEL_INVERTED("\216: select file"),
+        DIALOG_LABEL_INVERTED("\216: select file  \227: menu"),
     };
 
     p8_dialog_t dialog;
-    p8_dialog_init(&dialog, NULL, controls, 3, P8_WIDTH);
+    p8_dialog_init(&dialog, NULL, controls, sizeof(controls) / sizeof(controls[0]), P8_WIDTH);
     dialog.draw_border = false;
     dialog.padding = 0;
+
+    p8_dialog_action_t result = { DIALOG_RESULT_NONE, 0 };
+    p8_dialog_set_showing(&dialog, true);
 
     for (;;) {
         selected_index = 0;
         controls[0].label = pwd;
         controls[1].data.listbox.item_count = nitems;
 
-        p8_dialog_action_t result = p8_dialog_run(&dialog);
+        // Main dialog loop
+        do {
+            p8_dialog_draw(&dialog);
+            p8_flip();
 
-        if (result.type == DIALOG_RESULT_CANCELLED) {
+            result = p8_dialog_update(&dialog);
+
+            if (result.type == DIALOG_RESULT_NONE && ((m_buttonsp[0] & BUTTON_MASK_ACTION2) != 0)) {
+                int action_id = show_menu();
+                switch (action_id) {
+                    case 1:
+                        p8_show_version_dialog();
+                        break;
+                    default:
+                        break;
+                }
+                if (action_id == 2 && cart_path)
+                    break;
+            }
+        } while (result.type == DIALOG_RESULT_NONE);
+
+        if (cart_path)
             break;
-        }
+
+        if (result.type == DIALOG_RESULT_CANCELLED)
+            break;
 
         if (result.type == DIALOG_RESULT_ACCEPTED && selected_index >= 0 && selected_index < nitems) {
             struct dir_entry *dir_entry = &dir_contents[selected_index];
@@ -280,7 +322,11 @@ const char *browse_for_cart(void)
         }
     }
 
+    p8_dialog_set_showing(&dialog, false);
     p8_dialog_cleanup(&dialog);
+
+    overlay_clear();
+    p8_flip();
 
     clear_dir_contents();
     free(dir_contents);
