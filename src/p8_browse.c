@@ -24,6 +24,7 @@
 #include "p8_dialog.h"
 #include "p8_emu.h"
 #include "p8_lua_helper.h"
+#include "p8_options.h"
 #include "p8_overlay_helper.h"
 #include "p8_pause_menu.h"
 
@@ -227,7 +228,8 @@ static int show_menu(void)
 {
     p8_dialog_control_t controls[] = {
         DIALOG_MENUITEM("show version", 1),
-        DIALOG_MENUITEM("back", 2)
+        DIALOG_MENUITEM("controls", 2),
+        DIALOG_MENUITEM("back", 3)
     };
 
     p8_dialog_t dialog;
@@ -289,6 +291,9 @@ const char *browse_for_cart(void)
                 switch (action_id) {
                     case 1:
                         p8_show_version_dialog();
+                        break;
+                    case 2:
+                        p8_show_controls_dialog();
                         break;
                     default:
                         break;

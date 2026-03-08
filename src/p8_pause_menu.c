@@ -10,6 +10,7 @@
 #include "p8_pause_menu.h"
 #include "p8_emu.h"
 #include "p8_dialog.h"
+#include "p8_options.h"
 
 void p8_show_pause_menu(void)
 {
@@ -21,11 +22,12 @@ void p8_show_pause_menu(void)
         DIALOG_BUTTON("continue", 0),
         DIALOG_BUTTON("restart", 1),
         DIALOG_BUTTON("show version", 2),
-        DIALOG_BUTTON("quit", 3),
+        DIALOG_BUTTON("controls", 3),
+        DIALOG_BUTTON("quit", 4),
     };
 
     p8_dialog_t pause_dialog;
-    p8_dialog_init(&pause_dialog, NULL, pause_controls, 3, P8_WIDTH / 2);
+    p8_dialog_init(&pause_dialog, NULL, pause_controls, 5, P8_WIDTH / 2);
 
     p8_dialog_action_t result = p8_dialog_run(&pause_dialog);
     p8_dialog_cleanup(&pause_dialog);
@@ -41,7 +43,10 @@ void p8_show_pause_menu(void)
         case 2: // Show version
             p8_show_version_dialog();
             break;
-        case 3: // Quit
+        case 3: // Controls
+            p8_show_controls_dialog();
+            break;
+        case 4: // Quit
             p8_abort();
             break;
     }

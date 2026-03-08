@@ -19,7 +19,8 @@ typedef enum {
     DIALOG_INPUTBOX,   // Single-line text input field
     DIALOG_SPACING,    // Visual separator (non-interactive)
     DIALOG_BUTTONBAR,  // Horizontal Ok/Cancel button bar (conditionally selectable, acts on O/X)
-    DIALOG_LISTBOX     // Scrollable list box with selection (selectable)
+    DIALOG_LISTBOX,    // Scrollable list box with selection (selectable)
+    DIALOG_CUSTOM      // Custom-drawn region with user-supplied draw function
 } p8_dialog_control_type_t;
 
 /* Button Bar Types */
@@ -54,6 +55,12 @@ typedef struct {
         struct {
             p8_dialog_buttonbar_type_t type;  // Button bar variant (BUTTONBAR)
         } buttonbar;
+
+        struct {
+            int width;    // Minimum content width required (0 = no constraint)
+            int height;   // Control height in pixels
+            void (*draw_fn)(int x, int y, int width, int height); // Draw function
+        } custom;
 
         struct {
             union {
@@ -275,6 +282,25 @@ extern bool m_dialog_showing;
                         .draw_border = false, \
                         .render_callback = NULL }, \
       .selectable = true, .enabled = true, \
+      .inverted = false }
+
+/**
+ * Create a custom-rendered list box with a rendering callback.
+ * Use this when you need complete control over item rendering (e.g., file browsers with metadata).
+ * The callback receives: user_data, index, x, y, width, height, fg_color, bg_color
+ */
+/**
+ * Create a custom-drawn control with a user-supplied draw function.
+ * The draw function receives the top-left coordinates, available width, and
+ * the control height as declared here.
+ * @param w    Minimum content width needed (0 = no constraint; use for auto-sizing).
+ * @param h    Control height in pixels.
+ * @param fn   Draw callback: void fn(int x, int y, int width, int height)
+ */
+#define DIALOG_CUSTOM_CONTROL(w, h, fn) \
+    { .type = DIALOG_CUSTOM, .label = NULL, \
+      .data.custom = { .width = (w), .height = (h), .draw_fn = (fn) }, \
+      .selectable = false, .enabled = true, \
       .inverted = false }
 
 /**

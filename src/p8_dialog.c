@@ -48,6 +48,8 @@ static int get_control_height(const p8_dialog_control_t *control)
             }
             return visible_lines * GLYPH_HEIGHT + (control->data.listbox.draw_border ? 2 : 0);
         }
+        case DIALOG_CUSTOM:
+            return control->data.custom.height;
         default:
             return GLYPH_HEIGHT;
     }
@@ -117,6 +119,10 @@ void p8_dialog_init(p8_dialog_t *dialog,
                 int label_width = get_text_width(controls[i].label) + 2;
                 if (label_width > max_width)
                     max_width = label_width;
+            }
+            if (controls[i].type == DIALOG_CUSTOM && controls[i].data.custom.width > 0) {
+                if (controls[i].data.custom.width > max_width)
+                    max_width = controls[i].data.custom.width;
             }
         }
 
@@ -394,6 +400,12 @@ static void draw_control(const p8_dialog_t *dialog, int control_idx, int x, int 
             }
 
             overlay_clip_reset();
+            break;
+        }
+
+        case DIALOG_CUSTOM: {
+            if (control->data.custom.draw_fn)
+                control->data.custom.draw_fn(x, y, width, get_control_height(control));
             break;
         }
     }
