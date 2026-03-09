@@ -639,6 +639,30 @@ p8_dialog_action_t p8_dialog_update(p8_dialog_t *dialog)
         }
     }
 
+    if (buttons & (BUTTON_MASK_PAGE_UP | BUTTON_MASK_PAGE_DOWN)) {
+        if (dialog->focused_control >= 0) {
+            p8_dialog_control_t *control = &dialog->controls[dialog->focused_control];
+            if (control->type == DIALOG_LISTBOX && control->data.listbox.selected_index) {
+                int *sel = control->data.listbox.selected_index;
+                // Compute page size as the number of fully-visible items based
+                // on the actual pixel height of the listbox.
+                int item_offset_y = control->data.listbox.draw_border ? 1 : 0;
+                int content_height = get_control_height(control) - item_offset_y * 2;
+                int page_size = content_height / (GLYPH_HEIGHT + 1);
+                if (page_size < 1) page_size = 1;
+                if (buttons & BUTTON_MASK_PAGE_UP) {
+                    *sel -= page_size;
+                    if (*sel < 0) *sel = 0;
+                } else {
+                    *sel += page_size;
+                    if (*sel >= control->data.listbox.item_count)
+                        *sel = control->data.listbox.item_count - 1;
+                }
+                return result;
+            }
+        }
+    }
+
     // Left/Right for button bar sub-controls and listbox navigation
     if (dialog->focused_control >= 0) {
         p8_dialog_control_t *control = &dialog->controls[dialog->focused_control];

@@ -765,6 +765,12 @@ void p8_update_input()
             case SDLK_SPACE:
                 update_buttons(0, BUTTON_SPACE, true);
                 break;
+            case SDLK_PAGEUP:
+                update_buttons(0, BUTTON_PAGE_UP, true);
+                break;
+            case SDLK_PAGEDOWN:
+                update_buttons(0, BUTTON_PAGE_DOWN, true);
+                break;
             default:
                 break;
             }
@@ -802,6 +808,12 @@ void p8_update_input()
                 break;
             case SDLK_SPACE:
                 update_buttons(0, BUTTON_SPACE, false);
+                break;
+            case SDLK_PAGEUP:
+                update_buttons(0, BUTTON_PAGE_UP, false);
+                break;
+            case SDLK_PAGEDOWN:
+                update_buttons(0, BUTTON_PAGE_DOWN, false);
                 break;
             case INPUT_ESCAPE:
                 update_buttons(0, BUTTON_ESCAPE, false);
