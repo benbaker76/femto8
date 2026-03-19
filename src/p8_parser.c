@@ -270,10 +270,10 @@ void read_music(uint8_t *dest, uint8_t *src, int read_length, int *write_length)
         int end_pattern_loop = flags_byte & (1 << 1);
         int stop_at_end_of_pattern = flags_byte & (1 << 2);
 
-        bool channel1_silence = (effect_id1 == 0x41) || (effect_id2 == 0x41) || (effect_id3 == 0x41) || (effect_id4 == 0x41);
-        bool channel2_silence = (effect_id1 == 0x42) || (effect_id2 == 0x42) || (effect_id3 == 0x42) || (effect_id4 == 0x42);
-        bool channel3_silence = (effect_id1 == 0x43) || (effect_id2 == 0x43) || (effect_id3 == 0x43) || (effect_id4 == 0x43);
-        bool channel4_silence = (effect_id1 == 0x44) || (effect_id2 == 0x44) || (effect_id3 == 0x44) || (effect_id4 == 0x44);
+        bool channel1_silence = (effect_id1 & 0x40) != 0;
+        bool channel2_silence = (effect_id2 & 0x40) != 0;
+        bool channel3_silence = (effect_id3 & 0x40) != 0;
+        bool channel4_silence = (effect_id4 & 0x40) != 0;
 
         dest[write_offset++] = (channel1_silence ? 1 << 6 : effect_id1 & 0x7F) | (begin_patter_loop ? 1 << 7 : 0);
         dest[write_offset++] = (channel2_silence ? 1 << 6 : effect_id2 & 0x7F) | (end_pattern_loop ? 1 << 7 : 0);
