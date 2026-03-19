@@ -1,3 +1,4 @@
+
 /*
  * p8_lua.c
  *
@@ -38,6 +39,7 @@ extern "C" {
 #include "p8_print_helper.h"
 #include "pico_font.h"
 #include "p8_parser.h"
+#include "p8_pause_menu.h"
 }
 #include "lua_api.h"
 #include "lua.h"
@@ -1262,6 +1264,20 @@ int menuitem(lua_State *L)
 }
 
 // extcmd(cmd)
+int extcmd(lua_State *L)
+{
+    const char *cmd = luaL_checkstring(L, 1);
+
+    if (strcmp(cmd, "pause") == 0) {
+        p8_show_pause_menu();
+    } else if (strcmp(cmd, "reset") == 0) {
+        p8_restart();
+    } else if (strcmp(cmd, "shutdown") == 0) {
+        p8_abort();
+    }
+
+    return 0;
+}
 
 int reset(lua_State *L)
 {
@@ -1718,7 +1734,7 @@ void lua_register_functions(lua_State *L)
     // *** System ***
     // ****************************************************************
     lua_register(L, "menuitem", menuitem);
-    // lua_register(L, "extcmd", extcmd);
+    lua_register(L, "extcmd", extcmd);
     lua_register(L, "load", _load);
     lua_register(L, "reset", reset);
     lua_register(L, "run", run);
