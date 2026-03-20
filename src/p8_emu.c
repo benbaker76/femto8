@@ -164,6 +164,7 @@ int p8_init()
 #ifdef SDL
     m_memory = (uint8_t *)malloc(MEMORY_SIZE);
     m_cart_memory = (uint8_t *)malloc(CART_MEMORY_SIZE);
+    m_overlay_memory = (uint8_t *)malloc(MEMORY_SCREEN_SIZE);
     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO) != 0)
     {
         printf("Error on SDL_Init().\n");
