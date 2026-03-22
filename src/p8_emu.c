@@ -31,9 +31,11 @@
 #endif
 #include "p8_audio.h"
 #include "p8_compat.h"
+#include "p8_dialog.h"
 #include "p8_emu.h"
 #include "p8_lua.h"
 #include "p8_lua_helper.h"
+#include "p8_overlay_helper.h"
 #include "p8_parser.h"
 #include "p8_pause_menu.h"
 
@@ -71,8 +73,6 @@ uint8_t *m_memory = NULL;
 uint8_t *m_cart_memory = NULL;
 
 uint8_t *m_overlay_memory = NULL;
-bool m_overlay_enabled = false;
-uint8_t m_overlay_transparent_color = 0;
 
 unsigned m_fps = 30;
 unsigned m_actual_fps = 0;
@@ -104,8 +104,10 @@ SemaphoreHandle_t m_drawSemaphore;
 #endif
 
 int16_t m_mouse_x, m_mouse_y;
+int16_t mouse_x4, mouse_y4;
 int16_t m_mouse_xrel, m_mouse_yrel;
 uint8_t m_mouse_buttons;
+int8_t m_mouse_wheel;
 uint8_t m_keypress;
 bool m_scancodes[NUM_SCANCODES];
 
@@ -120,6 +122,17 @@ static FILE *cartdata = NULL;
 static bool cartdata_needs_flush = false;
 
 static int m_initialized = 0;
+
+const uint8_t io_icon[32] = {
+    0x00, 0x77, 0x77, 0x77,
+    0x00, 0x17, 0x11, 0x71,
+    0x00, 0x17, 0x77, 0x71,
+    0x00, 0x17, 0x77, 0x71,
+    0x00, 0x17, 0x11, 0x71,
+    0x00, 0x77, 0x77, 0x77,
+    0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00,
+};
 
 static p8_clock_t p8_clock(void)
 {
@@ -164,6 +177,7 @@ int p8_init()
 #ifdef SDL
     m_memory = (uint8_t *)malloc(MEMORY_SIZE);
     m_cart_memory = (uint8_t *)malloc(CART_MEMORY_SIZE);
+    m_overlay_memory = (uint8_t *)malloc(MEMORY_SCREEN_SIZE);
     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO) != 0)
     {
         printf("Error on SDL_Init().\n");
@@ -191,7 +205,7 @@ int p8_init()
 
     memset(m_memory, 0, MEMORY_SIZE);
     memset(m_cart_memory, 0, CART_MEMORY_SIZE);
-    memset(m_overlay_memory, 0, MEMORY_SCREEN_SIZE);
+    memset(m_overlay_memory, (OVERLAY_TRANSPARENT_COLOR << 4) | OVERLAY_TRANSPARENT_COLOR, MEMORY_SCREEN_SIZE);
 
 #ifdef ENABLE_AUDIO
     audio_init();
@@ -227,6 +241,8 @@ static int p8_init_lcd(void)
 
 static void p8_init_common(const char *file_name, const char *lua_script)
 {
+    p8_show_io_icon(false);
+
     if (lua_script == NULL) {
         if (file_name) fprintf(stderr, "%s: ", file_name);
         fprintf(stderr, "invalid cart\n");
@@ -259,8 +275,6 @@ static void p8_init_common(const char *file_name, const char *lua_script)
     lua_init_script(lua_script);
 
     lua_init();
-
-    p8_init_lcd();
 
     if (!skip_main_loop_if_no_callbacks || lua_has_main_loop_callbacks())
         p8_main_loop();
@@ -299,7 +313,7 @@ int p8_init_file_with_param(const char *file_name, const char *param)
         free(current_cart_dir);
 #endif
     }
-    
+
     const char *last_slash = strrchr(file_name, '/');
     if (last_slash) {
         size_t dir_len = last_slash - file_name;
@@ -314,6 +328,7 @@ int p8_init_file_with_param(const char *file_name, const char *param)
         current_cart_dir = strdup(".");
     }
 
+    p8_show_io_icon(true);
     lua_load_api();
 
     printf("Loading %s\n", file_name);
@@ -335,6 +350,7 @@ int p8_init_ram(uint8_t *buffer, int size)
     if (!m_initialized)
         p8_init();
 
+    p8_show_io_icon(true);
     lua_load_api();
 
     const char *lua_script = NULL;
@@ -403,24 +419,20 @@ void p8_render()
         }
     }
 
-    if (m_overlay_enabled)
+    uint8_t *overlay_mem = m_overlay_memory;
+
+    for (int y = 0; y < P8_HEIGHT; y++)
     {
-        uint8_t transparent_color = m_overlay_transparent_color;
-        uint8_t *overlay_mem = m_overlay_memory;
-
-        for (int y = 0; y < P8_HEIGHT; y++)
+        for (int x = 0; x < P8_WIDTH; x++)
         {
-            for (int x = 0; x < P8_WIDTH; x++)
-            {
-                int overlay_offset = (x >> 1) + y * 64;
-                uint8_t value = overlay_mem[overlay_offset];
-                uint8_t pixel_color = IS_EVEN(x) ? (value & 0xF) : (value >> 4);
+            int overlay_offset = (x >> 1) + y * 64;
+            uint8_t value = overlay_mem[overlay_offset];
+            uint8_t pixel_color = IS_EVEN(x) ? (value & 0xF) : (value >> 4);
 
-                if (pixel_color != transparent_color)
-                {
-                    uint32_t color = m_colors[color_index(pixel_color)];
-                    output[x + (y * P8_WIDTH)] = color;
-                }
+            if (pixel_color != OVERLAY_TRANSPARENT_COLOR)
+            {
+                uint32_t color = m_colors[color_index(pixel_color)];
+                output[x + (y * P8_WIDTH)] = color;
             }
         }
     }
@@ -619,44 +631,39 @@ void p8_render()
         }
     }
 
-    if (m_overlay_enabled)
+    output = gdi_get_frame_buffer_addr(HW_LCDC_LAYER_0);
+
+    for (int y = 1; y <= P8_HEIGHT; y++)
     {
-        uint8_t transparent_color = m_overlay_transparent_color;
-        uint8_t *overlay_mem = m_overlay_memory;
-        output = gdi_get_frame_buffer_addr(HW_LCDC_LAYER_0);
-
-        for (int y = 1; y <= 128; y++)
+        if (y & 0x7)
         {
-            if (y & 0x7)
+            uint16_t *top = output;
+
+            for (int x = 0; x < 128; x += 2)
             {
-                uint16_t *top = output;
+                int overlay_offset = (x >> 1) + (y - 1) * 64;
+                uint8_t value = m_overlay_memory[overlay_offset];
+                uint8_t left = value & 0xF;
+                uint8_t right = value >> 4;
 
-                for (int x = 0; x < 128; x += 2)
+                if (left != OVERLAY_TRANSPARENT_COLOR)
                 {
-                    int overlay_offset = (x >> 1) + (y - 1) * 64;
-                    uint8_t value = overlay_mem[overlay_offset];
-                    uint8_t left = value & 0xF;
-                    uint8_t right = value >> 4;
-
-                    if (left != transparent_color)
-                    {
-                        uint16_t c_left = m_colors[color_index(left)];
-                        *top = c_left;
-                        *(top + 1) = c_left;
-                    }
-                    top += 2;
-
-                    if (right != transparent_color)
-                    {
-                        uint16_t c_right = m_colors[color_index(right)];
-                        *top = c_right;
-                        *(top + 1) = c_right;
-                    }
-                    top += 2;
+                    uint16_t c_left = m_colors[color_index(left)];
+                    *top = c_left;
+                    *(top + 1) = c_left;
                 }
+                top += 2;
 
-                output += 240;
+                if (right != OVERLAY_TRANSPARENT_COLOR)
+                {
+                    uint16_t c_right = m_colors[color_index(right)];
+                    *top = c_right;
+                    *(top + 1) = c_right;
+                }
+                top += 2;
             }
+
+            output += 240;
         }
     }
 
@@ -675,22 +682,54 @@ void p8_update_input()
     }
 
 #ifdef SDL
+    m_mouse_xrel = 0;
+    m_mouse_yrel = 0;
+    m_mouse_wheel = 0;
+
     SDL_Event event;
     while (SDL_PollEvent(&event))
     {
         switch (event.type)
         {
         case SDL_MOUSEMOTION:
-            m_mouse_x = event.motion.x;
-            m_mouse_y = event.motion.y;
-            m_mouse_xrel += event.motion.xrel;
-            m_mouse_yrel += event.motion.yrel;
+            m_mouse_x = event.motion.x * P8_WIDTH / SCREEN_WIDTH;
+            m_mouse_y = event.motion.y * P8_HEIGHT / SCREEN_HEIGHT;
+            m_mouse_xrel += event.motion.xrel * P8_WIDTH / SCREEN_WIDTH;
+            m_mouse_yrel += event.motion.yrel * P8_HEIGHT / SCREEN_HEIGHT;
             break;
         case SDL_MOUSEBUTTONDOWN:
-            m_mouse_buttons |= 1 << event.button.button;
+            if (event.button.button == 1) {
+                m_mouse_buttons |= 0x1;
+                if (m_memory[MEMORY_DEVKIT_MODE] & 0x2)
+                    update_buttons(0, BUTTON_ACTION1, true);
+            } else if (event.button.button == 3) {
+                m_mouse_buttons |= 0x2;
+                if (m_memory[MEMORY_DEVKIT_MODE] & 0x2)
+                    update_buttons(0, BUTTON_ACTION2, true);
+            } else if (event.button.button == 2) {
+                m_mouse_buttons |= 0x4;
+                if (m_memory[MEMORY_DEVKIT_MODE] & 0x2)
+                    update_buttons(0, BUTTON_PAUSE, true);
+            } else if (event.button.button == 4) {
+                m_mouse_wheel += 1;
+            } else if (event.button.button == 5) {
+                m_mouse_wheel -= 1;
+            }
             break;
         case SDL_MOUSEBUTTONUP:
-            m_mouse_buttons &= ~(1 << event.button.button);
+            if (event.button.button == 1) {
+                m_mouse_buttons &= ~0x1;
+                if (m_memory[MEMORY_DEVKIT_MODE] & 0x2)
+                    update_buttons(0, BUTTON_ACTION1, false);
+            } else if (event.button.button == 3) {
+                m_mouse_buttons &= ~0x2;
+                if (m_memory[MEMORY_DEVKIT_MODE] & 0x2)
+                    update_buttons(0, BUTTON_ACTION2, false);
+            } else if (event.button.button == 2) {
+                m_mouse_buttons &= ~0x4;
+                if (m_memory[MEMORY_DEVKIT_MODE] & 0x2)
+                    update_buttons(0, BUTTON_PAUSE, false);
+            }
             break;
         case SDL_KEYDOWN:
             switch (event.key.keysym.sym)
@@ -722,6 +761,15 @@ void p8_update_input()
                 break;
             case SDLK_p:
                 update_buttons(0, BUTTON_PAUSE, true);
+                break;
+            case SDLK_SPACE:
+                update_buttons(0, BUTTON_SPACE, true);
+                break;
+            case SDLK_PAGEUP:
+                update_buttons(0, BUTTON_PAGE_UP, true);
+                break;
+            case SDLK_PAGEDOWN:
+                update_buttons(0, BUTTON_PAGE_DOWN, true);
                 break;
             default:
                 break;
@@ -757,6 +805,15 @@ void p8_update_input()
                 break;
             case SDLK_p:
                 update_buttons(0, BUTTON_PAUSE, false);
+                break;
+            case SDLK_SPACE:
+                update_buttons(0, BUTTON_SPACE, false);
+                break;
+            case SDLK_PAGEUP:
+                update_buttons(0, BUTTON_PAGE_UP, false);
+                break;
+            case SDLK_PAGEDOWN:
+                update_buttons(0, BUTTON_PAGE_DOWN, false);
                 break;
             case INPUT_ESCAPE:
                 update_buttons(0, BUTTON_ESCAPE, false);
@@ -851,10 +908,10 @@ void p8_update_input()
         }
     }
 
-    if ((m_buttons[0] & BUTTON_MASK_ESCAPE) != 0)
-        p8_abort();
+    if (!m_dialog_showing) {
+        if ((m_buttons[0] & BUTTON_MASK_ESCAPE) != 0)
+            p8_abort();
 
-    if (!m_pause_menu_showing) {
         if ((m_buttonsp[0] & BUTTON_MASK_PAUSE) != 0) {
             p8_show_pause_menu();
         }
@@ -1127,24 +1184,88 @@ void p8_close_cartdata(void)
 
 static void p8_show_compatibility_error(int severity)
 {
-    m_pause_menu_showing = true;
+    m_dialog_showing = true;
     p8_reset();
-    clear_screen(0);
-    draw_rect(10, 51, 118, 78, 7, 0);
-    if (severity <= COMPAT_SOME) {
-        draw_simple_text("this cart may not be", 24, 55, 7);
-        draw_simple_text("fully compatible with", 22, 62, 7);
-        draw_simple_text(PROGNAME, 64-strlen(PROGNAME)*GLYPH_WIDTH/2, 69, 7);
+
+
+    p8_dialog_control_t compat_controls_some[] = {
+        DIALOG_LABEL("this cart may not be"),
+        DIALOG_LABEL("fully compatible with"),
+        DIALOG_LABEL(PROGNAME),
+        DIALOG_SPACING(),
+        DIALOG_BUTTONBAR_OK_ONLY(),
+    };
+
+    p8_dialog_control_t compat_controls_none[] = {
+        DIALOG_LABEL("this cart is not"),
+        DIALOG_LABEL("compatible with"),
+        DIALOG_LABEL(PROGNAME),
+        DIALOG_SPACING(),
+        DIALOG_BUTTONBAR_OK_ONLY(),
+    };
+
+    p8_dialog_t compat_dialog;
+    if (severity <= COMPAT_SOME)
+        p8_dialog_init(&compat_dialog, NULL, compat_controls_some, 5, 0);
+    else
+        p8_dialog_init(&compat_dialog, NULL, compat_controls_none, 5, 0);
+
+    p8_dialog_run(&compat_dialog);
+    p8_dialog_cleanup(&compat_dialog);
+
+    m_button_down_time[0][BUTTON_ACTION1] = UINT_MAX;
+    m_dialog_showing = false;
+}
+
+void p8_show_io_icon(bool show)
+{
+    if (show) {
+        overlay_draw_icon(io_icon, P8_WIDTH - 8, 0);
     } else {
-        draw_simple_text("this cart is not", 32, 55, 7);
-        draw_simple_text("compatible with", 34, 62, 7);
-        draw_simple_text(PROGNAME, 64-strlen(PROGNAME)*GLYPH_WIDTH/2, 69, 7);
+        overlay_draw_rectfill(P8_WIDTH - 8, 0, P8_WIDTH-1, 7, OVERLAY_TRANSPARENT_COLOR);
+        p8_dialog_draw_stack();
     }
     p8_flip();
-    do {
-        p8_update_input();
-    } while ((m_buttons[0] & (BUTTON_MASK_ACTION1 | BUTTON_MASK_RETURN)) == 0);
-    clear_screen(0);
-    m_button_down_time[0][BUTTON_ACTION1] = UINT_MAX;
-    m_pause_menu_showing = false;
 }
+
+void p8_show_error_dialog(const char **lines, int line_count, p8_error_severity_t severity)
+{
+    assert(line_count <= 4);
+
+    int control_count = line_count + 2;
+    p8_dialog_control_t controls[6];
+
+    /* Add label controls for each line */
+    for (int i = 0; i < line_count; i++) {
+        controls[i] = (p8_dialog_control_t)DIALOG_LABEL(lines[i]);
+    }
+
+    /* Add spacing and button bar */
+    controls[line_count] = (p8_dialog_control_t)DIALOG_SPACING();
+    controls[line_count + 1] = (p8_dialog_control_t)DIALOG_BUTTONBAR_OK_ONLY();
+
+    p8_dialog_t error_dialog;
+    const char *title = (severity == P8_ERROR_WARNING) ? "warning" : "error";
+    p8_dialog_init(&error_dialog, title, controls, control_count, 120);
+    p8_dialog_run(&error_dialog);
+    p8_dialog_cleanup(&error_dialog);
+}
+
+void p8_show_version_dialog(void)
+{
+    extern const char *femto8_version;
+    char femto8_version_string[50];
+    sprintf(femto8_version_string, "femto8 %s", femto8_version);
+
+    p8_dialog_control_t controls[] = {
+        DIALOG_LABEL(femto8_version_string),
+        DIALOG_SPACING(),
+        DIALOG_BUTTONBAR_OK_ONLY()
+    };
+
+    p8_dialog_t dialog;
+    p8_dialog_init(&dialog, "femto8 version", controls, sizeof(controls) / sizeof(controls[0]), 0);
+    p8_dialog_run(&dialog);
+    p8_dialog_cleanup(&dialog);
+}
+

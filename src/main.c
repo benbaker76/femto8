@@ -13,6 +13,8 @@
 
 #define VERSION "1.0.00"
 
+const char *femto8_version = VERSION;
+
 int main(int argc, char *argv[])
 {
     const char *file_name = NULL;

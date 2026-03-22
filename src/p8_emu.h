@@ -125,8 +125,8 @@
 #define SPRITE_WIDTH 8
 #define SPRITE_HEIGHT 8
 #define BUTTON_COUNT 6
-#define BUTTON_REPEAT_COUNT 5
-#define BUTTON_INTERNAL_COUNT 10
+#define BUTTON_REPEAT_COUNT 6
+#define BUTTON_INTERNAL_COUNT 13
 #define PLAYER_COUNT 2
 
 #define STAT_MEM_USAGE 0
@@ -141,8 +141,15 @@
 #define STAT_MOUSE_X 32
 #define STAT_MOUSE_Y 33
 #define STAT_MOUSE_BUTTONS 34
+#define STAT_MOUSE_WHEEL 36
 #define STAT_MOUSE_XREL 38
 #define STAT_MOUSE_YREL 39
+#define STAT_YEAR_UTC 80
+#define STAT_MONTH_UTC 81
+#define STAT_DAY_UTC 82
+#define STAT_HOUR_UTC 83
+#define STAT_MINUTE_UTC 84
+#define STAT_SECOND_UTC 85
 #define STAT_YEAR 90
 #define STAT_MONTH 91
 #define STAT_DAY 92
@@ -163,6 +170,8 @@
 
 #define DEFAULT_AUTO_REPEAT_DELAY 15
 #define DEFAULT_AUTO_REPEAT_INTERVAL 4
+
+#define OVERLAY_TRANSPARENT_COLOR 0
 
 enum
 {
@@ -189,19 +198,25 @@ enum
     BUTTON_PAUSE = 6,
     BUTTON_ESCAPE = 8,
     BUTTON_RETURN = 9,
+    BUTTON_SPACE = 10,
+    BUTTON_PAGE_UP = 11,
+    BUTTON_PAGE_DOWN = 12,
 };
 
 enum
 {
-    BUTTON_MASK_LEFT    = (1 << BUTTON_LEFT),
-    BUTTON_MASK_RIGHT   = (1 << BUTTON_RIGHT),
-    BUTTON_MASK_UP      = (1 << BUTTON_UP),
-    BUTTON_MASK_DOWN    = (1 << BUTTON_DOWN),
-    BUTTON_MASK_ACTION1 = (1 << BUTTON_ACTION1),
-    BUTTON_MASK_ACTION2 = (1 << BUTTON_ACTION2),
-    BUTTON_MASK_PAUSE   = (1 << BUTTON_PAUSE),
-    BUTTON_MASK_ESCAPE  = (1 << BUTTON_ESCAPE),
-    BUTTON_MASK_RETURN  = (1 << BUTTON_RETURN),
+    BUTTON_MASK_LEFT      = (1 << BUTTON_LEFT),
+    BUTTON_MASK_RIGHT     = (1 << BUTTON_RIGHT),
+    BUTTON_MASK_UP        = (1 << BUTTON_UP),
+    BUTTON_MASK_DOWN      = (1 << BUTTON_DOWN),
+    BUTTON_MASK_ACTION1   = (1 << BUTTON_ACTION1),
+    BUTTON_MASK_ACTION2   = (1 << BUTTON_ACTION2),
+    BUTTON_MASK_PAUSE     = (1 << BUTTON_PAUSE),
+    BUTTON_MASK_ESCAPE    = (1 << BUTTON_ESCAPE),
+    BUTTON_MASK_RETURN    = (1 << BUTTON_RETURN),
+    BUTTON_MASK_SPACE     = (1 << BUTTON_SPACE),
+    BUTTON_MASK_PAGE_UP   = (1 << BUTTON_PAGE_UP),
+    BUTTON_MASK_PAGE_DOWN = (1 << BUTTON_PAGE_DOWN),
 };
 
 enum {
@@ -209,6 +224,12 @@ enum {
     COMPAT_SOME,
     COMPAT_NONE
 };
+
+/* Error dialog severity levels */
+typedef enum {
+    P8_ERROR_WARNING,
+    P8_ERROR_ERROR
+} p8_error_severity_t;
 
 extern unsigned m_fps;
 extern unsigned m_actual_fps;
@@ -227,12 +248,11 @@ extern unsigned char *m_cart_memory;
 extern char *m_font;
 
 extern uint8_t *m_overlay_memory;
-extern bool m_overlay_enabled;
-extern uint8_t m_overlay_transparent_color;
 
 extern int16_t m_mouse_x, m_mouse_y;
 extern int16_t m_mouse_xrel, m_mouse_yrel;
 extern uint8_t m_mouse_buttons;
+extern int8_t m_mouse_wheel;
 extern uint8_t m_keypress;
 extern bool m_scancodes[NUM_SCANCODES];
 
@@ -245,6 +265,9 @@ extern jmp_buf jmpbuf_restart;
 
 extern bool m_load_available;
 
+extern const char *m_param_string;
+
+void __attribute__ ((noreturn)) p8_abort();
 void p8_close_cartdata(void);
 void p8_delayed_flush_cartdata(void);
 unsigned p8_elapsed_time(void);
@@ -264,9 +287,10 @@ void p8_reset(void);
 char *p8_resolve_relative_path(const char *filename);
 void __attribute__ ((noreturn)) p8_abort();
 void __attribute__ ((noreturn)) p8_restart();
-
-extern const char *m_param_string;
 void p8_seed_rng_state(uint32_t seed);
+void p8_show_io_icon(bool show);
+void p8_show_error_dialog(const char **lines, int line_count, p8_error_severity_t severity);
+void p8_show_version_dialog(void);
 int p8_shutdown(void);
 void p8_update_input(void);
 #ifdef NEXTP8

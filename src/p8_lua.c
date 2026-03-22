@@ -1,3 +1,4 @@
+
 /*
  * p8_lua.c
  *
@@ -38,6 +39,7 @@ extern "C" {
 #include "p8_print_helper.h"
 #include "pico_font.h"
 #include "p8_parser.h"
+#include "p8_pause_menu.h"
 }
 #include "lua_api.h"
 #include "lua.h"
@@ -1262,6 +1264,20 @@ int menuitem(lua_State *L)
 }
 
 // extcmd(cmd)
+int extcmd(lua_State *L)
+{
+    const char *cmd = luaL_checkstring(L, 1);
+
+    if (strcmp(cmd, "pause") == 0) {
+        p8_show_pause_menu();
+    } else if (strcmp(cmd, "reset") == 0) {
+        p8_restart();
+    } else if (strcmp(cmd, "shutdown") == 0) {
+        p8_abort();
+    }
+
+    return 0;
+}
 
 int reset(lua_State *L)
 {
@@ -1294,8 +1310,10 @@ int _load(lua_State *L)
     if (strstr(filename, ".p8") == NULL && strstr(filename, ".P8") == NULL) {
         size_t len = strlen(filename) + 4;
         full_filename = (char *)malloc(len);
-        if (!full_filename)
+        if (!full_filename) {
             luaL_error(L, "out of memory");
+            return 0;
+        }
         snprintf(full_filename, len, "%s.p8", filename);
         filename = full_filename;
     }
@@ -1360,9 +1378,14 @@ case STAT_MEM_USAGE: {
     }
 
 #elif defined(__GLIBC__)
-  #if defined(__GLIBC_PREREQ) && __GLIBC_PREREQ(2,33)
-    struct mallinfo2 mi = mallinfo2();
-    kb = (double)mi.uordblks / 1024.0;
+  #if defined(__GLIBC_PREREQ)
+    #if defined(__GLIBC_PREREQ) && __GLIBC_PREREQ(2,33)
+      struct mallinfo2 mi = mallinfo2();
+      kb = (double)mi.uordblks / 1024.0;
+    #else
+      struct mallinfo mi = mallinfo();
+      kb = (double)mi.uordblks / 1024.0;
+    #endif
   #else
     struct mallinfo mi = mallinfo();
     kb = (double)mi.uordblks / 1024.0;
@@ -1424,6 +1447,9 @@ case STAT_MEM_USAGE: {
     case STAT_MOUSE_BUTTONS:
         lua_pushinteger(L, m_mouse_buttons);
         break;
+    case STAT_MOUSE_WHEEL:
+        lua_pushinteger(L, m_mouse_wheel);
+        break;
     case STAT_MOUSE_XREL:
         lua_pushinteger(L, m_mouse_xrel);
         break;
@@ -1456,6 +1482,37 @@ case STAT_MEM_USAGE: {
             lua_pushinteger(L, tm->tm_min);
             break;
         case STAT_SECOND:
+            lua_pushinteger(L, tm->tm_sec);
+            break;
+        }
+        break;
+    }
+    case STAT_YEAR_UTC:
+    case STAT_MONTH_UTC:
+    case STAT_DAY_UTC:
+    case STAT_HOUR_UTC:
+    case STAT_MINUTE_UTC:
+    case STAT_SECOND_UTC: {
+        time_t t = time(NULL);
+        struct tm *tm = gmtime(&t);
+        switch (n)
+        {
+        case STAT_YEAR_UTC:
+            lua_pushinteger(L, tm->tm_year + 1900);
+            break;
+        case STAT_MONTH_UTC:
+            lua_pushinteger(L, tm->tm_mon + 1);
+            break;
+        case STAT_DAY_UTC:
+            lua_pushinteger(L, tm->tm_mday);
+            break;
+        case STAT_HOUR_UTC:
+            lua_pushinteger(L, tm->tm_hour);
+            break;
+        case STAT_MINUTE_UTC:
+            lua_pushinteger(L, tm->tm_min);
+            break;
+        case STAT_SECOND_UTC:
             lua_pushinteger(L, tm->tm_sec);
             break;
         }
@@ -1677,7 +1734,7 @@ void lua_register_functions(lua_State *L)
     // *** System ***
     // ****************************************************************
     lua_register(L, "menuitem", menuitem);
-    // lua_register(L, "extcmd", extcmd);
+    lua_register(L, "extcmd", extcmd);
     lua_register(L, "load", _load);
     lua_register(L, "reset", reset);
     lua_register(L, "run", run);
