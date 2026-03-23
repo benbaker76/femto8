@@ -1,226 +1,158 @@
-//
-//  ZEPTO-8 — Fantasy console emulator
-//
-//  Copyright © 2016–2024 Sam Hocevar <sam@hocevar.net>
-//
-//  This program is free software. It comes without any warranty, to
-//  the extent permitted by applicable law. You can redistribute it
-//  and/or modify it under the terms of the Do What the Fuck You Want
-//  to Public License, Version 2, as published by the WTFPL Task Force.
-//  See http://www.wtfpl.net/ for more details.
-//
+/*
+ * fix32.h - Pure C 16.16 fixed-point arithmetic
+ *
+ * Port of z8::fix32 from femto8 (C++ operator overloads -> C inline functions).
+ * All PICO-8 numbers are stored as int32_t with 16 integer bits and 16 fractional bits.
+ */
 
-#pragma once
+#ifndef FIX32_H
+#define FIX32_H
 
-#include <stdint.h>    // int32_t, int64_t, …
-#include <math.h>       // std::abs
-namespace {
-    template <class T> const T min(const T a, const T b)
-    {
-        if (!(a < b))
-            return b;
-        else
-            return a;
-    }
-    template <class T> const T abs(const T a)
-    {
-        if (a < 0)
-            return -a;
-        else
-            return a;
-    }
+#include <stdint.h>
+#include <math.h>
+
+typedef int32_t fix32_t;
+
+/* Constants */
+#define FIX32_ZERO      ((fix32_t)0)
+#define FIX32_ONE       ((fix32_t)0x00010000)
+#define FIX32_HALF      ((fix32_t)0x00008000)
+#define FIX32_NEG_ONE   ((fix32_t)0xFFFF0000)
+#define FIX32_MAX       ((fix32_t)0x7FFFFFFF)
+#define FIX32_MIN       ((fix32_t)0x80000001)  /* not 0x80000000, per PICO-8 */
+
+/* Construction */
+static inline fix32_t fix32_from_int(int x)       { return (fix32_t)x << 16; }
+static inline fix32_t fix32_from_double(double d)  { return (fix32_t)(int64_t)(d * 65536.0); }
+static inline fix32_t fix32_from_bits(int32_t b)   { return b; }
+
+/* Conversion */
+static inline int     fix32_to_int(fix32_t x)      { return x >> 16; }
+static inline double  fix32_to_double(fix32_t x)    { return (double)x / 65536.0; }
+static inline int32_t fix32_bits(fix32_t x)         { return x; }
+
+/* Comparisons */
+static inline int fix32_eq(fix32_t a, fix32_t b)  { return a == b; }
+static inline int fix32_ne(fix32_t a, fix32_t b)  { return a != b; }
+static inline int fix32_lt(fix32_t a, fix32_t b)  { return a < b; }
+static inline int fix32_gt(fix32_t a, fix32_t b)  { return a > b; }
+static inline int fix32_le(fix32_t a, fix32_t b)  { return a <= b; }
+static inline int fix32_ge(fix32_t a, fix32_t b)  { return a >= b; }
+static inline int fix32_bool(fix32_t a)           { return a != 0; }
+
+/* Basic arithmetic */
+static inline fix32_t fix32_add(fix32_t a, fix32_t b) { return a + b; }
+static inline fix32_t fix32_sub(fix32_t a, fix32_t b) { return a - b; }
+static inline fix32_t fix32_neg(fix32_t a)             { return -a; }
+
+static inline fix32_t fix32_mul(fix32_t a, fix32_t b) {
+    return (fix32_t)((int64_t)a * b >> 16);
 }
 
-namespace z8
-{
+static inline fix32_t fix32_div(fix32_t a, fix32_t b) {
+    /* Special case: 0x8000/0x1 = 0x8000, not 0x8000.0001 */
+    if (b == FIX32_ONE)
+        return a;
 
-struct fix32
-{
-    inline fix32() = default;
-
-    // Convert from/to double
-    inline fix32(double d)
-      : m_bits(int32_t(int64_t(d * 65536.0)))
-    {}
-
-    inline operator double() const
-    {
-        return double(m_bits) * (1.0 / 65536.0);
+    if (b) {
+        int64_t result = (int64_t)a * 0x10000 / b;
+        int64_t abs_result = result < 0 ? -result : result;
+        if (abs_result <= (int64_t)0x7FFFFFFFU)
+            return (fix32_t)result;
     }
 
-    // Conversions up to int16_t are safe.
-    inline fix32(int8_t x)  : m_bits(int32_t(x << 16)) {}
-    inline fix32(uint8_t x) : m_bits(int32_t(x << 16)) {}
-    inline fix32(int16_t x) : m_bits(int32_t(x << 16)) {}
-
-    // Anything above int16_t is risky because of precision loss, but Lua
-    // does too many implicit conversions from int that we can’t mark this
-    // one as explicit.
-    inline fix32(int x)  : m_bits(int32_t(x << 16)) {}
-
-    inline explicit fix32(uint16_t x) : m_bits(int32_t(x << 16)) {}
-    inline explicit fix32(uint32_t x) : m_bits(int32_t(x << 16)) {}
-    inline explicit fix32(int64_t x)  : m_bits(int32_t(x << 16)) {}
-    inline explicit fix32(uint64_t x) : m_bits(int32_t(x << 16)) {}
-
-#if 0
-    // Support for long and unsigned long when it is a distinct
-    // type from the standard int*_t types, e.g. on Windows.
-    template<typename T,
-             typename std::enable_if<(std::is_same<T, long>::value ||
-                                      std::is_same<T, unsigned long>::value) &&
-                                     !std::is_same<T, int32_t>::value &&
-                                     !std::is_same<T, uint32_t>::value &&
-                                     !std::is_same<T, int64_t>::value &&
-                                     !std::is_same<T, uint64_t>::value>::type *...>
-    inline explicit fix32(T x) : m_bits(int32_t(x << 16)) {}
-#endif
-
-    // Explicit casts are all allowed
-    inline explicit operator int8_t()   const { return m_bits >> 16; }
-    inline explicit operator uint8_t()  const { return m_bits >> 16; }
-    inline explicit operator int16_t()  const { return m_bits >> 16; }
-    inline explicit operator uint16_t() const { return m_bits >> 16; }
-    inline explicit operator int32_t()  const { return m_bits >> 16; }
-    inline explicit operator uint32_t() const { return m_bits >> 16; }
-    inline explicit operator int64_t()  const { return m_bits >> 16; }
-    inline explicit operator uint64_t() const { return m_bits >> 16; }
-
-#if 0
-    // Additional casts for long and unsigned long on architectures where
-    // these are not the same types as their cstdint equivalents.
-    template<typename T,
-             typename std::enable_if<(std::is_same<T, long>::value ||
-                                      std::is_same<T, unsigned long>::value) &&
-                                     !std::is_same<T, int32_t>::value &&
-                                     !std::is_same<T, uint32_t>::value &&
-                                     !std::is_same<T, int64_t>::value &&
-                                     !std::is_same<T, uint64_t>::value>::type *...>
-    inline explicit operator T() const { return T(m_bits >> 16); }
-#endif
-
-    // Directly initialise bits
-    static inline fix32 frombits(int32_t x)
-    {
-        fix32 ret; ret.m_bits = x; return ret;
-    }
-
-    inline int32_t bits() const { return m_bits; }
-
-    // Comparisons
-    inline explicit operator bool() const { return bool(m_bits); }
-    inline bool operator ==(fix32 x) const { return m_bits == x.m_bits; }
-    inline bool operator !=(fix32 x) const { return m_bits != x.m_bits; }
-    inline bool operator  <(fix32 x) const { return m_bits  < x.m_bits; }
-    inline bool operator  >(fix32 x) const { return m_bits  > x.m_bits; }
-    inline bool operator <=(fix32 x) const { return m_bits <= x.m_bits; }
-    inline bool operator >=(fix32 x) const { return m_bits >= x.m_bits; }
-
-    // Increments
-    inline fix32& operator ++() { m_bits += 0x10000; return *this; }
-    inline fix32& operator --() { m_bits -= 0x10000; return *this; }
-    inline fix32 operator ++(int) { fix32 ret = *this; ++*this; return ret; }
-    inline fix32 operator --(int) { fix32 ret = *this; --*this; return ret; }
-
-    // Math operations
-    inline fix32 const &operator +() const { return *this; }
-    inline fix32 operator -() const { return frombits(-m_bits); }
-    inline fix32 operator ~() const { return frombits(~m_bits); }
-
-    inline fix32 operator +(fix32 x) const { return frombits(m_bits + x.m_bits); }
-    inline fix32 operator -(fix32 x) const { return frombits(m_bits - x.m_bits); }
-    inline fix32 operator &(fix32 x) const { return frombits(m_bits & x.m_bits); }
-    inline fix32 operator |(fix32 x) const { return frombits(m_bits | x.m_bits); }
-    inline fix32 operator ^(fix32 x) const { return frombits(m_bits ^ x.m_bits); }
-
-    fix32 operator *(fix32 x) const
-    {
-        return frombits(int64_t(m_bits) * x.m_bits >> 16);
-    }
-
-    fix32 operator /(fix32 x) const
-    {
-        // This special case ensures 0x8000/0x1 = 0x8000, not 0x8000.0001
-        if (x.m_bits == 0x1'0000)
-            return *this;
-
-        if (x.m_bits)
-        {
-            using ::abs;
-            int64_t result = int64_t(m_bits) * 0x1'0000 / x.m_bits;
-            if (::abs(result) <= 0x7fff'ffffu)
-                return frombits(int32_t(result));
-        }
-
-        // Return 0x8000.0001 (not 0x8000.0000) for -Inf, just like PICO-8
-        return frombits((m_bits ^ x.m_bits) >= 0 ? 0x7fff'ffffu : 0x8000'0001u);
-    }
-
-    fix32 operator %(fix32 x) const
-    {
-        // PICO-8 always returns positive values
-        x = abs(x);
-        // PICO-8 0.2.5f changelog: x % 0 gives 0 (was x)
-        int32_t result = x ? m_bits % x.m_bits : 0;
-        return frombits(result >= 0 ? result : result + x.m_bits);
-    }
-
-    inline fix32 operator <<(int y) const
-    {
-        // If y is negative, use lshr() instead.
-        return y < 0 ? lshr(*this, -y) : frombits(y >= 32 ? 0 : bits() << y);
-    }
-
-    inline fix32 operator >>(int y) const
-    {
-        using ::min;
-        // If y is negative, use << instead.
-        return y < 0 ? *this << -y : frombits(bits() >> min(y, 31));
-    }
-
-    inline fix32& operator +=(fix32 x) { return *this = *this + x; }
-    inline fix32& operator -=(fix32 x) { return *this = *this - x; }
-    inline fix32& operator &=(fix32 x) { return *this = *this & x; }
-    inline fix32& operator |=(fix32 x) { return *this = *this | x; }
-    inline fix32& operator ^=(fix32 x) { return *this = *this ^ x; }
-    inline fix32& operator *=(fix32 x) { return *this = *this * x; }
-    inline fix32& operator /=(fix32 x) { return *this = *this / x; }
-    inline fix32& operator %=(fix32 x) { return *this = *this % x; }
-
-    // Free functions
-
-    // PICO-8 0.2.3 changelog: abs(0x8000) should be 0x7fff.ffff
-    static inline fix32 abs(fix32 a) { return a.m_bits >= 0 ? a : a.m_bits << 1 == 0 ? ~a : -a; }
-
-    static inline fix32 min(fix32 a, fix32 b) { return a < b ? a : b; }
-    static inline fix32 max(fix32 a, fix32 b) { return a > b ? a : b; }
-
-    static inline fix32 ceil(fix32 x) { return -floor(-x); }
-    static inline fix32 floor(fix32 x) { return frombits(x.m_bits & 0xffff'0000); }
-
-    static fix32 pow(fix32 x, fix32 y) { return fix32(::pow(double(x), double(y))); }
-
-    static inline fix32 lshr(fix32 x, int y)
-    {
-        // If y is negative, use << instead.
-        return y < 0 ? x << -y : frombits(y >= 32 ? 0 : uint32_t(x.bits()) >> y);
-    }
-
-    static inline fix32 rotl(fix32 x, int y)
-    {
-        y &= 0x1f;
-        return frombits((x.bits() << y) | (uint32_t(x.bits()) >> (32 - y)));
-    }
-
-    static inline fix32 rotr(fix32 x, int y)
-    {
-        y &= 0x1f;
-        return frombits((uint32_t(x.bits()) >> y) | (x.bits() << (32 - y)));
-    }
-
-private:
-    int32_t m_bits;
-};
-
+    /* Return 0x8000.0001 (not 0x8000.0000) for -Inf, just like PICO-8 */
+    return (a ^ b) >= 0 ? (fix32_t)0x7FFFFFFFU : (fix32_t)0x80000001U;
 }
 
+static inline fix32_t fix32_mod(fix32_t a, fix32_t b) {
+    /* PICO-8 always returns positive values */
+    fix32_t abs_b = b < 0 ? -b : b;
+    /* PICO-8 0.2.5f: x % 0 gives 0 */
+    if (!abs_b) return 0;
+    int32_t result = a % abs_b;
+    return result >= 0 ? result : result + abs_b;
+}
+
+static inline fix32_t fix32_idiv(fix32_t a, fix32_t b) {
+    fix32_t d = fix32_div(a, b);
+    return d & (fix32_t)0xFFFF0000;  /* floor = mask off fraction */
+}
+
+/* Bitwise */
+static inline fix32_t fix32_band(fix32_t a, fix32_t b) { return a & b; }
+static inline fix32_t fix32_bor(fix32_t a, fix32_t b)  { return a | b; }
+static inline fix32_t fix32_bxor(fix32_t a, fix32_t b) { return a ^ b; }
+static inline fix32_t fix32_bnot(fix32_t a)             { return ~a; }
+
+/* Forward declaration for mutual recursion */
+static inline fix32_t fix32_lshr(fix32_t x, int y);
+
+static inline fix32_t fix32_shl(fix32_t x, int y) {
+    /* Negative y = lshr instead */
+    if (y < 0) return fix32_lshr(x, -y);
+    return y >= 32 ? 0 : x << y;
+}
+
+static inline fix32_t fix32_shr(fix32_t x, int y) {
+    /* Arithmetic right shift. Negative y = left shift */
+    if (y < 0) return fix32_shl(x, -y);
+    int shift = y < 31 ? y : 31;
+    return x >> shift;
+}
+
+static inline fix32_t fix32_lshr(fix32_t x, int y) {
+    /* Logical (unsigned) right shift. Negative y = left shift */
+    if (y < 0) return fix32_shl(x, -y);
+    return y >= 32 ? 0 : (fix32_t)((uint32_t)x >> y);
+}
+
+static inline fix32_t fix32_rotl(fix32_t x, int y) {
+    y &= 0x1f;
+    return (x << y) | (fix32_t)((uint32_t)x >> (32 - y));
+}
+
+static inline fix32_t fix32_rotr(fix32_t x, int y) {
+    y &= 0x1f;
+    return (fix32_t)((uint32_t)x >> y) | (x << (32 - y));
+}
+
+/* Math functions */
+
+/* PICO-8 0.2.3: abs(0x8000) should be 0x7fff.ffff */
+static inline fix32_t fix32_abs(fix32_t a) {
+    if (a >= 0) return a;
+    if ((a << 1) == 0) return ~a;  /* 0x80000000 -> 0x7FFFFFFF */
+    return -a;
+}
+
+static inline fix32_t fix32_min(fix32_t a, fix32_t b) { return a < b ? a : b; }
+static inline fix32_t fix32_max(fix32_t a, fix32_t b) { return a > b ? a : b; }
+
+static inline fix32_t fix32_mid(fix32_t a, fix32_t b, fix32_t c) {
+    if (a > b) { fix32_t t = a; a = b; b = t; }
+    /* now a <= b */
+    if (c <= a) return a;
+    if (c >= b) return b;
+    return c;
+}
+
+static inline fix32_t fix32_flr(fix32_t x) {
+    return x & (fix32_t)0xFFFF0000;
+}
+
+static inline fix32_t fix32_ceil(fix32_t x) {
+    return fix32_neg(fix32_flr(fix32_neg(x)));
+}
+
+static inline fix32_t fix32_sgn(fix32_t x) {
+    if (x > 0) return FIX32_ONE;
+    if (x < 0) return FIX32_NEG_ONE;
+    return FIX32_ONE;  /* PICO-8: sgn(0) = 1 */
+}
+
+static inline fix32_t fix32_pow(fix32_t x, fix32_t y) {
+    return fix32_from_double(pow(fix32_to_double(x), fix32_to_double(y)));
+}
+
+#endif /* FIX32_H */

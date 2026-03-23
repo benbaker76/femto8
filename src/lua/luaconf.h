@@ -546,8 +546,10 @@
 */
 
 
-#include <stdint.h> // for int16_t
-#include "fix32.h" // for z8::fix32
+#include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include "fix32.h"
 
 #undef LUA_USE_STRTODHEX
 #undef LUA_USE_LONGLONG
@@ -558,58 +560,112 @@
 #undef LUA_IEEE754TRICK
 #undef LUA_MSASMTRICK
 #undef LUAI_UACNUMBER
+#undef LUA_NANTRICK
 
 #undef lua_number2str
 #undef l_mathop
+#undef lua_str2number
 
-#if defined(LUA_USE_READLINE)
-#define LUA_PROMPT	"\x01\x1b[1;95m\x02nextp8\x01\x1b[0m\x02> "
-#define LUA_PROMPT2	"\x01\x1b[1;95m\x02nextp8\x01\x1b[0m\x02>> "
-#else
-#define LUA_PROMPT	"nextp8> "
-#define LUA_PROMPT2	"nextp8>> "
-#endif
+#undef LUA_NUMBER_SCAN
+#undef LUA_NUMBER_FMT
+#undef LUAI_MAXNUMBER2STR
+
+#undef luai_nummod
+#undef luai_numpow
+#undef luai_numadd
+#undef luai_numsub
+#undef luai_nummul
+#undef luai_numdiv
+#undef luai_numunm
+#undef luai_numeq
+#undef luai_numlt
+#undef luai_numle
+#undef luai_numisnan
 
 #define LUA_PROGNAME	"nextp8"
 #define LUA_INTEGER	int16_t
 #define LUA_UNSIGNED	uint16_t
-#define LUA_NUMBER	z8::fix32
-#define LUAI_UACNUMBER	z8::fix32
+#define LUA_NUMBER	fix32_t
+#define LUAI_UACNUMBER	fix32_t
 #define LUA_NBITS	16
-#define l_mathop(x)	(z8::fix32::x)
+#define LUAI_MAXNUMBER2STR	32
 
 #define LUA_USE_LONGJMP
 
 #define LUA_COMPAT_UNPACK
 
-#define luai_numidiv(L,a,b)	(l_mathop(floor)((a)/(b)))
-#define luai_numband(L,a,b)	((a)&(b))
-#define luai_numbor(L,a,b)	((a)|(b))
-#define luai_numbxor(L,a,b)	((a)^(b))
-#define luai_numshl(L,a,b)	((a)<<int((b)))
-#define luai_numshr(L,a,b)	((a)>>int((b)))
-#define luai_numlshr(L,a,b)	(l_mathop(lshr)((a),int((b))))
-#define luai_numrotl(L,a,b)	(l_mathop(rotl)((a),int((b))))
-#define luai_numrotr(L,a,b)	(l_mathop(rotr)((a),int((b))))
-#define luai_numbnot(L,a)	(~(a))
+/*
+** lua_str2number: parse a decimal string to fix32_t
+** We parse via strtod, then convert to fix32.
+*/
+static inline fix32_t lua_str2number_fn(const char *s, char **endptr) {
+  double d = strtod(s, endptr);
+  return fix32_from_double(d);
+}
+#define lua_str2number(s,p)	lua_str2number_fn((s), (p))
+
+/*
+** lua_number2str: convert fix32_t to string.
+** Returns the length written (matching the C++ lambda that was here before).
+*/
+static inline int lua_number2str_fn(char *s, fix32_t n) {
+  int i = sprintf(s, "%1.4f", fix32_to_double(n));
+  while (i > 0 && s[i - 1] == '0') s[--i] = '\0';
+  if (i > 0 && s[i - 1] == '.') s[--i] = '\0';
+  return i;
+}
+#define lua_number2str(s,n) lua_number2str_fn((s), (n))
+
+/*
+** Arithmetic macros using our pure C fix32 functions.
+*/
+#if defined(lobject_c) || defined(lvm_c)
+#include <math.h>
+#endif
+
+/* these are used everywhere in LUA_CORE */
+#if defined(LUA_CORE)
+#define luai_numadd(L,a,b)	fix32_add((a),(b))
+#define luai_numsub(L,a,b)	fix32_sub((a),(b))
+#define luai_nummul(L,a,b)	fix32_mul((a),(b))
+#define luai_numdiv(L,a,b)	fix32_div((a),(b))
+#define luai_numunm(L,a)	fix32_neg(a)
+#define luai_numeq(a,b)		fix32_eq((a),(b))
+#define luai_numlt(L,a,b)	fix32_lt((a),(b))
+#define luai_numle(L,a,b)	fix32_le((a),(b))
+#define luai_numisnan(L,a)	(0)  /* fix32 has no NaN */
+#endif
+
+#define luai_nummod(L,a,b)	fix32_mod((a),(b))
+#define luai_numpow(L,a,b)	fix32_pow((a),(b))
+#define luai_numidiv(L,a,b)	fix32_idiv((a),(b))
+
+/* Bitwise operations on fix32 */
+#define luai_numband(L,a,b)	fix32_band((a),(b))
+#define luai_numbor(L,a,b)	fix32_bor((a),(b))
+#define luai_numbxor(L,a,b)	fix32_bxor((a),(b))
+#define luai_numshl(L,a,b)	fix32_shl((a), fix32_to_int(b))
+#define luai_numshr(L,a,b)	fix32_shr((a), fix32_to_int(b))
+#define luai_numlshr(L,a,b)	fix32_lshr((a), fix32_to_int(b))
+#define luai_numrotl(L,a,b)	fix32_rotl((a), fix32_to_int(b))
+#define luai_numrotr(L,a,b)	fix32_rotr((a), fix32_to_int(b))
+#define luai_numbnot(L,a)	fix32_bnot(a)
 #define luai_numpeek(L,a)	(luaV_peek(L,a,1))
 #define luai_numpeek2(L,a)	(luaV_peek(L,a,2))
 #define luai_numpeek4(L,a)	(luaV_peek(L,a,4))
 
-#define lua_number2str(s,n) [&]() { \
-  int i = sprintf(s, "%1.4f", (double)n); \
-  while (i > 0 && s[i - 1] == '0') s[--i] = '\0'; \
-  if (i > 0 && s[i - 1] == '.') s[--i] = '\0'; \
-  return i; }()
+/*
+** Hash for fix32 numbers.
+** Multiply by golden ratio in fix32, take raw bits.
+*/
+#define luai_hashnum(i,n) \
+  (i = (int)fix32_bits(fix32_mul((n), fix32_from_bits((int32_t)2654435769u))))
 
-#define luai_hashnum(i,n) (i = (n * z8::fix32::frombits(2654435769u)).bits())
-
-static inline z8::fix32 operator/(z8::fix32 x, int y) { return x / z8::fix32(y); }
-static inline z8::fix32 operator+(int x, z8::fix32 y) { return z8::fix32(x) + y; }
-
-static inline bool operator==(z8::fix32 x, int y) { return x == z8::fix32(y); }
-static inline bool operator <(z8::fix32 x, int y) { return x  < z8::fix32(y); }
-static inline bool operator <(int x, z8::fix32 y) { return z8::fix32(x)  < y; }
+/*
+** l_mathop is not used in fix32 mode, but define it to avoid errors
+** in dead code paths.
+*/
+#define l_mathop(x)		(x)
 
 #endif
 

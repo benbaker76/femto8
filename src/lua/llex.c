@@ -243,10 +243,10 @@ static void read_numeral (LexState *ls, SemInfo *seminfo) {
   int first = ls->current;
   lua_assert(lisdigit(ls->current));
   save_and_next(ls);
-  bool hexa = false;
+  int hexa = 0;
   if (first == '0') {
     if (check_next(ls, "Xx")) {  /* hexadecimal? */
-      hexa = true;
+      hexa = 1;
     } else check_next(ls, "Bb");  /* binary? */
   }
   for (;;) {

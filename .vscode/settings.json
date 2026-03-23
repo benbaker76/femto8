@@ -75,6 +75,8 @@
     "stdint.h": "c",
     "stdbool.h": "c",
     "lprefix.h": "c",
-    "charconv": "c"
+    "charconv": "c",
+    "windows.h": "c",
+    "malloc.h": "c"
   }
 }

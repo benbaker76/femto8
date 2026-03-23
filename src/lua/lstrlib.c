@@ -916,9 +916,9 @@ static int str_format (lua_State *L) {
         }
         case 'd': case 'i': {
           lua_Number n = luaL_checknumber(L, arg);
-          LUA_INTFRM_T ni = (LUA_INTFRM_T)n;
-          lua_Number diff = n - (lua_Number)(int16_t)ni;
-          luaL_argcheck(L, -1 < diff && diff < 1, arg,
+          LUA_INTFRM_T ni = (LUA_INTFRM_T)fix32_to_int(n);
+          lua_Number diff = fix32_sub(n, fix32_from_int((int)(int16_t)ni));
+          luaL_argcheck(L, fix32_lt(fix32_from_int(-1), diff) && fix32_lt(diff, fix32_from_int(1)), arg,
                         "not a number in proper range");
           addlenmod(form, LUA_INTFRMLEN);
           nb = sprintf(buff, form, ni);
@@ -926,9 +926,9 @@ static int str_format (lua_State *L) {
         }
         case 'o': case 'u': case 'x': case 'X': {
           lua_Number n = luaL_checknumber(L, arg);
-          unsigned LUA_INTFRM_T ni = (unsigned LUA_INTFRM_T)n;
-          lua_Number diff = n - (lua_Number)(uint16_t)ni;
-          luaL_argcheck(L, -1 < diff && diff < 1, arg,
+          unsigned LUA_INTFRM_T ni = (unsigned LUA_INTFRM_T)(unsigned)fix32_to_int(n);
+          lua_Number diff = fix32_sub(n, fix32_from_int((int)(uint16_t)ni));
+          luaL_argcheck(L, fix32_lt(fix32_from_int(-1), diff) && fix32_lt(diff, fix32_from_int(1)), arg,
                         "not a non-negative number in proper range");
           addlenmod(form, LUA_INTFRMLEN);
           nb = sprintf(buff, form, ni);
@@ -940,7 +940,7 @@ static int str_format (lua_State *L) {
 #endif
         case 'g': case 'G': {
           addlenmod(form, LUA_FLTFRMLEN);
-          nb = sprintf(buff, form, (LUA_FLTFRM_T)luaL_checknumber(L, arg));
+          nb = sprintf(buff, form, (LUA_FLTFRM_T)fix32_to_double(luaL_checknumber(L, arg)));
           break;
         }
         case 'q': {

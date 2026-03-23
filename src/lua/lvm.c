@@ -233,7 +233,7 @@ static unsigned char PEEK(unsigned char const *ram, unsigned address)
 lua_Number luaV_peek(struct lua_State *L, lua_Number a, int count)
 {
   unsigned char const *p = G(L)->pico8memory;
-  int address = int(a) & 0xffff;
+  int address = fix32_to_int(a) & 0xffff;
   uint32_t ret = 0;
   switch (count) {
     case 4:
@@ -246,7 +246,7 @@ lua_Number luaV_peek(struct lua_State *L, lua_Number a, int count)
       ret |= PEEK(p, address) << 16;
       break;
   }
-  return lua_Number::frombits(ret);
+  return fix32_from_bits(ret);
 }
 
 
@@ -387,7 +387,7 @@ void luaV_objlen (lua_State *L, StkId ra, const TValue *rb) {
       return;
     }
     case LUA_TSTRING: {
-      setnvalue(ra, lua_Number((uint64_t)tsvalue(rb)->len));
+      setnvalue(ra, cast_num((int)(uint64_t)tsvalue(rb)->len));
       return;
     }
     default: {  /* try metamethod */

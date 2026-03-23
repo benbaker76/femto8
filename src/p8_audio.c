@@ -9,6 +9,7 @@
 #include <stdint.h>
 #include <stddef.h>
 #include <string.h>
+#include <math.h>
 #include <pthread.h>
 #include "p8_audio.h"
 #include "p8_dsp.h"
@@ -440,14 +441,67 @@ void render_sounds(int16_t *buffer, int total_samples)
                 uint8_t data_hi = m_memory[MEMORY_SFX + 68 * channel->sound_index + channel->sample * 2 + 1];
                 uint16_t data = (uint16_t)((data_hi << 8) | data_lo);
                 // bool use_sfx = data & 0x8000;
-                //  uint8_t effect = (data & EFFECT_MASK) >> EFFECT_SHIFT;
+                uint8_t effect = (data & EFFECT_MASK) >> EFFECT_SHIFT;
                 uint8_t volume = (data & VOLUME_MASK) >> VOLUME_SHIFT;
                 uint8_t waveform = (data & WAVEFORM_MASK) >> WAVEFORM_SHIFT;
                 uint8_t pitch = data & PITCH_MASK;
 
                 int length = MIN(total_samples - index, sample_per_tick - (channel->position % sample_per_tick));
 
-                render_sound(waveform, pitch, volume, channel->position, index, length, buffer);
+                /* Apply effect: compute modified pitch and volume */
+                int eff_pitch = pitch;
+                int eff_volume = volume;
+                if (effect != EFFECT_NONE)
+                {
+                    float t = (float)(channel->position % sample_per_tick) / (float)sample_per_tick;
+                    switch (effect)
+                    {
+                    case EFFECT_SLIDE:
+                    {
+                        int prev_pitch = pitch;
+                        if (channel->sample > 0)
+                        {
+                            uint8_t plo = m_memory[MEMORY_SFX + 68 * channel->sound_index + (channel->sample - 1) * 2];
+                            uint8_t phi = m_memory[MEMORY_SFX + 68 * channel->sound_index + (channel->sample - 1) * 2 + 1];
+                            prev_pitch = ((uint16_t)((phi << 8) | plo)) & PITCH_MASK;
+                        }
+                        eff_pitch = (int)(prev_pitch + (pitch - prev_pitch) * t);
+                    }
+                    break;
+                    case EFFECT_VIBRATO:
+                        eff_pitch = pitch + (int)(sinf(t * 2.0f * PI) * 1.0f);
+                        break;
+                    case EFFECT_DROP:
+                        eff_pitch = (int)(pitch * (1.0f - t));
+                        break;
+                    case EFFECT_FADEIN:
+                        eff_volume = (int)(volume * t);
+                        break;
+                    case EFFECT_FADEOUT:
+                        eff_volume = (int)(volume * (1.0f - t));
+                        break;
+                    case EFFECT_ARPEGGIOFAST:
+                    {
+                        int phase = (int)(t * 4.0f) % 3;
+                        if (phase == 1) eff_pitch = pitch + 4;
+                        else if (phase == 2) eff_pitch = pitch + 7;
+                    }
+                    break;
+                    case EFFECT_ARPEGGIOSLOW:
+                    {
+                        int phase = (int)(t * 2.0f) % 3;
+                        if (phase == 1) eff_pitch = pitch + 4;
+                        else if (phase == 2) eff_pitch = pitch + 7;
+                    }
+                    break;
+                    }
+                    if (eff_pitch < 0) eff_pitch = 0;
+                    if (eff_pitch > 63) eff_pitch = 63;
+                    if (eff_volume < 0) eff_volume = 0;
+                    if (eff_volume > 7) eff_volume = 7;
+                }
+
+                render_sound(waveform, eff_pitch, eff_volume, channel->position, index, length, buffer);
 
                 index += length;
                 channel->position += length;
