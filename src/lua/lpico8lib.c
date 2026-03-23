@@ -58,7 +58,9 @@ static lua_Number sin_helper(lua_Number x) {
     int32_t xbits = fix32_bits(x);
     int32_t base = (xbits & 0x4000) ? fix32_bits(fix32_bnot(x)) : xbits;
     int32_t a = (base & 0x3fff) + 2;
-    fix32_t ret = fix32_from_bits((a >> 2 << 4) + sintable[a >> 2]);
+    int32_t idx = a >> 2;
+    if (idx > 4095) idx = 4095;  /* clamp to table bounds */
+    fix32_t ret = fix32_from_bits((idx << 4) + sintable[idx]);
     return (xbits & 0x8000) ? ret : fix32_neg(ret);
 }
 

@@ -40,10 +40,10 @@ static inline int fix32_le(fix32_t a, fix32_t b)  { return a <= b; }
 static inline int fix32_ge(fix32_t a, fix32_t b)  { return a >= b; }
 static inline int fix32_bool(fix32_t a)           { return a != 0; }
 
-/* Basic arithmetic */
-static inline fix32_t fix32_add(fix32_t a, fix32_t b) { return a + b; }
-static inline fix32_t fix32_sub(fix32_t a, fix32_t b) { return a - b; }
-static inline fix32_t fix32_neg(fix32_t a)             { return -a; }
+/* Basic arithmetic - use unsigned to avoid signed overflow UB */
+static inline fix32_t fix32_add(fix32_t a, fix32_t b) { return (fix32_t)((uint32_t)a + (uint32_t)b); }
+static inline fix32_t fix32_sub(fix32_t a, fix32_t b) { return (fix32_t)((uint32_t)a - (uint32_t)b); }
+static inline fix32_t fix32_neg(fix32_t a)             { return (fix32_t)(-(uint32_t)a); }
 
 static inline fix32_t fix32_mul(fix32_t a, fix32_t b) {
     return (fix32_t)((int64_t)a * b >> 16);
