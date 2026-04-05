@@ -210,6 +210,9 @@ static char *process_includes(const char *lua_script, const char *cart_dir)
 
 int parse_cart_file(const char *file_name, uint8_t *memory, const char **lua_script, uint8_t **file_buffer, uint8_t *label_image)
 {
+    if (lua_script)
+        *lua_script = NULL;
+
     FILE *file = fopen(file_name, "rb");
 
     if (file == NULL)
@@ -253,7 +256,7 @@ int parse_cart_file(const char *file_name, uint8_t *memory, const char **lua_scr
     }
 
     // Process #include directives in the Lua section
-    if (*lua_script && file_name) {
+    if (lua_script && *lua_script && file_name) {
         const char *last_slash = strrchr(file_name, '/');
         char cart_dir[PATH_MAX];
         if (last_slash) {
@@ -434,6 +437,9 @@ int parse_p8_ram(const char *file_name, uint8_t *buffer, int size, uint8_t *memo
     int read_length = 0;
     int write_length = 0;
 
+    if (lua_script)
+        *lua_script = NULL;
+
     if (label_image)
         memset(label_image, 0, 0x4000);
 
@@ -545,7 +551,9 @@ int parse_p8_ram(const char *file_name, uint8_t *buffer, int size, uint8_t *memo
 
     convert_utf8_to_p8scii(&buffer[lua_start], lua_end - lua_start);
 
-    *lua_script = (const char *) &buffer[lua_start];
+    if (lua_script)
+        *lua_script = (const char *) &buffer[lua_start];
+
     return 0;
 }
 
@@ -554,8 +562,10 @@ int parse_p8_ram(const char *file_name, uint8_t *buffer, int size, uint8_t *memo
 
 int parse_png_ram(const char *file_name, uint8_t *buffer, int file_size, uint8_t *memory, const char **lua_script, uint8_t **decompression_buffer, uint8_t *label_image)
 {
-    *lua_script = NULL;
-    *decompression_buffer = NULL;
+    if (lua_script)
+        *lua_script = NULL;
+    if (decompression_buffer)
+        *decompression_buffer = NULL;
     uint8_t *px_buffer = NULL;
     unsigned width = 0, height = 0;
     unsigned ret = lodepng_decode32(&px_buffer, &width, &height, buffer, file_size);
@@ -635,9 +645,12 @@ int parse_png_ram(const char *file_name, uint8_t *buffer, int file_size, uint8_t
         byte_buffer_out++;
     }
     memcpy(memory, byte_buffer, CART_MEMORY_SIZE);
-    *decompression_buffer = malloc(0x20001);
-    pico8_code_section_decompress(byte_buffer + CART_MEMORY_SIZE, *decompression_buffer, 0x20000);
-    *lua_script = (char *)*decompression_buffer;
+    if (decompression_buffer) {
+        *decompression_buffer = malloc(0x20001);
+        pico8_code_section_decompress(byte_buffer + CART_MEMORY_SIZE, *decompression_buffer, 0x20000);
+        if (lua_script)
+            *lua_script = (char *)*decompression_buffer;
+    }
 
     return 0;
 }
