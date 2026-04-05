@@ -1073,13 +1073,27 @@ int reload(lua_State *L)
     const char *file_name = nargs >= 4 ? lua_tostring(L, 4) : NULL;
     uint8_t *src_mem = NULL;
     if (file_name != NULL) {
+        char *full_filename = NULL;
+        if (strstr(file_name, ".p8") == NULL && strstr(file_name, ".P8") == NULL) {
+            size_t len = strlen(file_name) + 4;
+            full_filename = (char *)malloc(len);
+            if (full_filename)
+                snprintf(full_filename, len, "%s.p8", file_name);
+            file_name = full_filename;
+        }
+        char *resolved_path = p8_resolve_relative_path(file_name);
+        free(full_filename);
+        if (!resolved_path)
+            return 0;
         uint8_t *buffer = NULL;
         src_mem = (uint8_t *)malloc(CART_MEMORY_SIZE);
-        if (parse_cart_file(file_name, src_mem, NULL, &buffer, NULL) != 0) {
+        if (parse_cart_file(resolved_path, src_mem, NULL, &buffer, NULL) != 0) {
             free(src_mem);
+            free(resolved_path);
             return 0;
         }
         free(buffer);
+        free(resolved_path);
     } else {
         src_mem = m_cart_memory;
     }
