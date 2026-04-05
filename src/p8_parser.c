@@ -87,6 +87,8 @@ void parse_cart_ram(uint8_t *buffer, int size, uint8_t *memory, const char **lua
 void parse_cart_file(const char *file_name, uint8_t *memory, const char **lua_script, uint8_t **file_buffer, uint8_t *label_image);
 static void parse_p8_ram(const char *file_name, uint8_t *buffer, int size, uint8_t *memory, const char **lua_script, uint8_t *label_image);
 static void parse_png_ram(const char *file_name, uint8_t *buffer, int size, uint8_t *memory, const char **lua_script, uint8_t **decompression_buffer, uint8_t *label_image);
+static char *process_includes(const char *lua_script, const char *cart_dir);
+static void convert_utf8_to_p8scii(uint8_t *buffer, size_t len);
 
 static uint8_t PNG_SIGNATURE[8] = {137, 80, 78, 71, 13, 10, 26, 10};
 
@@ -104,6 +106,106 @@ static void parse_cart_ram0(const char *file_name, uint8_t *buffer, int size, ui
 void parse_cart_ram(uint8_t *buffer, int size, uint8_t *memory, const char **lua_script, uint8_t **decompression_buffer, uint8_t *label_image)
 {
     parse_cart_ram0(NULL, buffer, size, memory, lua_script, decompression_buffer, label_image);
+}
+
+static char *process_includes(const char *lua_script, const char *cart_dir)
+{
+    // Quick scan: any #include lines present?
+    const char *scan = lua_script;
+    bool has_includes = false;
+    while ((scan = strstr(scan, "#include")) != NULL) {
+        // Must be at start of line (or start of string)
+        if (scan == lua_script || scan[-1] == '\n') {
+            has_includes = true;
+            break;
+        }
+        scan += 8;
+    }
+    if (!has_includes)
+        return NULL;
+
+    // Build expanded buffer
+    size_t capacity = strlen(lua_script) * 2;
+    size_t length = 0;
+    char *result = malloc(capacity + 1);
+    if (!result)
+        return NULL;
+
+    const char *p = lua_script;
+    while (*p) {
+        // Find end of current line
+        const char *eol = strchr(p, '\n');
+        int line_len = eol ? (int)(eol - p) : (int)strlen(p);
+
+        // Check for #include at start of line
+        if (strncmp(p, "#include ", 9) == 0) {
+            // Extract filename (skip "#include ")
+            const char *fname_start = p + 9;
+            int fname_len = line_len - 9;
+            // Trim trailing whitespace/CR
+            while (fname_len > 0 && (fname_start[fname_len - 1] == ' ' ||
+                                     fname_start[fname_len - 1] == '\r'))
+                fname_len--;
+
+            if (fname_len > 0) {
+                // Build full path relative to the cart file's directory
+                char include_path[PATH_MAX];
+                snprintf(include_path, sizeof(include_path), "%s/%.*s",
+                         cart_dir, fname_len, fname_start);
+
+                FILE *inc = fopen(include_path, "rb");
+                if (inc) {
+                    fseek(inc, 0, SEEK_END);
+                    long inc_size = ftell(inc);
+                    rewind(inc);
+
+                    // Grow result buffer if needed
+                    while (length + inc_size + 1 > capacity) {
+                        capacity *= 2;
+                        char *new_result = realloc(result, capacity + 1);
+                        if (!new_result) {
+                            fclose(inc);
+                            free(result);
+                            return NULL;
+                        }
+                        result = new_result;
+                    }
+
+                    fread(result + length, 1, inc_size, inc);
+                    convert_utf8_to_p8scii((uint8_t *)(result + length), inc_size);
+                    length += strlen(result + length);
+                    fclose(inc);
+
+                    // Ensure included content ends with newline
+                    if (length > 0 && result[length - 1] != '\n')
+                        result[length++] = '\n';
+                } else {
+                    fprintf(stderr, "Warning: #include file not found: %s\n", include_path);
+                }
+            }
+        } else {
+            // Copy line as-is (including newline)
+            int copy_len = eol ? line_len + 1 : line_len;
+            while (length + copy_len + 1 > capacity) {
+                capacity *= 2;
+                char *new_result = realloc(result, capacity + 1);
+                if (!new_result) {
+                    free(result);
+                    return NULL;
+                }
+                result = new_result;
+            }
+            memcpy(result + length, p, copy_len);
+            length += copy_len;
+        }
+
+        p += line_len;
+        if (eol)
+            p++; // skip newline
+    }
+
+    result[length] = '\0';
+    return result;
 }
 
 void parse_cart_file(const char *file_name, uint8_t *memory, const char **lua_script, uint8_t **file_buffer, uint8_t *label_image)
@@ -139,6 +241,32 @@ void parse_cart_file(const char *file_name, uint8_t *memory, const char **lua_sc
         free(*file_buffer);
 #endif
         *file_buffer = decompression_buffer;
+    }
+
+    // Process #include directives in the Lua section
+    if (*lua_script && file_name) {
+        const char *last_slash = strrchr(file_name, '/');
+        char cart_dir[PATH_MAX];
+        if (last_slash) {
+            size_t dir_len = last_slash - file_name;
+            if (dir_len >= sizeof(cart_dir))
+                dir_len = sizeof(cart_dir) - 1;
+            memcpy(cart_dir, file_name, dir_len);
+            cart_dir[dir_len] = '\0';
+        } else {
+            strcpy(cart_dir, ".");
+        }
+
+        char *expanded = process_includes(*lua_script, cart_dir);
+        if (expanded) {
+#ifdef OS_FREERTOS
+            rh_free(*file_buffer);
+#else
+            free(*file_buffer);
+#endif
+            *file_buffer = (uint8_t *)expanded;
+            *lua_script = expanded;
+        }
     }
 
     fclose(file);
