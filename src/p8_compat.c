@@ -133,6 +133,7 @@ const char *p8_lua_functions[] = {
     "cursor",
     "dget",
     "dset",
+    "extcmd",
     "fget",
     "fillp",
     "flip",
