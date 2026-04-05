@@ -1065,11 +1065,12 @@ int poke4(lua_State *L)
 // reload(destaddr, sourceaddr, len, [filename])
 int reload(lua_State *L)
 {
-    unsigned destaddr = lua_tounsigned(L, 1);
-    unsigned srcaddr = lua_tounsigned(L, 2);
-    unsigned len = lua_tounsigned(L, 3);
+    int nargs = lua_gettop(L);
+    unsigned destaddr = nargs >= 1 ? lua_tounsigned(L, 1) : 0;
+    unsigned srcaddr  = nargs >= 2 ? lua_tounsigned(L, 2) : 0;
+    unsigned len      = nargs >= 3 ? lua_tounsigned(L, 3) : 0x4300;
     destaddr = addr_remap(destaddr);
-    const char *file_name = lua_gettop(L) >= 4 ? lua_tostring(L, 4) : NULL;
+    const char *file_name = nargs >= 4 ? lua_tostring(L, 4) : NULL;
     uint8_t *src_mem = NULL;
     if (file_name != NULL) {
         uint8_t *buffer = NULL;
