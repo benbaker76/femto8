@@ -476,6 +476,8 @@ int check_compatibility(const char *filename, const char *lua_script)
     char token[256] = {0};
     char *token_p = token;
     char *token_limit = token + sizeof(token);
+    bool after_colon = false;   // set when ':' seen before a name token
+    bool token_is_method = false; // captured at NAME entry: is this a method call?
     char reported_addresses[0x6000-0x5f00];
     char reported_stats[256];
     init_hash_sets();
@@ -504,12 +506,20 @@ deflt:
             state = DEFAULT;
 default_no_peek_poke_unop:
             if ((c >= 'a' && c <= 'z') || c == '_') {
+                token_is_method = after_colon;
+                after_colon = false;
                 state = NAME;
                 goto name;
+            } else if (c == ':') {
+                after_colon = true;
             } else if (c == '-') {
+                after_colon = false;
                 state = COMMENT1;
             } else if (c == '"') {
+                after_colon = false;
                 state = STRING;
+            } else if (c != ' ' && c != '\t' && c != '\n') {
+                after_colon = false;
             }
             //if (c != ' ' && c != '\t' && c != '\n')
             //    printf(" %c ", c);
@@ -542,7 +552,7 @@ lbracket:
             } else if (c == '(') {
                 // function call
                 //printf(" FUNCTION:%s", token);
-                if (is_unsupported_function(token, &user_defined_functions)) {
+                if (!token_is_method && is_unsupported_function(token, &user_defined_functions)) {
                     if (!hash_set_contains(&reported_functions, token)) {
                         if (filename)
                             fprintf(stderr, "%s: ", filename);
