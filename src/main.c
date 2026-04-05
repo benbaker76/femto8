@@ -6,6 +6,7 @@
  */
 
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include "p8_browse.h"
 #include "p8_parser.h"
@@ -21,6 +22,7 @@ int main(int argc, char *argv[])
     const char *param_string = NULL;
     bool skip_compat = false;
     bool skip_main_loop = false;
+    int exit_code = EXIT_SUCCESS;
 
     for (int i = 1; i < argc; i++) {
         if (strcmp(argv[i], "--version") == 0) {
@@ -44,9 +46,11 @@ int main(int argc, char *argv[])
         p8_set_skip_compat_check(true);
     if (skip_main_loop)
         p8_set_skip_main_loop_if_no_callbacks(true);
-    if (file_name != NULL)
-        p8_init_file_with_param(file_name, param_string);
+    if (file_name != NULL) {
+        if (p8_init_file_with_param(file_name, param_string) != 0)
+            exit_code = EXIT_FAILURE;
+    }
     p8_shutdown();
 
-    return 0;
+    return exit_code;
 }

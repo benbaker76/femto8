@@ -1074,7 +1074,10 @@ int reload(lua_State *L)
     if (file_name != NULL) {
         uint8_t *buffer = NULL;
         src_mem = (uint8_t *)malloc(CART_MEMORY_SIZE);
-        parse_cart_file(file_name, src_mem, NULL, &buffer, NULL);
+        if (parse_cart_file(file_name, src_mem, NULL, &buffer, NULL) != 0) {
+            free(src_mem);
+            return 0;
+        }
         free(buffer);
     } else {
         src_mem = m_cart_memory;
