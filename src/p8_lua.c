@@ -1085,6 +1085,7 @@ int reload(lua_State *L)
         free(full_filename);
         if (!resolved_path)
             return 0;
+        p8_show_io_icon(true);
         uint8_t *buffer = NULL;
         src_mem = (uint8_t *)malloc(CART_MEMORY_SIZE);
         if (parse_cart_file(resolved_path, src_mem, NULL, &buffer, NULL) != 0) {
@@ -1099,8 +1100,10 @@ int reload(lua_State *L)
     }
     if (destaddr >= 0 && destaddr + len <= 0x10000 && srcaddr >= 0 && srcaddr + len <= CART_MEMORY_SIZE)
         memcpy(m_memory + destaddr, src_mem + srcaddr, len);
-    if (file_name != NULL)
+    if (file_name != NULL) {
         free(src_mem);
+        p8_show_io_icon(false);
+    }
     return 0;
 }
 
@@ -1838,25 +1841,58 @@ void lua_shutdown_api()
     }
 }
 
+static char *s_saved_script = NULL;
+
+static void print_script_context(int lineno)
+{
+    if (!s_saved_script || lineno <= 0)
+        return;
+    int lo = lineno - 3, hi = lineno + 3;
+    if (lo < 1) lo = 1;
+    const char *p = s_saved_script;
+    int cur = 1;
+    while (*p && cur < lo) {
+        if (*p++ == '\n') cur++;
+    }
+    while (*p && cur <= hi) {
+        const char *eol = p;
+        while (*eol && *eol != '\n') eol++;
+        printf("%s %4d: %.*s\n",
+               cur == lineno ? ">>>" : "   ",
+               cur, (int)(eol - p), p);
+        if (*eol) eol++;
+        p = eol;
+        cur++;
+    }
+}
+
 void lua_print_error(const char *where)
 {
-    // for (int i = 1; i < lua_gettop(L); ++i)
+    printf("Error on %s\r\n", where);
+
+    if (lua_isstring(L, -1))
     {
-        printf("Error on %s\r\n", where);
-
-        // luaL_traceback(L, L, NULL, 1);
-        // printf("%s\n", lua_tostring(L, -1));
-
-        if (lua_isstring(L, -1))
-        {
-            const char *message = lua_tostring(L, -1);
-            printf("%s\r\n", message);
+        const char *message = lua_tostring(L, -1);
+        printf("%s\r\n", message);
+        // Extract line number from error string like "...[string ...]:1292:"
+        const char *colon = message;
+        int lineno = 0;
+        while (*colon) {
+            if (*colon == ']' && *(colon+1) == ':') {
+                lineno = atoi(colon + 2);
+                if (lineno > 0) break;
+            }
+            colon++;
         }
+        print_script_context(lineno);
     }
 }
 
 void lua_init_script(const char *script)
 {
+    free(s_saved_script);
+    s_saved_script = script ? strdup(script) : NULL;
+
     if (!L)
         L = luaL_newstate();
 
