@@ -224,9 +224,9 @@ static unsigned char PEEK(unsigned char const *ram, unsigned address)
   if (!ram || address > 0x10000)
     return 0;
   if (address >= 0x0000 && address < 0x2000)
-    address = (ram[0x5f54] << 8) | (address & 0xfff);
+    address = (ram[0x5f54] << 8) | (address & 0x1fff);
   else if (address >= 0x6000 && address < 0x8000)
-    address = (ram[0x5f55] << 8) | (address & 0xfff);
+    address = (ram[0x5f55] << 8) | (address & 0x1fff);
   return ram[address];
 }
 
