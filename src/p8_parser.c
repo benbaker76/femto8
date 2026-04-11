@@ -18,6 +18,10 @@
 #include "pico8.h"
 #include "p8_lua_helper.h"
 
+#ifndef PATH_MAX
+#define PATH_MAX 256
+#endif
+
 #define RAW_DATA_LENGTH 0x4300
 #define IMAGE_WIDTH 160
 #define IMAGE_HEIGHT 205
