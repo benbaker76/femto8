@@ -254,7 +254,7 @@ static int p8_init_common(const char *file_name, const char *lua_script)
             return 0;
     }
 
-    if (!restart && !skip_compat_check) {
+    if (!skip_compat_check) {
         int ret = check_compatibility(file_name, lua_script);
         if (ret != COMPAT_OK)
             p8_show_compatibility_error(ret);
@@ -262,6 +262,8 @@ static int p8_init_common(const char *file_name, const char *lua_script)
             return -1;
     }
     restart = false;
+    // Skip compat check after first cart
+    skip_compat_check = true;
 
     memcpy(m_memory, m_cart_memory, CART_MEMORY_SIZE);
 
