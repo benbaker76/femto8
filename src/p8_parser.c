@@ -406,19 +406,11 @@ void read_music(uint8_t *dest, uint8_t *src, int read_length, int *write_length)
         uint8_t effect_id3 = src[read_offset++];
         uint8_t effect_id4 = src[read_offset++];
 
-        int begin_patter_loop = flags_byte & (1 << 0);
-        int end_pattern_loop = flags_byte & (1 << 1);
-        int stop_at_end_of_pattern = flags_byte & (1 << 2);
-
-        bool channel1_silence = (effect_id1 & 0x40) != 0;
-        bool channel2_silence = (effect_id2 & 0x40) != 0;
-        bool channel3_silence = (effect_id3 & 0x40) != 0;
-        bool channel4_silence = (effect_id4 & 0x40) != 0;
-
-        dest[write_offset++] = (channel1_silence ? 1 << 6 : effect_id1 & 0x7F) | (begin_patter_loop ? 1 << 7 : 0);
-        dest[write_offset++] = (channel2_silence ? 1 << 6 : effect_id2 & 0x7F) | (end_pattern_loop ? 1 << 7 : 0);
-        dest[write_offset++] = (channel3_silence ? 1 << 6 : effect_id3 & 0x7F) | (stop_at_end_of_pattern ? 1 << 7 : 0);
-        dest[write_offset++] = (channel4_silence ? 1 << 6 : effect_id4 & 0x7F);
+        // On-disk flags bits 0-3 map to bit 7 of in-memory bytes 0-3
+        dest[write_offset++] = (effect_id1 & 0x7F) | ((flags_byte & (1 << 0)) ? 0x80 : 0);
+        dest[write_offset++] = (effect_id2 & 0x7F) | ((flags_byte & (1 << 1)) ? 0x80 : 0);
+        dest[write_offset++] = (effect_id3 & 0x7F) | ((flags_byte & (1 << 2)) ? 0x80 : 0);
+        dest[write_offset++] = (effect_id4 & 0x7F) | ((flags_byte & (1 << 3)) ? 0x80 : 0);
     }
 
     *write_length = write_offset;
