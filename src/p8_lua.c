@@ -643,8 +643,14 @@ int sspr(lua_State *L)
 }
 
 // tline( x0, y0, x1, y1, mx, my, [mdx,] [mdy])
+// tline( precision )
 int tline(lua_State *L)
 {
+    if (lua_gettop(L) == 1) {
+        m_tline_precision = lua_tointeger(L, 1);
+        return 0;
+    }
+
     int x0 = lua_tointeger(L, 1);
     int y0 = lua_tointeger(L, 2);
     int x1 = lua_tointeger(L, 3);
@@ -655,25 +661,89 @@ int tline(lua_State *L)
     lua_Number mdy = lua_to_or_default(L, number, 8, fix32_from_int(0));
     int layer = lua_to_or_default(L, integer, 9, 0);
 
+    int cx, cy;
+    camera_get(&cx, &cy);
+    int clip_x0, clip_y0, clip_x1, clip_y1;
+    clip_get(&clip_x0, &clip_y0, &clip_x1, &clip_y1);
+
+    uint8_t map_start = m_memory[MEMORY_MAP_START];
+    bool map_invalid = (map_start >= 0x10 && map_start < 0x20) ||
+                       (map_start >= 0x30 && map_start < 0x3f);
+    uint8_t map_start_upper = map_start;
+    uint8_t map_start_lower = map_start;
+    if (!map_invalid) {
+        if (map_start < 0x10 || (map_start >= 0x40 && map_start < 0x80))
+            map_start_upper = 0x20;
+        else
+            map_start_upper = map_start;
+        map_start_lower = (map_start_upper < 0x80) ? 0x10 : map_start_upper;
+    }
+    int map_width = m_memory[MEMORY_MAP_WIDTH];
+    if (map_width == 0) map_width = 256;
+
+    int sprite_base = m_memory[MEMORY_SPRITE_PHYS] << 8;
+    int screen_base = m_memory[MEMORY_SCREEN_PHYS] << 8;
+
+    int offset_x = m_memory[MEMORY_TLINE_OFFSET_X] * 8;
+    int offset_y = m_memory[MEMORY_TLINE_OFFSET_Y] * 8;
+    int precision = m_tline_precision;
+
+    uint32_t mask_x_bits = ((uint32_t)m_memory[MEMORY_TLINE_MASK_X] << (precision + 3)) - 1;
+    uint32_t mask_y_bits = ((uint32_t)m_memory[MEMORY_TLINE_MASK_Y] << (precision + 3)) - 1;
+
+    uint32_t mx_bits = fix32_bits(mx);
+    uint32_t my_bits = fix32_bits(my);
+    uint32_t mdx_bits = fix32_bits(mdx);
+    uint32_t mdy_bits = fix32_bits(mdy);
+
     int dx = abs(x1 - x0);
     int sx = x0 < x1 ? 1 : -1;
     int dy = -abs(y1 - y0);
     int sy = y0 < y1 ? 1 : -1;
     int err = dx + dy;
 
+    uint8_t *draw_pal = &m_memory[MEMORY_PALETTES + PALTYPE_DRAW * 16];
+    uint8_t *sprite_flags_base = &m_memory[MEMORY_SPRITEFLAGS];
+    bool sprite_0_opaque = (m_memory[MEMORY_MISCFLAGS] & 0x8) != 0;
+
     while (true)
     {
-        mx &= (fix32_from_int(m_memory[MEMORY_TLINE_MASK_X]) - fix32_from_bits(0x1));
-        my &= (fix32_from_int(m_memory[MEMORY_TLINE_MASK_Y]) - fix32_from_bits(0x1));
-        int tx = (mx >> m_tline_precision) + m_memory[MEMORY_TLINE_OFFSET_X] * 8;
-        int ty = (my >> m_tline_precision) + m_memory[MEMORY_TLINE_OFFSET_Y] * 8;
-        int index = map_get(tx / 8, ty / 8);
-        uint8_t sprite_flags = m_memory[MEMORY_SPRITEFLAGS + index];
-        if (index != 0 && (layer == 0 || ((layer & sprite_flags) == layer))) {
-            int sx = (index & 0xF) * SPRITE_WIDTH;
-            int sy = (index >> 4) * SPRITE_HEIGHT;
-            int col = gfx_get(sx + (tx % 8), sy + (ty % 8), MEMORY_SPRITES, MEMORY_SPRITES_SIZE);
-            pixel_set(x0, y0, col, 0, DRAWTYPE_DEFAULT);
+        uint32_t tmx = mx_bits & mask_x_bits;
+        uint32_t tmy = my_bits & mask_y_bits;
+
+        int tx = (tmx >> precision) + offset_x;
+        int ty = (tmy >> precision) + offset_y;
+
+        int celx = tx >> 3;
+        int cely = ty >> 3;
+        int index = 0;
+        if (!map_invalid && celx >= 0 && cely >= 0) {
+            uint8_t ms = (cely >= 32 && map_start_upper < 0x80) ? map_start_lower : map_start_upper;
+            int adj_cely = (cely >= 32 && map_start_upper < 0x80) ? cely - 32 : cely;
+            int address = (ms << 8) + celx + adj_cely * map_width;
+            if (address >= 0x1000 && address < 0x10000 &&
+                !(address >= 0x3000 && address < 0x8000))
+                index = m_memory[address];
+        }
+
+        if ((index != 0 || sprite_0_opaque) && (layer == 0 || ((layer & sprite_flags_base[index]) == layer))) {
+            int spx = (index & 0xF) * 8 + (tx & 7);
+            int spy = (index >> 4) * 8 + (ty & 7);
+
+            int spr_offset = sprite_base + (spx >> 1) + spy * 64;
+            uint8_t col = IS_EVEN(spx) ? m_memory[spr_offset] & 0xF : m_memory[spr_offset] >> 4;
+
+            uint8_t mapped = draw_pal[col & 0xf];
+            int px = x0 - cx;
+            int py = y0 - cy;
+            if ((mapped & 0x10) == 0) {
+                if (px >= clip_x0 && px < clip_x1 && py >= clip_y0 && py < clip_y1) {
+                    int scr_offset = screen_base + (px >> 1) + py * 64;
+                    m_memory[scr_offset] = IS_EVEN(px)
+                        ? (m_memory[scr_offset] & 0xF0) | (mapped & 0xF)
+                        : (mapped << 4) | (m_memory[scr_offset] & 0xF);
+                }
+            }
         }
 
         if (x0 == x1 && y0 == y1)
@@ -684,7 +754,6 @@ int tline(lua_State *L)
         if (e2 >= dy)
         {
             err += dy;
-
             x0 += sx;
         }
 
@@ -694,8 +763,8 @@ int tline(lua_State *L)
             y0 += sy;
         }
 
-        mx += mdx;
-        my += mdy;
+        mx_bits += mdx_bits;
+        my_bits += mdy_bits;
     }
 
     return 0;
