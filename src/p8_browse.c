@@ -185,16 +185,18 @@ static void draw_file_name(const char *str, int x, int y, int col)
 {
     int cursor_x = x;
     for (const char *c = str; *c != '\0'; c++) {
-        if (*c >= 0x20 && *c < 0x7F) {
-            if (*c >= 'a' && *c <= 'z') {
-                overlay_draw_char(*c - ('a' - 'A'), cursor_x, y, col);
-            } else if (*c >= 'A' && *c <= 'Z') {
-                overlay_draw_char(*c + ('a' - 'A'), cursor_x, y, col);
-            } else {
-                overlay_draw_char(*c, cursor_x, y, col);
-            }
-            cursor_x += GLYPH_WIDTH;
+        char display_char;
+        if (*c >= 'a' && *c <= 'z') {
+             display_char = *c - ('a' - 'A');
+        } else if (*c >= 'A' && *c <= 'Z') {
+            display_char = *c + ('a' - 'A');
+        } else if (*c >= 0x20 && *c <= 0x7F) {
+            display_char = *c;
+        } else {
+            display_char = '?';
         }
+        overlay_draw_char(display_char, cursor_x, y, col);
+        cursor_x += GLYPH_WIDTH;
     }
 }
 

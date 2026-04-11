@@ -153,6 +153,18 @@ static inline void overlay_draw_rectfill(int x0, int y0, int x1, int y1, int col
     }
 }
 
+static inline int overlay_get_text_width(const char *text)
+{
+    int w = 0;
+    for (const char *c = text; *c != '\0'; c++) {
+        if ((uint8_t)*c >= 0x80)
+            w += GLYPH_WIDTH * 2;
+        else
+            w += GLYPH_WIDTH;
+    }
+    return w;
+}
+
 static inline void overlay_pixel(int x, int y, int col)
 {
     if (x < overlay_clip_x0 || y < overlay_clip_y0 || x >= overlay_clip_x1 || y >= overlay_clip_y1)
@@ -191,7 +203,10 @@ static inline void overlay_draw_simple_text(const char *str, int x, int y, int c
     int cursor_x = x;
     for (const char *c = str; *c != '\0'; c++) {
         overlay_draw_char((uint8_t)*c, cursor_x, y, col);
-        cursor_x += GLYPH_WIDTH;
+        if ((uint8_t)*c >= 0x80)
+            cursor_x += GLYPH_WIDTH * 2;
+        else
+            cursor_x += GLYPH_WIDTH;
     }
 }
 
