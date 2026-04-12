@@ -417,6 +417,7 @@ bool is_unsupported_address(unsigned address) {
         (address >= MEMORY_LINE_Y && address < MEMORY_LINE_Y + 2) ||
         address == MEMORY_DEVKIT_MODE ||
         address == 0x5f2e /* unimplemented, but causes no compatibility issues */ ||
+        address == MEMORY_AUDIO_PAUSE ||
         address == MEMORY_AUTO_REPEAT_DELAY ||
         address == MEMORY_AUTO_REPEAT_INTERVAL ||
         (address >= MEMORY_FILLP && address < MEMORY_FILLP + 2) ||
@@ -440,7 +441,9 @@ bool is_unsupported_address(unsigned address) {
         address == MEMORY_MISCFLAGS ||
         (address >= MEMORY_BUTTON_STATE && address < MEMORY_BUTTON_STATE + 8) ||
         (address >= 0x5f80 && address < 0x6000) /* unimplemented, but causes no compatibility issues */ ||
-        address == MEMORY_SCREEN_TRANSFORM)
+        address == MEMORY_SCREEN_TRANSFORM ||
+        address == MEMORY_HIGH_COLOUR_MODE ||
+        (address >= MEMORY_PALETTE_SECONDARY && address < MEMORY_PALETTE_SECONDARY + 32))
         return false;
     return true;
 }

@@ -11,12 +11,18 @@
 #include "p8_emu.h"
 #include "p8_dialog.h"
 #include "p8_options.h"
+#include "p8_audio.h"
 
 void p8_show_pause_menu(void)
 {
     if (m_dialog_showing)
         return;
     m_dialog_showing = true;
+
+    // Pause audio during pause menu unless 0x5f2f == 2
+    bool should_pause_audio = m_memory[MEMORY_AUDIO_PAUSE] != 2;
+    if (should_pause_audio)
+        audio_pause();
 
     p8_dialog_control_t pause_controls[] = {
         DIALOG_BUTTON("continue", 0),
@@ -33,6 +39,9 @@ void p8_show_pause_menu(void)
     p8_dialog_cleanup(&pause_dialog);
 
     m_dialog_showing = false;
+
+    if (should_pause_audio)
+        audio_resume();
 
     switch (result.action_id) {
         case 0: // Continue

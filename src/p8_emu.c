@@ -452,6 +452,45 @@ static void screen_transform_pixel(uint8_t mode, int ox, int oy, int *sx, int *s
     }
 }
 
+// Resolve palette for a framebuffer pixel given the high-color mode.
+// pix_index is the raw 4-bit pixel value, sy is the source scanline,
+// sx is the source x coordinate.
+static uint8_t high_color_resolve(uint8_t hc_mode, uint8_t pix_index, int sx, int sy)
+{
+    if (hc_mode == 0x10) {
+        // Per-line palette swap: use secondary palette if bit set in bitfield
+        uint8_t bf = m_memory[0x5f70 + (sy >> 3)];
+        if (bf & (1 << (sy & 7)))
+            return color_get(PALTYPE_SECONDARY, pix_index);
+        return color_get(PALTYPE_SCREEN, pix_index);
+    }
+    if (hc_mode == 0x20) {
+        // 5-bitplane mode: requires 0x5f2c == 1 (horizontal stretch).
+        // If the corresponding pixel in the hidden right half (sx+64) is
+        // non-zero, use secondary palette.
+        int hidden_offset = (m_memory[MEMORY_SCREEN_PHYS] << 8) + ((sx + 64) >> 1) + sy * 64;
+        uint8_t hidden_val = m_memory[hidden_offset];
+        uint8_t hidden_pix = IS_EVEN(sx + 64) ? (hidden_val & 0xF) : (hidden_val >> 4);
+        if (hidden_pix != 0)
+            return color_get(PALTYPE_SECONDARY, pix_index);
+        return color_get(PALTYPE_SCREEN, pix_index);
+    }
+    if ((hc_mode & 0xf0) == 0x30) {
+        // Gradient fill: replace color n with per-section gradient
+        uint8_t replace_color = hc_mode & 0x0f;
+        uint8_t screen_index = color_get(PALTYPE_SCREEN, pix_index);
+        if ((screen_index & 0x0f) == replace_color) {
+            int section = sy >> 3;
+            uint8_t bf = m_memory[0x5f70 + (sy >> 3)];
+            if (bf & (1 << (sy & 7)))
+                section = (section + 1) & 0x0f;
+            return color_get(PALTYPE_SECONDARY, section);
+        }
+        return screen_index;
+    }
+    return color_get(PALTYPE_SCREEN, pix_index);
+}
+
 void p8_render()
 {
     sprintf(m_str_buffer, "%d", (int)m_actual_fps);
@@ -459,6 +498,7 @@ void p8_render()
 
     uint32_t *output = m_output->pixels;
     uint8_t transform = m_memory[MEMORY_SCREEN_TRANSFORM];
+    uint8_t hc_mode = m_memory[MEMORY_HIGH_COLOUR_MODE];
 
     for (int y = 0; y < P8_HEIGHT; y++)
     {
@@ -468,7 +508,12 @@ void p8_render()
             screen_transform_pixel(transform, x, y, &sx, &sy);
             int screen_offset = (m_memory[MEMORY_SCREEN_PHYS] << 8) + (sx >> 1) + sy * 64;
             uint8_t value = m_memory[screen_offset];
-            uint8_t index = color_get(PALTYPE_SCREEN, IS_EVEN(sx) ? value & 0xF : value >> 4);
+            uint8_t pix = IS_EVEN(sx) ? value & 0xF : value >> 4;
+            uint8_t index;
+            if (hc_mode != 0)
+                index = high_color_resolve(hc_mode, pix, sx, sy);
+            else
+                index = color_get(PALTYPE_SCREEN, pix);
             uint32_t color = m_colors[color_index(index)];
 
             output[x + (y * P8_WIDTH)] = color;

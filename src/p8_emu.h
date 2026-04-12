@@ -39,9 +39,9 @@
 #define MAX(a, b) ((a) > (b) ? a : b)
 #define MIN(a, b) ((a) < (b) ? a : b)
 #endif
-#define IS_EVEN(n) ((n ^ 1) == (n + 1))
-#define NIBBLE_SWAP(n) ((n << 4) | (n >> 4))
-#define ARGB_TO_RGB565(argb) (((argb >> 8) & 0xF800) | ((argb >> 5) & 0x07E0) | ((argb >> 3) & 0x001F))
+#define IS_EVEN(n) (((n) ^ 1) == ((n) + 1))
+#define NIBBLE_SWAP(n) (((n) << 4) | ((n) >> 4))
+#define ARGB_TO_RGB565(argb) ((((argb) >> 8) & 0xF800) | (((argb) >> 5) & 0x07E0) | (((argb) >> 3) & 0x001F))
 
 #ifdef __DA1470x__
 #define SCREEN_WIDTH 240
@@ -91,6 +91,7 @@
 #define MEMORY_CAMERA 0x5f28
 #define MEMORY_SCREEN_TRANSFORM 0x5f2c
 #define MEMORY_DEVKIT_MODE 0x5f2d
+#define MEMORY_AUDIO_PAUSE 0x5f2f
 #define MEMORY_FILLP 0x5f31
 #define MEMORY_FILLP_ATTR 0x5f33
 #define MEMORY_COLOR_FILLP 0x5f34
@@ -117,6 +118,7 @@
 #define MEMORY_TEXT_OFFSET 0x5f5b
 #define MEMORY_AUTO_REPEAT_DELAY 0x5f5c
 #define MEMORY_AUTO_REPEAT_INTERVAL 0x5f5d
+#define MEMORY_HIGH_COLOUR_MODE 0x5f5f
 #define MEMORY_PALETTE_SECONDARY 0x5f60
 
 #define TICKS_PER_SECOND 128
