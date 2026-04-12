@@ -403,20 +403,72 @@ int p8_shutdown()
 }
 
 #ifdef SDL
+// Map output pixel (ox, oy) to source framebuffer pixel (sx, sy) based on
+// the screen transform mode at 0x5f2c.
+static void screen_transform_pixel(uint8_t mode, int ox, int oy, int *sx, int *sy)
+{
+    switch (mode) {
+    default:
+    case 0: // normal
+        *sx = ox; *sy = oy;
+        break;
+    case 1: // horizontal stretch: 64x128 → 128x128
+        *sx = ox >> 1; *sy = oy;
+        break;
+    case 2: // vertical stretch: 128x64 → 128x128
+        *sx = ox; *sy = oy >> 1;
+        break;
+    case 3: // both stretch: 64x64 → 128x128
+        *sx = ox >> 1; *sy = oy >> 1;
+        break;
+    case 5: // horizontal mirror: left half mirrored to right
+        *sx = (ox < 64) ? ox : (127 - ox); *sy = oy;
+        break;
+    case 6: // vertical mirror: top half mirrored to bottom
+        *sx = ox; *sy = (oy < 64) ? oy : (127 - oy);
+        break;
+    case 7: // both mirror: top-left quarter mirrored to all
+        *sx = (ox < 64) ? ox : (127 - ox);
+        *sy = (oy < 64) ? oy : (127 - oy);
+        break;
+    case 129: // horizontal flip
+        *sx = 127 - ox; *sy = oy;
+        break;
+    case 130: // vertical flip
+        *sx = ox; *sy = 127 - oy;
+        break;
+    case 131: // both flip (180 degree rotation)
+        *sx = 127 - ox; *sy = 127 - oy;
+        break;
+    case 133: // clockwise 90 degree rotation
+        *sx = 127 - oy; *sy = ox;
+        break;
+    case 134: // 180 degree rotation
+        *sx = 127 - ox; *sy = 127 - oy;
+        break;
+    case 135: // counterclockwise 90 degree rotation
+        *sx = oy; *sy = 127 - ox;
+        break;
+    }
+}
+
 void p8_render()
 {
     sprintf(m_str_buffer, "%d", (int)m_actual_fps);
     draw_simple_text(m_str_buffer, 0, 0, 1);
 
     uint32_t *output = m_output->pixels;
+    uint8_t transform = m_memory[MEMORY_SCREEN_TRANSFORM];
 
     for (int y = 0; y < P8_HEIGHT; y++)
     {
         for (int x = 0; x < P8_WIDTH; x++)
         {
-            int screen_offset = (m_memory[MEMORY_SCREEN_PHYS] << 8) + (x >> 1) + y * 64;
+            int sx, sy;
+            screen_transform_pixel(transform, x, y, &sx, &sy);
+            int screen_offset = (m_memory[MEMORY_SCREEN_PHYS] << 8) + (sx >> 1) + sy * 64;
             uint8_t value = m_memory[screen_offset];
-            uint8_t index = color_get(PALTYPE_SCREEN, IS_EVEN(x) ? value & 0xF : value >> 4);
+            uint8_t index = color_get(PALTYPE_SCREEN, IS_EVEN(sx) ? value & 0xF : value >> 4);
             uint32_t color = m_colors[color_index(index)];
 
             output[x + (y * P8_WIDTH)] = color;
