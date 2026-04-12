@@ -705,6 +705,7 @@ int tline(lua_State *L)
     uint8_t *draw_pal = &m_memory[MEMORY_PALETTES + PALTYPE_DRAW * 16];
     uint8_t *sprite_flags_base = &m_memory[MEMORY_SPRITEFLAGS];
     bool sprite_0_opaque = (m_memory[MEMORY_MISCFLAGS] & 0x8) != 0;
+    uint8_t rw_mask = m_memory[MEMORY_RW_MASK];
 
     while (true)
     {
@@ -739,9 +740,20 @@ int tline(lua_State *L)
             if ((mapped & 0x10) == 0) {
                 if (px >= clip_x0 && px < clip_x1 && py >= clip_y0 && py < clip_y1) {
                     int scr_offset = screen_base + (px >> 1) + py * 64;
-                    m_memory[scr_offset] = IS_EVEN(px)
-                        ? (m_memory[scr_offset] & 0xF0) | (mapped & 0xF)
-                        : (mapped << 4) | (m_memory[scr_offset] & 0xF);
+                    if (rw_mask != 0xff) {
+                        uint8_t write_mask = rw_mask & 0xf;
+                        uint8_t read_mask = (rw_mask >> 4) & 0xf;
+                        uint8_t dst = IS_EVEN(px) ? m_memory[scr_offset] & 0xf : m_memory[scr_offset] >> 4;
+                        uint8_t src = mapped & 0xf;
+                        uint8_t result = (dst & ~write_mask) | (src & write_mask & read_mask);
+                        m_memory[scr_offset] = IS_EVEN(px)
+                            ? (m_memory[scr_offset] & 0xF0) | result
+                            : (result << 4) | (m_memory[scr_offset] & 0xF);
+                    } else {
+                        m_memory[scr_offset] = IS_EVEN(px)
+                            ? (m_memory[scr_offset] & 0xF0) | (mapped & 0xF)
+                            : (mapped << 4) | (m_memory[scr_offset] & 0xF);
+                    }
                 }
             }
         }

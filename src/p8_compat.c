@@ -439,6 +439,7 @@ bool is_unsupported_address(unsigned address) {
         address == MEMORY_TEXT_CHAR_SIZE2 ||
         address == MEMORY_TEXT_OFFSET ||
         address == MEMORY_MISCFLAGS ||
+        address == MEMORY_RW_MASK ||
         (address >= MEMORY_BUTTON_STATE && address < MEMORY_BUTTON_STATE + 8) ||
         (address >= 0x5f80 && address < 0x6000) /* unimplemented, but causes no compatibility issues */ ||
         address == MEMORY_SCREEN_TRANSFORM ||

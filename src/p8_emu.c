@@ -1165,6 +1165,7 @@ void p8_reset(void)
     m_memory[MEMORY_SCREEN_PHYS] = 0x60;
     m_memory[MEMORY_MAP_START] = 0x20;
     m_memory[MEMORY_MAP_WIDTH] = 128;
+    m_memory[MEMORY_RW_MASK] = 0xff;
     pencolor_set(6);
     reset_color();
     clip_set(0, 0, P8_WIDTH, P8_HEIGHT);
