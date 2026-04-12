@@ -394,6 +394,10 @@ bool is_unsupported_function(const char *function, hash_set *user_defined_functi
     return true;
 }
 
+static bool is_stub_function(const char *function) {
+    return strcmp(function, "cstore") == 0;
+}
+
 bool string_to_address(const char *address_str, unsigned *ret)
 {
     char *endptr = NULL;
@@ -562,9 +566,14 @@ lbracket:
                     if (!hash_set_contains(&reported_functions, token)) {
                         if (filename)
                             fprintf(stderr, "%s: ", filename);
-                        fprintf(stderr, "%s: function is not supported\n", token);
+                        if (is_stub_function(token)) {
+                            fprintf(stderr, "%s: function is a stub\n", token);
+                            if (ret < COMPAT_SOME) ret = COMPAT_SOME;
+                        } else {
+                            fprintf(stderr, "%s: function is not supported\n", token);
+                            if (ret < COMPAT_NONE) ret = COMPAT_NONE;
+                        }
                         hash_set_add(&reported_functions, token);
-                        if (ret < COMPAT_NONE) ret = COMPAT_NONE;
                     }
                 }
                 if (strncmp(token, "peek", 4) == 0 || strncmp(token, "poke", 4) == 0)

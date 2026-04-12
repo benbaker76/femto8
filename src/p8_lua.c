@@ -987,6 +987,12 @@ int mset(lua_State *L)
 // ****************************************************************
 
 // cstore(destaddr, sourceaddr, len, [filename])
+int cstore(lua_State *L)
+{
+    fprintf(stderr, "warning: cstore() is not implemented\n");
+    return 0;
+}
+
 // memcpy(destaddr, sourceaddr, len)
 int _memcpy(lua_State *L)
 {
@@ -1768,7 +1774,7 @@ void lua_register_functions(lua_State *L)
     // ****************************************************************
     // *** Memory ***
     // ****************************************************************
-    // lua_register(L, "cstore", cstore);
+    lua_register(L, "cstore", cstore);
     lua_register(L, "memcpy", _memcpy);
     lua_register(L, "memset", _memset);
     lua_register(L, "peek", peek);
