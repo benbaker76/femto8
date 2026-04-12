@@ -431,7 +431,7 @@ bool is_unsupported_address(unsigned address) {
         address == MEMORY_SPRITE_PHYS ||
         address == MEMORY_MAP_START ||
         address == MEMORY_MAP_WIDTH ||
-        address == 0x5f30 /* unimplemented, but causes no compatibility issues */ ||
+        address == MEMORY_SUPPRESS_PAUSE ||
         (address >= MEMORY_PALETTES && address < MEMORY_PALETTES + 32) ||
         (address >= MEMORY_RNG_STATE && address < MEMORY_RNG_STATE + 8) ||
         address == MEMORY_TEXT_ATTRS ||

@@ -17,6 +17,13 @@ void p8_show_pause_menu(void)
 {
     if (m_dialog_showing)
         return;
+
+    // 0x5f30: suppress next pause menu activation
+    if (m_memory[MEMORY_SUPPRESS_PAUSE] == 1) {
+        m_memory[MEMORY_SUPPRESS_PAUSE] = 0;
+        return;
+    }
+
     m_dialog_showing = true;
 
     // Pause audio during pause menu unless 0x5f2f == 2
