@@ -268,10 +268,14 @@ static int p8_init_common(const char *file_name, const char *lua_script)
     memcpy(m_memory, m_cart_memory, CART_MEMORY_SIZE);
 
     m_frames = 0;
+    for (unsigned p = 0; p < PLAYER_COUNT; ++p) {
+        for (unsigned i = 0; i < BUTTON_INTERNAL_COUNT; ++i)
+            m_button_down_time[p][i] = UINT_MAX;
+        m_button_first_repeat[p] = 0;
+    }
 
     p8_reset();
     clear_screen(0);
-
     p8_update_input();
 
     lua_init_script(lua_script);
