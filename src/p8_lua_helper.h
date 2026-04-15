@@ -630,6 +630,10 @@ static inline void update_buttons(int index, int button, bool state)
     mask = state ? mask | (1 << button) : mask & ~(1 << button);
     m_buttons[index] = mask;
     m_memory[MEMORY_BUTTON_STATE + index] = mask & 0xff;
+#ifdef SDL
+    if (state)
+        m_buttons_latch[index] |= (1 << button);
+#endif
 }
 
 static inline void scroll(void)

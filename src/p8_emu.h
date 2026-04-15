@@ -265,6 +265,9 @@ extern uint16_t m_buttons[PLAYER_COUNT];
 extern uint16_t m_buttonsp[PLAYER_COUNT];
 extern uint16_t m_button_first_repeat[PLAYER_COUNT];
 extern unsigned m_button_down_time[PLAYER_COUNT][BUTTON_INTERNAL_COUNT];
+#ifdef SDL
+extern uint16_t m_buttons_latch[PLAYER_COUNT];
+#endif
 
 extern jmp_buf jmpbuf_restart;
 
