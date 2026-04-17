@@ -113,7 +113,7 @@ void luaV_gettable (lua_State *L, const TValue *t, TValue *key, StkId val) {
   if (ttisstring(t)) {
     const char *s = svalue(t);
     size_t ls = tsvalue(t)->len;
-    int k = cast_int(nvalue(key));
+    int k = fix32_to_int(nvalue(key));
     size_t idx = k > 0 ? k - 1 : ls + k;
     if (idx >= ls)
       setnilvalue(val);
