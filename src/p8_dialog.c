@@ -80,12 +80,6 @@ static bool is_quick_dialog_mode(const p8_dialog_t *dialog)
     return false;
 }
 
-/* Helper to get text width */
-static int get_text_width(const char *text)
-{
-    return strlen(text) * GLYPH_WIDTH;
-}
-
 /* Initialize dialog structure */
 void p8_dialog_init(p8_dialog_t *dialog,
                     const char *title,
@@ -108,7 +102,7 @@ void p8_dialog_init(p8_dialog_t *dialog,
 
         // Consider title
         if (title) {
-            int title_width = get_text_width(title) + 2;
+            int title_width = overlay_get_text_width(title) + 2;
             if (title_width > max_width)
                 max_width = title_width;
         }
@@ -116,7 +110,7 @@ void p8_dialog_init(p8_dialog_t *dialog,
         // Consider all control labels
         for (int i = 0; i < count; i++) {
             if (controls[i].label) {
-                int label_width = get_text_width(controls[i].label) + 2;
+                int label_width = overlay_get_text_width(controls[i].label) + 2;
                 if (label_width > max_width)
                     max_width = label_width;
             }
@@ -199,7 +193,7 @@ static void draw_control(const p8_dialog_t *dialog, int control_idx, int x, int 
         }
 
         case DIALOG_BUTTON: {
-            int button_width = control->label ? get_text_width(control->label) + 2 : 20;
+            int button_width = control->label ? overlay_get_text_width(control->label) + 2 : 20;
             if (focused)
                 overlay_draw_rectfill(x, y, x + button_width - 1, y + GLYPH_HEIGHT + 1, bg_color);
             overlay_draw_simple_text(control->label, x + 1, y + 2, fg_color);
@@ -246,7 +240,7 @@ static void draw_control(const p8_dialog_t *dialog, int control_idx, int x, int 
 
                 // Draw cursor if in input mode
                 if (focused && (dialog->cursor_blink & 8)) {
-                    int cursor_x = x + 3 + strlen(control->data.inputbox.buffer) * GLYPH_WIDTH;
+                    int cursor_x = x + 3 + overlay_get_text_width(control->data.inputbox.buffer);
                     overlay_draw_vline(cursor_x, y + 3, y + GLYPH_HEIGHT + 1, DIALOG_TEXT_NORMAL);
                 }
             }
@@ -284,11 +278,11 @@ static void draw_control(const p8_dialog_t *dialog, int control_idx, int x, int 
             if (!quick_mode && focused) {
                 // Highlight the focused button
                 if (dialog->focused_subcontrol == 0 && left_text) {
-                    int text_width = get_text_width(left_text);
+                    int text_width = overlay_get_text_width(left_text);
                     overlay_draw_rectfill(x, y, x + text_width + 1, y + GLYPH_HEIGHT + 1, DIALOG_BG_HIGHLIGHT);
                 } else if (dialog->focused_subcontrol == 1 && right_text) {
-                    int left_width = left_text ? get_text_width(left_text) + 4 : 0;
-                    int text_width = get_text_width(right_text);
+                    int left_width = left_text ? overlay_get_text_width(left_text) + 4 : 0;
+                    int text_width = overlay_get_text_width(right_text);
                     overlay_draw_rectfill(x + left_width, y, x + left_width + text_width + 1,
                                         y + GLYPH_HEIGHT + 1, DIALOG_BG_HIGHLIGHT);
                 }
@@ -299,7 +293,7 @@ static void draw_control(const p8_dialog_t *dialog, int control_idx, int x, int 
                 int text_color = (!quick_mode && focused && dialog->focused_subcontrol == 0) ?
                                 DIALOG_TEXT_HIGHLIGHT : DIALOG_TEXT_NORMAL;
                 overlay_draw_simple_text(left_text, text_x, y + 2, text_color);
-                text_x += get_text_width(left_text) + 4;
+                text_x += overlay_get_text_width(left_text) + 4;
             }
 
             if (right_text) {

@@ -39,9 +39,9 @@
 #define MAX(a, b) ((a) > (b) ? a : b)
 #define MIN(a, b) ((a) < (b) ? a : b)
 #endif
-#define IS_EVEN(n) ((n ^ 1) == (n + 1))
-#define NIBBLE_SWAP(n) ((n << 4) | (n >> 4))
-#define ARGB_TO_RGB565(argb) (((argb >> 8) & 0xF800) | ((argb >> 5) & 0x07E0) | ((argb >> 3) & 0x001F))
+#define IS_EVEN(n) (((n) ^ 1) == ((n) + 1))
+#define NIBBLE_SWAP(n) (((n) << 4) | ((n) >> 4))
+#define ARGB_TO_RGB565(argb) ((((argb) >> 8) & 0xF800) | (((argb) >> 5) & 0x07E0) | (((argb) >> 3) & 0x001F))
 
 #ifdef __DA1470x__
 #define SCREEN_WIDTH 240
@@ -89,7 +89,10 @@
 #define MEMORY_PENCOLOR 0x5f25
 #define MEMORY_CURSOR 0x5f26
 #define MEMORY_CAMERA 0x5f28
+#define MEMORY_SCREEN_TRANSFORM 0x5f2c
 #define MEMORY_DEVKIT_MODE 0x5f2d
+#define MEMORY_AUDIO_PAUSE 0x5f2f
+#define MEMORY_SUPPRESS_PAUSE 0x5f30
 #define MEMORY_FILLP 0x5f31
 #define MEMORY_FILLP_ATTR 0x5f33
 #define MEMORY_COLOR_FILLP 0x5f34
@@ -116,6 +119,8 @@
 #define MEMORY_TEXT_OFFSET 0x5f5b
 #define MEMORY_AUTO_REPEAT_DELAY 0x5f5c
 #define MEMORY_AUTO_REPEAT_INTERVAL 0x5f5d
+#define MEMORY_RW_MASK 0x5f5e
+#define MEMORY_HIGH_COLOUR_MODE 0x5f5f
 #define MEMORY_PALETTE_SECONDARY 0x5f60
 
 #define TICKS_PER_SECOND 128
@@ -260,6 +265,9 @@ extern uint16_t m_buttons[PLAYER_COUNT];
 extern uint16_t m_buttonsp[PLAYER_COUNT];
 extern uint16_t m_button_first_repeat[PLAYER_COUNT];
 extern unsigned m_button_down_time[PLAYER_COUNT][BUTTON_INTERNAL_COUNT];
+#ifdef SDL
+extern uint16_t m_buttons_latch[PLAYER_COUNT];
+#endif
 
 extern jmp_buf jmpbuf_restart;
 

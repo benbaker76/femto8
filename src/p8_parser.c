@@ -18,6 +18,10 @@
 #include "pico8.h"
 #include "p8_lua_helper.h"
 
+#ifndef PATH_MAX
+#define PATH_MAX 256
+#endif
+
 #define RAW_DATA_LENGTH 0x4300
 #define IMAGE_WIDTH 160
 #define IMAGE_HEIGHT 205
@@ -83,37 +87,142 @@ static char* strsep_portable(char **stringp, const char *delim)
 #define strsep strsep_portable
 #endif
 
-void parse_cart_ram(uint8_t *buffer, int size, uint8_t *memory, const char **lua_script, uint8_t **decompression_buffer, uint8_t *label_image);
-void parse_cart_file(const char *file_name, uint8_t *memory, const char **lua_script, uint8_t **file_buffer, uint8_t *label_image);
-static void parse_p8_ram(const char *file_name, uint8_t *buffer, int size, uint8_t *memory, const char **lua_script, uint8_t *label_image);
-static void parse_png_ram(const char *file_name, uint8_t *buffer, int size, uint8_t *memory, const char **lua_script, uint8_t **decompression_buffer, uint8_t *label_image);
+int parse_cart_ram(uint8_t *buffer, int size, uint8_t *memory, const char **lua_script, uint8_t **decompression_buffer, uint8_t *label_image);
+int parse_cart_file(const char *file_name, uint8_t *memory, const char **lua_script, uint8_t **file_buffer, uint8_t *label_image);
+static int parse_p8_ram(const char *file_name, uint8_t *buffer, int size, uint8_t *memory, const char **lua_script, uint8_t *label_image);
+static int parse_png_ram(const char *file_name, uint8_t *buffer, int size, uint8_t *memory, const char **lua_script, uint8_t **decompression_buffer, uint8_t *label_image);
+static char *process_includes(const char *lua_script, const char *cart_dir);
+static void convert_utf8_to_p8scii(uint8_t *buffer, size_t len);
 
 static uint8_t PNG_SIGNATURE[8] = {137, 80, 78, 71, 13, 10, 26, 10};
 
-static void parse_cart_ram0(const char *file_name, uint8_t *buffer, int size, uint8_t *memory, const char **lua_script, uint8_t **decompression_buffer, uint8_t *label_image)
+static int parse_cart_ram0(const char *file_name, uint8_t *buffer, int size, uint8_t *memory, const char **lua_script, uint8_t **decompression_buffer, uint8_t *label_image)
 {
     if (size >= 8 &&
         memcmp(buffer, PNG_SIGNATURE, 8) == 0) {
-        parse_png_ram(file_name, buffer, size, memory, lua_script, decompression_buffer, label_image);
+        return parse_png_ram(file_name, buffer, size, memory, lua_script, decompression_buffer, label_image);
     } else {
         *decompression_buffer = NULL;
-        parse_p8_ram(file_name, buffer, size, memory, lua_script, label_image);
+        return parse_p8_ram(file_name, buffer, size, memory, lua_script, label_image);
     }
 }
 
-void parse_cart_ram(uint8_t *buffer, int size, uint8_t *memory, const char **lua_script, uint8_t **decompression_buffer, uint8_t *label_image)
+int parse_cart_ram(uint8_t *buffer, int size, uint8_t *memory, const char **lua_script, uint8_t **decompression_buffer, uint8_t *label_image)
 {
-    parse_cart_ram0(NULL, buffer, size, memory, lua_script, decompression_buffer, label_image);
+    return parse_cart_ram0(NULL, buffer, size, memory, lua_script, decompression_buffer, label_image);
 }
 
-void parse_cart_file(const char *file_name, uint8_t *memory, const char **lua_script, uint8_t **file_buffer, uint8_t *label_image)
+static char *process_includes(const char *lua_script, const char *cart_dir)
 {
+    // Quick scan: any #include lines present?
+    const char *scan = lua_script;
+    bool has_includes = false;
+    while ((scan = strstr(scan, "#include")) != NULL) {
+        // Must be at start of line (or start of string)
+        if (scan == lua_script || scan[-1] == '\n') {
+            has_includes = true;
+            break;
+        }
+        scan += 8;
+    }
+    if (!has_includes)
+        return NULL;
+
+    // Build expanded buffer
+    size_t capacity = strlen(lua_script) * 2;
+    size_t length = 0;
+    char *result = malloc(capacity + 1);
+    if (!result)
+        return NULL;
+
+    const char *p = lua_script;
+    while (*p) {
+        // Find end of current line
+        const char *eol = strchr(p, '\n');
+        int line_len = eol ? (int)(eol - p) : (int)strlen(p);
+
+        // Check for #include at start of line
+        if (strncmp(p, "#include ", 9) == 0) {
+            // Extract filename (skip "#include ")
+            const char *fname_start = p + 9;
+            int fname_len = line_len - 9;
+            // Trim trailing whitespace/CR
+            while (fname_len > 0 && (fname_start[fname_len - 1] == ' ' ||
+                                     fname_start[fname_len - 1] == '\r'))
+                fname_len--;
+
+            if (fname_len > 0) {
+                // Build full path relative to the cart file's directory
+                char include_path[PATH_MAX];
+                snprintf(include_path, sizeof(include_path), "%s/%.*s",
+                         cart_dir, fname_len, fname_start);
+
+                FILE *inc = fopen(include_path, "rb");
+                if (inc) {
+                    fseek(inc, 0, SEEK_END);
+                    long inc_size = ftell(inc);
+                    rewind(inc);
+
+                    // Grow result buffer if needed
+                    while (length + inc_size + 1 > capacity) {
+                        capacity *= 2;
+                        char *new_result = realloc(result, capacity + 1);
+                        if (!new_result) {
+                            fclose(inc);
+                            free(result);
+                            return NULL;
+                        }
+                        result = new_result;
+                    }
+
+                    fread(result + length, 1, inc_size, inc);
+                    convert_utf8_to_p8scii((uint8_t *)(result + length), inc_size);
+                    length += strlen(result + length);
+                    fclose(inc);
+
+                    // Ensure included content ends with newline
+                    if (length > 0 && result[length - 1] != '\n')
+                        result[length++] = '\n';
+                } else {
+                    fprintf(stderr, "Warning: #include file not found: %s\n", include_path);
+                }
+            }
+        } else {
+            // Copy line as-is (including newline)
+            int copy_len = eol ? line_len + 1 : line_len;
+            while (length + copy_len + 1 > capacity) {
+                capacity *= 2;
+                char *new_result = realloc(result, capacity + 1);
+                if (!new_result) {
+                    free(result);
+                    return NULL;
+                }
+                result = new_result;
+            }
+            memcpy(result + length, p, copy_len);
+            length += copy_len;
+        }
+
+        p += line_len;
+        if (eol)
+            p++; // skip newline
+    }
+
+    result[length] = '\0';
+    return result;
+}
+
+int parse_cart_file(const char *file_name, uint8_t *memory, const char **lua_script, uint8_t **file_buffer, uint8_t *label_image)
+{
+    if (lua_script)
+        *lua_script = NULL;
+
     FILE *file = fopen(file_name, "rb");
 
     if (file == NULL)
     {
         fprintf(stderr, "Error opening file: %s\n", file_name);
-        exit(EXIT_FAILURE);
+        return -1;
     }
 
     fseek(file, 0, SEEK_END);
@@ -128,10 +237,19 @@ void parse_cart_file(const char *file_name, uint8_t *memory, const char **lua_sc
 
     fread(*file_buffer, 1, file_size, file);
 
+    fclose(file);
+
     (*file_buffer)[file_size] = '\0';
 
     uint8_t *decompression_buffer = NULL;
-    parse_cart_ram0(file_name, (uint8_t *)*file_buffer, (int)file_size, memory, lua_script, &decompression_buffer, label_image);
+    if (parse_cart_ram0(file_name, (uint8_t *)*file_buffer, (int)file_size, memory, lua_script, &decompression_buffer, label_image) != 0) {
+#ifdef OS_FREERTOS
+        rh_free(*file_buffer);
+#else
+        free(*file_buffer);
+#endif
+        return -1;
+    }
     if (decompression_buffer) {
 #ifdef OS_FREERTOS
         rh_free(*file_buffer);
@@ -141,7 +259,33 @@ void parse_cart_file(const char *file_name, uint8_t *memory, const char **lua_sc
         *file_buffer = decompression_buffer;
     }
 
-    fclose(file);
+    // Process #include directives in the Lua section
+    if (lua_script && *lua_script && file_name) {
+        const char *last_slash = strrchr(file_name, '/');
+        char cart_dir[PATH_MAX];
+        if (last_slash) {
+            size_t dir_len = last_slash - file_name;
+            if (dir_len >= sizeof(cart_dir))
+                dir_len = sizeof(cart_dir) - 1;
+            memcpy(cart_dir, file_name, dir_len);
+            cart_dir[dir_len] = '\0';
+        } else {
+            strcpy(cart_dir, ".");
+        }
+
+        char *expanded = process_includes(*lua_script, cart_dir);
+        if (expanded) {
+#ifdef OS_FREERTOS
+            rh_free(*file_buffer);
+#else
+            free(*file_buffer);
+#endif
+            *file_buffer = (uint8_t *)expanded;
+            *lua_script = expanded;
+        }
+    }
+
+    return 0;
 }
 
 static void convert_utf8_to_p8scii(uint8_t *buffer, size_t len)
@@ -266,25 +410,17 @@ void read_music(uint8_t *dest, uint8_t *src, int read_length, int *write_length)
         uint8_t effect_id3 = src[read_offset++];
         uint8_t effect_id4 = src[read_offset++];
 
-        int begin_patter_loop = flags_byte & (1 << 0);
-        int end_pattern_loop = flags_byte & (1 << 1);
-        int stop_at_end_of_pattern = flags_byte & (1 << 2);
-
-        bool channel1_silence = (effect_id1 & 0x40) != 0;
-        bool channel2_silence = (effect_id2 & 0x40) != 0;
-        bool channel3_silence = (effect_id3 & 0x40) != 0;
-        bool channel4_silence = (effect_id4 & 0x40) != 0;
-
-        dest[write_offset++] = (channel1_silence ? 1 << 6 : effect_id1 & 0x7F) | (begin_patter_loop ? 1 << 7 : 0);
-        dest[write_offset++] = (channel2_silence ? 1 << 6 : effect_id2 & 0x7F) | (end_pattern_loop ? 1 << 7 : 0);
-        dest[write_offset++] = (channel3_silence ? 1 << 6 : effect_id3 & 0x7F) | (stop_at_end_of_pattern ? 1 << 7 : 0);
-        dest[write_offset++] = (channel4_silence ? 1 << 6 : effect_id4 & 0x7F);
+        // On-disk flags bits 0-3 map to bit 7 of in-memory bytes 0-3
+        dest[write_offset++] = (effect_id1 & 0x7F) | ((flags_byte & (1 << 0)) ? 0x80 : 0);
+        dest[write_offset++] = (effect_id2 & 0x7F) | ((flags_byte & (1 << 1)) ? 0x80 : 0);
+        dest[write_offset++] = (effect_id3 & 0x7F) | ((flags_byte & (1 << 2)) ? 0x80 : 0);
+        dest[write_offset++] = (effect_id4 & 0x7F) | ((flags_byte & (1 << 3)) ? 0x80 : 0);
     }
 
     *write_length = write_offset;
 }
 
-void parse_p8_ram(const char *file_name, uint8_t *buffer, int size, uint8_t *memory, const char **lua_script, uint8_t *label_image)
+int parse_p8_ram(const char *file_name, uint8_t *buffer, int size, uint8_t *memory, const char **lua_script, uint8_t *label_image)
 {
     static uint8_t tmpbuf[180];
     char *line;
@@ -296,6 +432,9 @@ void parse_p8_ram(const char *file_name, uint8_t *buffer, int size, uint8_t *mem
     int write_offset = 0;
     int read_length = 0;
     int write_length = 0;
+
+    if (lua_script)
+        *lua_script = NULL;
 
     if (label_image)
         memset(label_image, 0, 0x4000);
@@ -408,28 +547,33 @@ void parse_p8_ram(const char *file_name, uint8_t *buffer, int size, uint8_t *mem
 
     convert_utf8_to_p8scii(&buffer[lua_start], lua_end - lua_start);
 
-    *lua_script = (const char *) &buffer[lua_start];
+    if (lua_script)
+        *lua_script = (const char *) &buffer[lua_start];
+
+    return 0;
 }
 
 #define PNG_WIDTH 160
 #define PNG_HEIGHT 205
 
-void parse_png_ram(const char *file_name, uint8_t *buffer, int file_size, uint8_t *memory, const char **lua_script, uint8_t **decompression_buffer, uint8_t *label_image)
+int parse_png_ram(const char *file_name, uint8_t *buffer, int file_size, uint8_t *memory, const char **lua_script, uint8_t **decompression_buffer, uint8_t *label_image)
 {
-    *lua_script = NULL;
-    *decompression_buffer = NULL;
+    if (lua_script)
+        *lua_script = NULL;
+    if (decompression_buffer)
+        *decompression_buffer = NULL;
     uint8_t *px_buffer = NULL;
     unsigned width = 0, height = 0;
     unsigned ret = lodepng_decode32(&px_buffer, &width, &height, buffer, file_size);
     if (ret != 0) {
         fprintf(stderr, "%s\n", lodepng_error_text(ret));
-        return;
+        return -1;
     }
     if (width != PNG_WIDTH || height != PNG_HEIGHT) {
         if (file_name)
             fprintf(stderr, "%s: ", file_name);
         fprintf(stderr, "PNG has wrong size: %dx%d (expected 160x205)\n", width, height);
-        return;
+        return -1;
     }
 
     if (label_image) {
@@ -497,8 +641,12 @@ void parse_png_ram(const char *file_name, uint8_t *buffer, int file_size, uint8_
         byte_buffer_out++;
     }
     memcpy(memory, byte_buffer, CART_MEMORY_SIZE);
-    *decompression_buffer = malloc(0x20001);
-    pico8_code_section_decompress(byte_buffer + CART_MEMORY_SIZE, *decompression_buffer, 0x20000);
-    *lua_script = (char *)*decompression_buffer;
-    fflush(stdout);
+    if (decompression_buffer) {
+        *decompression_buffer = malloc(0x20001);
+        pico8_code_section_decompress(byte_buffer + CART_MEMORY_SIZE, *decompression_buffer, 0x20000);
+        if (lua_script)
+            *lua_script = (char *)*decompression_buffer;
+    }
+
+    return 0;
 }

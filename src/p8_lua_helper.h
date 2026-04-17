@@ -420,7 +420,10 @@ static inline void draw_simple_text(const char *str, int x, int y, int col)
     int cursor_x = x;
     for (const char *c = str; *c != '\0'; c++) {
         draw_char((uint8_t)*c, cursor_x, y, col);
-        cursor_x += GLYPH_WIDTH;
+        if ((uint8_t)*c >= 0x80)
+            cursor_x += GLYPH_WIDTH * 2;
+        else
+            cursor_x += GLYPH_WIDTH;
     }
 }
 
@@ -456,7 +459,17 @@ static inline void gfx_set(int x, int y, int location, int size, int col)
         return;
 
     int offset = gfx_addr_remap(location) + (x >> 1) + y * 64;
-    m_memory[offset] = IS_EVEN(x) ? (m_memory[offset] & 0xF0) | (col & 0xF) : (col << 4) | (m_memory[offset] & 0xF);
+    uint8_t rw_mask = m_memory[MEMORY_RW_MASK];
+    if (location == MEMORY_SCREEN && rw_mask != 0xff) {
+        uint8_t write_mask = rw_mask & 0xf;
+        uint8_t read_mask = (rw_mask >> 4) & 0xf;
+        uint8_t dst = IS_EVEN(x) ? m_memory[offset] & 0xf : m_memory[offset] >> 4;
+        uint8_t src = col & 0xf;
+        uint8_t result = (dst & ~write_mask) | (src & write_mask & read_mask);
+        m_memory[offset] = IS_EVEN(x) ? (m_memory[offset] & 0xF0) | result : (result << 4) | (m_memory[offset] & 0xF);
+    } else {
+        m_memory[offset] = IS_EVEN(x) ? (m_memory[offset] & 0xF0) | (col & 0xF) : (col << 4) | (m_memory[offset] & 0xF);
+    }
 }
 
 static inline void camera_get(int *x, int *y)
@@ -617,6 +630,10 @@ static inline void update_buttons(int index, int button, bool state)
     mask = state ? mask | (1 << button) : mask & ~(1 << button);
     m_buttons[index] = mask;
     m_memory[MEMORY_BUTTON_STATE + index] = mask & 0xff;
+#ifdef SDL
+    if (state)
+        m_buttons_latch[index] |= (1 << button);
+#endif
 }
 
 static inline void scroll(void)

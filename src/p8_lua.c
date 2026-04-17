@@ -643,8 +643,14 @@ int sspr(lua_State *L)
 }
 
 // tline( x0, y0, x1, y1, mx, my, [mdx,] [mdy])
+// tline( precision )
 int tline(lua_State *L)
 {
+    if (lua_gettop(L) == 1) {
+        m_tline_precision = lua_tointeger(L, 1);
+        return 0;
+    }
+
     int x0 = lua_tointeger(L, 1);
     int y0 = lua_tointeger(L, 2);
     int x1 = lua_tointeger(L, 3);
@@ -655,25 +661,101 @@ int tline(lua_State *L)
     lua_Number mdy = lua_to_or_default(L, number, 8, fix32_from_int(0));
     int layer = lua_to_or_default(L, integer, 9, 0);
 
+    int cx, cy;
+    camera_get(&cx, &cy);
+    int clip_x0, clip_y0, clip_x1, clip_y1;
+    clip_get(&clip_x0, &clip_y0, &clip_x1, &clip_y1);
+
+    uint8_t map_start = m_memory[MEMORY_MAP_START];
+    bool map_invalid = (map_start >= 0x10 && map_start < 0x20) ||
+                       (map_start >= 0x30 && map_start < 0x3f);
+    uint8_t map_start_upper = map_start;
+    uint8_t map_start_lower = map_start;
+    if (!map_invalid) {
+        if (map_start < 0x10 || (map_start >= 0x40 && map_start < 0x80))
+            map_start_upper = 0x20;
+        else
+            map_start_upper = map_start;
+        map_start_lower = (map_start_upper < 0x80) ? 0x10 : map_start_upper;
+    }
+    int map_width = m_memory[MEMORY_MAP_WIDTH];
+    if (map_width == 0) map_width = 256;
+
+    int sprite_base = m_memory[MEMORY_SPRITE_PHYS] << 8;
+    int screen_base = m_memory[MEMORY_SCREEN_PHYS] << 8;
+
+    int offset_x = m_memory[MEMORY_TLINE_OFFSET_X] * 8;
+    int offset_y = m_memory[MEMORY_TLINE_OFFSET_Y] * 8;
+    int precision = m_tline_precision;
+
+    uint32_t mask_x_bits = ((uint32_t)m_memory[MEMORY_TLINE_MASK_X] << (precision + 3)) - 1;
+    uint32_t mask_y_bits = ((uint32_t)m_memory[MEMORY_TLINE_MASK_Y] << (precision + 3)) - 1;
+
+    uint32_t mx_bits = fix32_bits(mx);
+    uint32_t my_bits = fix32_bits(my);
+    uint32_t mdx_bits = fix32_bits(mdx);
+    uint32_t mdy_bits = fix32_bits(mdy);
+
     int dx = abs(x1 - x0);
     int sx = x0 < x1 ? 1 : -1;
     int dy = -abs(y1 - y0);
     int sy = y0 < y1 ? 1 : -1;
     int err = dx + dy;
 
+    uint8_t *draw_pal = &m_memory[MEMORY_PALETTES + PALTYPE_DRAW * 16];
+    uint8_t *sprite_flags_base = &m_memory[MEMORY_SPRITEFLAGS];
+    bool sprite_0_opaque = (m_memory[MEMORY_MISCFLAGS] & 0x8) != 0;
+    uint8_t rw_mask = m_memory[MEMORY_RW_MASK];
+
     while (true)
     {
-        mx &= (fix32_from_int(m_memory[MEMORY_TLINE_MASK_X]) - fix32_from_bits(0x1));
-        my &= (fix32_from_int(m_memory[MEMORY_TLINE_MASK_Y]) - fix32_from_bits(0x1));
-        int tx = (mx >> m_tline_precision) + m_memory[MEMORY_TLINE_OFFSET_X] * 8;
-        int ty = (my >> m_tline_precision) + m_memory[MEMORY_TLINE_OFFSET_Y] * 8;
-        int index = map_get(tx / 8, ty / 8);
-        uint8_t sprite_flags = m_memory[MEMORY_SPRITEFLAGS + index];
-        if (index != 0 && (layer == 0 || ((layer & sprite_flags) == layer))) {
-            int sx = (index & 0xF) * SPRITE_WIDTH;
-            int sy = (index >> 4) * SPRITE_HEIGHT;
-            int col = gfx_get(sx + (tx % 8), sy + (ty % 8), MEMORY_SPRITES, MEMORY_SPRITES_SIZE);
-            pixel_set(x0, y0, col, 0, DRAWTYPE_DEFAULT);
+        uint32_t tmx = mx_bits & mask_x_bits;
+        uint32_t tmy = my_bits & mask_y_bits;
+
+        int tx = (tmx >> precision) + offset_x;
+        int ty = (tmy >> precision) + offset_y;
+
+        int celx = tx >> 3;
+        int cely = ty >> 3;
+        int index = 0;
+        if (!map_invalid && celx >= 0 && cely >= 0) {
+            uint8_t ms = (cely >= 32 && map_start_upper < 0x80) ? map_start_lower : map_start_upper;
+            int adj_cely = (cely >= 32 && map_start_upper < 0x80) ? cely - 32 : cely;
+            int address = (ms << 8) + celx + adj_cely * map_width;
+            if (address >= 0x1000 && address < 0x10000 &&
+                !(address >= 0x3000 && address < 0x8000))
+                index = m_memory[address];
+        }
+
+        if ((index != 0 || sprite_0_opaque) && (layer == 0 || ((layer & sprite_flags_base[index]) == layer))) {
+            int spx = (index & 0xF) * 8 + (tx & 7);
+            int spy = (index >> 4) * 8 + (ty & 7);
+
+            int spr_offset = sprite_base + (spx >> 1) + spy * 64;
+            uint8_t col = IS_EVEN(spx) ? m_memory[spr_offset] & 0xF : m_memory[spr_offset] >> 4;
+
+            uint8_t mapped = draw_pal[col & 0xf];
+            int px = x0 - cx;
+            int py = y0 - cy;
+            if ((mapped & 0x10) == 0) {
+                if (px >= clip_x0 && px < clip_x1 && py >= clip_y0 && py < clip_y1) {
+                    int scr_offset = screen_base + (px >> 1) + py * 64;
+                    if (rw_mask != 0xff) {
+                        uint8_t write_mask = rw_mask & 0xf;
+                        uint8_t read_mask = (rw_mask >> 4) & 0xf;
+                        uint8_t dst = IS_EVEN(px) ? m_memory[scr_offset] & 0xf : m_memory[scr_offset] >> 4;
+                        uint8_t src = mapped & 0xf;
+                        uint8_t result = (dst & ~write_mask) | (src & write_mask & read_mask);
+                        m_memory[scr_offset] = IS_EVEN(px)
+                            ? (m_memory[scr_offset] & 0xF0) | result
+                            : (result << 4) | (m_memory[scr_offset] & 0xF);
+                    } else {
+                        m_memory[scr_offset] = IS_EVEN(px)
+                            ? (m_memory[scr_offset] & 0xF0) | (mapped & 0xF)
+                            : (mapped << 4) | (m_memory[scr_offset] & 0xF);
+                    }
+                }
+            }
         }
 
         if (x0 == x1 && y0 == y1)
@@ -684,7 +766,6 @@ int tline(lua_State *L)
         if (e2 >= dy)
         {
             err += dy;
-
             x0 += sx;
         }
 
@@ -694,8 +775,8 @@ int tline(lua_State *L)
             y0 += sy;
         }
 
-        mx += mdx;
-        my += mdy;
+        mx_bits += mdx_bits;
+        my_bits += mdy_bits;
     }
 
     return 0;
@@ -906,6 +987,12 @@ int mset(lua_State *L)
 // ****************************************************************
 
 // cstore(destaddr, sourceaddr, len, [filename])
+int cstore(lua_State *L)
+{
+    fprintf(stderr, "warning: cstore() is not implemented\n");
+    return 0;
+}
+
 // memcpy(destaddr, sourceaddr, len)
 int _memcpy(lua_State *L)
 {
@@ -1065,24 +1152,45 @@ int poke4(lua_State *L)
 // reload(destaddr, sourceaddr, len, [filename])
 int reload(lua_State *L)
 {
-    unsigned destaddr = lua_tounsigned(L, 1);
-    unsigned srcaddr = lua_tounsigned(L, 2);
-    unsigned len = lua_tounsigned(L, 3);
+    int nargs = lua_gettop(L);
+    unsigned destaddr = nargs >= 1 ? lua_tounsigned(L, 1) : 0;
+    unsigned srcaddr  = nargs >= 2 ? lua_tounsigned(L, 2) : 0;
+    unsigned len      = nargs >= 3 ? lua_tounsigned(L, 3) : 0x4300;
     destaddr = addr_remap(destaddr);
-    const char *file_name = lua_gettop(L) >= 4 ? lua_tostring(L, 4) : NULL;
+    const char *file_name = nargs >= 4 ? lua_tostring(L, 4) : NULL;
     uint8_t *src_mem = NULL;
     if (file_name != NULL) {
+        char *full_filename = NULL;
+        if (strstr(file_name, ".p8") == NULL && strstr(file_name, ".P8") == NULL) {
+            size_t len = strlen(file_name) + 4;
+            full_filename = (char *)malloc(len);
+            if (full_filename)
+                snprintf(full_filename, len, "%s.p8", file_name);
+            file_name = full_filename;
+        }
+        char *resolved_path = p8_resolve_relative_path(file_name);
+        free(full_filename);
+        if (!resolved_path)
+            return 0;
+        p8_show_io_icon(true);
         uint8_t *buffer = NULL;
         src_mem = (uint8_t *)malloc(CART_MEMORY_SIZE);
-        parse_cart_file(file_name, src_mem, NULL, &buffer, NULL);
+        if (parse_cart_file(resolved_path, src_mem, NULL, &buffer, NULL) != 0) {
+            free(src_mem);
+            free(resolved_path);
+            return 0;
+        }
         free(buffer);
+        free(resolved_path);
     } else {
         src_mem = m_cart_memory;
     }
     if (destaddr >= 0 && destaddr + len <= 0x10000 && srcaddr >= 0 && srcaddr + len <= CART_MEMORY_SIZE)
         memcpy(m_memory + destaddr, src_mem + srcaddr, len);
-    if (file_name != NULL)
+    if (file_name != NULL) {
         free(src_mem);
+        p8_show_io_icon(false);
+    }
     return 0;
 }
 
@@ -1272,6 +1380,8 @@ int extcmd(lua_State *L)
         p8_restart();
     } else if (strcmp(cmd, "shutdown") == 0) {
         p8_abort();
+    } else {
+        luaL_error(L, "unknown command: %s", cmd);
     }
 
     return 0;
@@ -1664,7 +1774,7 @@ void lua_register_functions(lua_State *L)
     // ****************************************************************
     // *** Memory ***
     // ****************************************************************
-    // lua_register(L, "cstore", cstore);
+    lua_register(L, "cstore", cstore);
     lua_register(L, "memcpy", _memcpy);
     lua_register(L, "memset", _memset);
     lua_register(L, "peek", peek);
@@ -1818,25 +1928,58 @@ void lua_shutdown_api()
     }
 }
 
+static char *s_saved_script = NULL;
+
+static void print_script_context(int lineno)
+{
+    if (!s_saved_script || lineno <= 0)
+        return;
+    int lo = lineno - 3, hi = lineno + 3;
+    if (lo < 1) lo = 1;
+    const char *p = s_saved_script;
+    int cur = 1;
+    while (*p && cur < lo) {
+        if (*p++ == '\n') cur++;
+    }
+    while (*p && cur <= hi) {
+        const char *eol = p;
+        while (*eol && *eol != '\n') eol++;
+        printf("%s %4d: %.*s\n",
+               cur == lineno ? ">>>" : "   ",
+               cur, (int)(eol - p), p);
+        if (*eol) eol++;
+        p = eol;
+        cur++;
+    }
+}
+
 void lua_print_error(const char *where)
 {
-    // for (int i = 1; i < lua_gettop(L); ++i)
+    printf("Error on %s\r\n", where);
+
+    if (lua_isstring(L, -1))
     {
-        printf("Error on %s\r\n", where);
-
-        // luaL_traceback(L, L, NULL, 1);
-        // printf("%s\n", lua_tostring(L, -1));
-
-        if (lua_isstring(L, -1))
-        {
-            const char *message = lua_tostring(L, -1);
-            printf("%s\r\n", message);
+        const char *message = lua_tostring(L, -1);
+        printf("%s\r\n", message);
+        // Extract line number from error string like "...[string ...]:1292:"
+        const char *colon = message;
+        int lineno = 0;
+        while (*colon) {
+            if (*colon == ']' && *(colon+1) == ':') {
+                lineno = atoi(colon + 2);
+                if (lineno > 0) break;
+            }
+            colon++;
         }
+        print_script_context(lineno);
     }
 }
 
 void lua_init_script(const char *script)
 {
+    free(s_saved_script);
+    s_saved_script = script ? strdup(script) : NULL;
+
     if (!L)
         L = luaL_newstate();
 
@@ -1894,6 +2037,25 @@ void lua_call_function(const char *name, int ret)
 
 void lua_update()
 {
+    if (!m_lua_update && !m_lua_update60)
+    {
+        lua_getglobal(L, "_update");
+        if (lua_isfunction(L, -1))
+        {
+            m_lua_update = lua_topointer(L, -1);
+            m_fps = 30;
+        }
+        lua_pop(L, 1);
+
+        lua_getglobal(L, "_update60");
+        if (lua_isfunction(L, -1))
+        {
+            m_lua_update60 = lua_topointer(L, -1);
+            m_fps = 60;
+        }
+        lua_pop(L, 1);
+    }
+
     if (m_lua_update60)
         lua_call_function("_update60", 0);
     else if (m_lua_update)
@@ -1902,6 +2064,14 @@ void lua_update()
 
 void lua_draw()
 {
+    if (!m_lua_draw)
+    {
+        lua_getglobal(L, "_draw");
+        if (lua_isfunction(L, -1))
+            m_lua_draw = lua_topointer(L, -1);
+        lua_pop(L, 1);
+    }
+
     if (m_lua_draw)
         lua_call_function("_draw", 0);
 }
@@ -1915,4 +2085,31 @@ void lua_init()
 {
     if (m_lua_init)
         lua_call_function("_init", 0);
+
+    if (!m_lua_update && !m_lua_update60)
+    {
+        lua_getglobal(L, "_update");
+        if (lua_isfunction(L, -1))
+        {
+            m_lua_update = lua_topointer(L, -1);
+            m_fps = 30;
+        }
+        lua_pop(L, 1);
+
+        lua_getglobal(L, "_update60");
+        if (lua_isfunction(L, -1))
+        {
+            m_lua_update60 = lua_topointer(L, -1);
+            m_fps = 60;
+        }
+        lua_pop(L, 1);
+    }
+
+    if (!m_lua_draw)
+    {
+        lua_getglobal(L, "_draw");
+        if (lua_isfunction(L, -1))
+            m_lua_draw = lua_topointer(L, -1);
+        lua_pop(L, 1);
+    }
 }

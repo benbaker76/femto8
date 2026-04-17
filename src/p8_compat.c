@@ -133,6 +133,7 @@ const char *p8_lua_functions[] = {
     "cursor",
     "dget",
     "dset",
+    "extcmd",
     "fget",
     "fillp",
     "flip",
@@ -393,6 +394,10 @@ bool is_unsupported_function(const char *function, hash_set *user_defined_functi
     return true;
 }
 
+static bool is_stub_function(const char *function) {
+    return strcmp(function, "cstore") == 0;
+}
+
 bool string_to_address(const char *address_str, unsigned *ret)
 {
     char *endptr = NULL;
@@ -416,6 +421,7 @@ bool is_unsupported_address(unsigned address) {
         (address >= MEMORY_LINE_Y && address < MEMORY_LINE_Y + 2) ||
         address == MEMORY_DEVKIT_MODE ||
         address == 0x5f2e /* unimplemented, but causes no compatibility issues */ ||
+        address == MEMORY_AUDIO_PAUSE ||
         address == MEMORY_AUTO_REPEAT_DELAY ||
         address == MEMORY_AUTO_REPEAT_INTERVAL ||
         (address >= MEMORY_FILLP && address < MEMORY_FILLP + 2) ||
@@ -429,7 +435,7 @@ bool is_unsupported_address(unsigned address) {
         address == MEMORY_SPRITE_PHYS ||
         address == MEMORY_MAP_START ||
         address == MEMORY_MAP_WIDTH ||
-        address == 0x5f30 /* unimplemented, but causes no compatibility issues */ ||
+        address == MEMORY_SUPPRESS_PAUSE ||
         (address >= MEMORY_PALETTES && address < MEMORY_PALETTES + 32) ||
         (address >= MEMORY_RNG_STATE && address < MEMORY_RNG_STATE + 8) ||
         address == MEMORY_TEXT_ATTRS ||
@@ -437,7 +443,12 @@ bool is_unsupported_address(unsigned address) {
         address == MEMORY_TEXT_CHAR_SIZE2 ||
         address == MEMORY_TEXT_OFFSET ||
         address == MEMORY_MISCFLAGS ||
-        (address >= MEMORY_BUTTON_STATE && address < MEMORY_BUTTON_STATE + 8))
+        address == MEMORY_RW_MASK ||
+        (address >= MEMORY_BUTTON_STATE && address < MEMORY_BUTTON_STATE + 8) ||
+        (address >= 0x5f80 && address < 0x6000) /* unimplemented, but causes no compatibility issues */ ||
+        address == MEMORY_SCREEN_TRANSFORM ||
+        address == MEMORY_HIGH_COLOUR_MODE ||
+        (address >= MEMORY_PALETTE_SECONDARY && address < MEMORY_PALETTE_SECONDARY + 32))
         return false;
     return true;
 }
@@ -475,6 +486,8 @@ int check_compatibility(const char *filename, const char *lua_script)
     char token[256] = {0};
     char *token_p = token;
     char *token_limit = token + sizeof(token);
+    bool after_colon = false;   // set when ':' seen before a name token
+    bool token_is_method = false; // captured at NAME entry: is this a method call?
     char reported_addresses[0x6000-0x5f00];
     char reported_stats[256];
     init_hash_sets();
@@ -503,12 +516,20 @@ deflt:
             state = DEFAULT;
 default_no_peek_poke_unop:
             if ((c >= 'a' && c <= 'z') || c == '_') {
+                token_is_method = after_colon;
+                after_colon = false;
                 state = NAME;
                 goto name;
+            } else if (c == ':') {
+                after_colon = true;
             } else if (c == '-') {
+                after_colon = false;
                 state = COMMENT1;
             } else if (c == '"') {
+                after_colon = false;
                 state = STRING;
+            } else if (c != ' ' && c != '\t' && c != '\n') {
+                after_colon = false;
             }
             //if (c != ' ' && c != '\t' && c != '\n')
             //    printf(" %c ", c);
@@ -541,13 +562,18 @@ lbracket:
             } else if (c == '(') {
                 // function call
                 //printf(" FUNCTION:%s", token);
-                if (is_unsupported_function(token, &user_defined_functions)) {
+                if (!token_is_method && is_unsupported_function(token, &user_defined_functions)) {
                     if (!hash_set_contains(&reported_functions, token)) {
                         if (filename)
                             fprintf(stderr, "%s: ", filename);
-                        fprintf(stderr, "%s: function is not supported\n", token);
+                        if (is_stub_function(token)) {
+                            fprintf(stderr, "%s: function is a stub\n", token);
+                            if (ret < COMPAT_SOME) ret = COMPAT_SOME;
+                        } else {
+                            fprintf(stderr, "%s: function is not supported\n", token);
+                            if (ret < COMPAT_NONE) ret = COMPAT_NONE;
+                        }
                         hash_set_add(&reported_functions, token);
-                        if (ret < COMPAT_NONE) ret = COMPAT_NONE;
                     }
                 }
                 if (strncmp(token, "peek", 4) == 0 || strncmp(token, "poke", 4) == 0)
@@ -655,7 +681,8 @@ int check_compatibility_file_names(int num_files, const char **file_names)
         const char *lua_script = NULL;
         uint8_t *file_buffer = NULL;
 
-        parse_cart_file(file_names[i], m_cart_memory, &lua_script, &file_buffer, NULL);
+        if (parse_cart_file(file_names[i], m_cart_memory, &lua_script, &file_buffer, NULL) != 0)
+            continue;
         if (lua_script) {
             size_t len = strlen(file_names[i]);
             ((char *)file_names[i])[len-3] = 'l';

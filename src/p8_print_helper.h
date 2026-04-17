@@ -525,7 +525,7 @@ static inline void draw_text(const char *str, unsigned str_len, int x, int y, in
                 }
 
                 if (index >= 0) {
-                    int base_char_width = state.use_custom_font ? get_custom_font_char_width(index) : state.char_w;
+                    int base_char_width = state.use_custom_font ? get_custom_font_char_width(index) : (index >= 0x80 ? state.char_w * 2 : state.char_w);
                     int char_width = base_char_width * (state.wide ? 2 : 1);
                     int char_height = state.char_h * (state.tall ? 2 : 1);
 

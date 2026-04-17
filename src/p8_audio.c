@@ -422,6 +422,10 @@ void render_sounds(int16_t *buffer, int total_samples)
 
     memset(buffer, 0, sizeof(int16_t) * total_samples);
 
+    // 0x5f2f == 1: audio engine is paused
+    if (m_memory[MEMORY_AUDIO_PAUSE] == 1)
+        return;
+
     for (int i = 0; i < CHANNEL_COUNT; i++)
     {
         soundstate_t *channel = &m_channels[i];

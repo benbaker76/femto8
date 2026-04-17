@@ -109,6 +109,10 @@ const char *lua_api_string =
     "\n"
     "function costatus(f)\n"
     "  return coroutine.status(f)\n"
+    "end\n"
+    "\n"
+    "function pack(...)\n"
+    "  return {n=select('#',...), ...}\n"
     "end";
 
 #endif

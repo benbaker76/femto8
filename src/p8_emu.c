@@ -115,6 +115,9 @@ uint16_t m_buttons[PLAYER_COUNT];
 uint16_t m_buttonsp[PLAYER_COUNT];
 uint16_t m_button_first_repeat[PLAYER_COUNT];
 unsigned m_button_down_time[PLAYER_COUNT][BUTTON_INTERNAL_COUNT];
+#ifdef SDL
+uint16_t m_buttons_latch[PLAYER_COUNT];
+#endif
 
 static bool m_prev_pointer_lock;
 
@@ -239,37 +242,43 @@ static int p8_init_lcd(void)
     return 0;
 }
 
-static void p8_init_common(const char *file_name, const char *lua_script)
+static int p8_init_common(const char *file_name, const char *lua_script)
 {
     p8_show_io_icon(false);
 
     if (lua_script == NULL) {
         if (file_name) fprintf(stderr, "%s: ", file_name);
         fprintf(stderr, "invalid cart\n");
-        exit(1);
+        return -1;
     }
 
     if (setjmp(jmpbuf_restart)) {
         if (!restart)
-            return;
+            return 0;
     }
 
-    if (!restart && !skip_compat_check) {
+    if (!skip_compat_check) {
         int ret = check_compatibility(file_name, lua_script);
         if (ret != COMPAT_OK)
             p8_show_compatibility_error(ret);
         if (ret == COMPAT_NONE)
-            return;
+            return -1;
     }
     restart = false;
+    // Skip compat check after first cart
+    skip_compat_check = true;
 
     memcpy(m_memory, m_cart_memory, CART_MEMORY_SIZE);
 
     m_frames = 0;
+    for (unsigned p = 0; p < PLAYER_COUNT; ++p) {
+        for (unsigned i = 0; i < BUTTON_INTERNAL_COUNT; ++i)
+            m_button_down_time[p][i] = UINT_MAX;
+        m_button_first_repeat[p] = 0;
+    }
 
     p8_reset();
     clear_screen(0);
-
     p8_update_input();
 
     lua_init_script(lua_script);
@@ -278,6 +287,7 @@ static void p8_init_common(const char *file_name, const char *lua_script)
 
     if (!skip_main_loop_if_no_callbacks || lua_has_main_loop_callbacks())
         p8_main_loop();
+    return 0;
 }
 
 int p8_init_file_with_param(const char *file_name, const char *param)
@@ -332,9 +342,10 @@ int p8_init_file_with_param(const char *file_name, const char *param)
     lua_load_api();
 
     printf("Loading %s\n", file_name);
-    parse_cart_file(file_name, m_cart_memory, &lua_script, &file_buffer, NULL);
+    if (parse_cart_file(file_name, m_cart_memory, &lua_script, &file_buffer, NULL) != 0)
+        return -1;
 
-    p8_init_common(file_name, lua_script);
+    int ret = p8_init_common(file_name, lua_script);
 
 #ifdef OS_FREERTOS
     rh_free(file_buffer);
@@ -342,7 +353,7 @@ int p8_init_file_with_param(const char *file_name, const char *param)
     free(file_buffer);
 #endif
 
-    return 0;
+    return ret;
 }
 
 int p8_init_ram(uint8_t *buffer, int size)
@@ -360,7 +371,7 @@ int p8_init_ram(uint8_t *buffer, int size)
 
     // printf("%s", m_lua_script);
 
-    p8_init_common(NULL, lua_script);
+    int init_ret = p8_init_common(NULL, lua_script);
 
 #ifdef OS_FREERTOS
     rh_free(decompression_buffer);
@@ -368,7 +379,7 @@ int p8_init_ram(uint8_t *buffer, int size)
     free(decompression_buffer);
 #endif
 
-    return 0;
+    return init_ret;
 }
 
 int p8_shutdown()
@@ -399,20 +410,117 @@ int p8_shutdown()
 }
 
 #ifdef SDL
+// Map output pixel (ox, oy) to source framebuffer pixel (sx, sy) based on
+// the screen transform mode at 0x5f2c.
+static void screen_transform_pixel(uint8_t mode, int ox, int oy, int *sx, int *sy)
+{
+    switch (mode) {
+    default:
+    case 0: // normal
+        *sx = ox; *sy = oy;
+        break;
+    case 1: // horizontal stretch: 64x128 → 128x128
+        *sx = ox >> 1; *sy = oy;
+        break;
+    case 2: // vertical stretch: 128x64 → 128x128
+        *sx = ox; *sy = oy >> 1;
+        break;
+    case 3: // both stretch: 64x64 → 128x128
+        *sx = ox >> 1; *sy = oy >> 1;
+        break;
+    case 5: // horizontal mirror: left half mirrored to right
+        *sx = (ox < 64) ? ox : (127 - ox); *sy = oy;
+        break;
+    case 6: // vertical mirror: top half mirrored to bottom
+        *sx = ox; *sy = (oy < 64) ? oy : (127 - oy);
+        break;
+    case 7: // both mirror: top-left quarter mirrored to all
+        *sx = (ox < 64) ? ox : (127 - ox);
+        *sy = (oy < 64) ? oy : (127 - oy);
+        break;
+    case 129: // horizontal flip
+        *sx = 127 - ox; *sy = oy;
+        break;
+    case 130: // vertical flip
+        *sx = ox; *sy = 127 - oy;
+        break;
+    case 131: // both flip (180 degree rotation)
+        *sx = 127 - ox; *sy = 127 - oy;
+        break;
+    case 133: // clockwise 90 degree rotation
+        *sx = 127 - oy; *sy = ox;
+        break;
+    case 134: // 180 degree rotation
+        *sx = 127 - ox; *sy = 127 - oy;
+        break;
+    case 135: // counterclockwise 90 degree rotation
+        *sx = oy; *sy = 127 - ox;
+        break;
+    }
+}
+
+// Resolve palette for a framebuffer pixel given the high-color mode.
+// pix_index is the raw 4-bit pixel value, sy is the source scanline,
+// sx is the source x coordinate.
+static uint8_t high_color_resolve(uint8_t hc_mode, uint8_t pix_index, int sx, int sy)
+{
+    if (hc_mode == 0x10) {
+        // Per-line palette swap: use secondary palette if bit set in bitfield
+        uint8_t bf = m_memory[0x5f70 + (sy >> 3)];
+        if (bf & (1 << (sy & 7)))
+            return color_get(PALTYPE_SECONDARY, pix_index);
+        return color_get(PALTYPE_SCREEN, pix_index);
+    }
+    if (hc_mode == 0x20) {
+        // 5-bitplane mode: requires 0x5f2c == 1 (horizontal stretch).
+        // If the corresponding pixel in the hidden right half (sx+64) is
+        // non-zero, use secondary palette.
+        int hidden_offset = (m_memory[MEMORY_SCREEN_PHYS] << 8) + ((sx + 64) >> 1) + sy * 64;
+        uint8_t hidden_val = m_memory[hidden_offset];
+        uint8_t hidden_pix = IS_EVEN(sx + 64) ? (hidden_val & 0xF) : (hidden_val >> 4);
+        if (hidden_pix != 0)
+            return color_get(PALTYPE_SECONDARY, pix_index);
+        return color_get(PALTYPE_SCREEN, pix_index);
+    }
+    if ((hc_mode & 0xf0) == 0x30) {
+        // Gradient fill: replace color n with per-section gradient
+        uint8_t replace_color = hc_mode & 0x0f;
+        uint8_t screen_index = color_get(PALTYPE_SCREEN, pix_index);
+        if ((screen_index & 0x0f) == replace_color) {
+            int section = sy >> 3;
+            uint8_t bf = m_memory[0x5f70 + (sy >> 3)];
+            if (bf & (1 << (sy & 7)))
+                section = (section + 1) & 0x0f;
+            return color_get(PALTYPE_SECONDARY, section);
+        }
+        return screen_index;
+    }
+    return color_get(PALTYPE_SCREEN, pix_index);
+}
+
 void p8_render()
 {
     sprintf(m_str_buffer, "%d", (int)m_actual_fps);
     draw_simple_text(m_str_buffer, 0, 0, 1);
 
     uint32_t *output = m_output->pixels;
+    uint8_t transform = m_memory[MEMORY_SCREEN_TRANSFORM];
+    uint8_t hc_mode = m_memory[MEMORY_HIGH_COLOUR_MODE];
 
     for (int y = 0; y < P8_HEIGHT; y++)
     {
         for (int x = 0; x < P8_WIDTH; x++)
         {
-            int screen_offset = (m_memory[MEMORY_SCREEN_PHYS] << 8) + (x >> 1) + y * 64;
+            int sx, sy;
+            screen_transform_pixel(transform, x, y, &sx, &sy);
+            int screen_offset = (m_memory[MEMORY_SCREEN_PHYS] << 8) + (sx >> 1) + sy * 64;
             uint8_t value = m_memory[screen_offset];
-            uint8_t index = color_get(PALTYPE_SCREEN, IS_EVEN(x) ? value & 0xF : value >> 4);
+            uint8_t pix = IS_EVEN(sx) ? value & 0xF : value >> 4;
+            uint8_t index;
+            if (hc_mode != 0)
+                index = high_color_resolve(hc_mode, pix, sx, sy);
+            else
+                index = color_get(PALTYPE_SCREEN, pix);
             uint32_t color = m_colors[color_index(index)];
 
             output[x + (y * P8_WIDTH)] = color;
@@ -900,12 +1008,21 @@ void p8_update_input()
                     }
                 }
             } else  {
+#ifdef SDL
+                // Catch a press-and-release within one frame via latch
+                if ((m_buttons_latch[p] & (1 << i)) && !m_button_down_time[p][i]) {
+                    m_buttonsp[p] |= 1 << i;
+                }
+#endif
                 if (m_button_down_time[p][i]) {
                     m_button_down_time[p][i] = 0;
                     m_button_first_repeat[p] &= ~(1 << i);
                 }
             }
         }
+#ifdef SDL
+        m_buttons_latch[p] = 0;
+#endif
     }
 
     if (!m_dialog_showing) {
@@ -997,30 +1114,39 @@ void p8_pump_events(void)
 #ifdef SDL
     SDL_PumpEvents();
 
+    // SDL_QUIT must be consumed and acted on immediately.
     SDL_Event event;
-    if (SDL_PeepEvents(&event, 1, SDL_PEEKEVENT, SDL_QUITMASK | SDL_KEYDOWNMASK) > 0) {
-        if (event.type == SDL_QUIT) {
-            SDL_PeepEvents(&event, 1, SDL_GETEVENT, SDL_QUITMASK);
-            p8_abort();
-        } else if (event.type == SDL_KEYDOWN) {
-            if ((event.key.keysym.sym == SDLK_RETURN || event.key.keysym.sym == SDLK_p) &&
-                (m_buttons[0] & BUTTON_MASK_PAUSE) == 0) {
-                SDL_PeepEvents(&event, 1, SDL_GETEVENT, SDL_KEYDOWNMASK);
-                if (event.key.keysym.sym == SDLK_RETURN) {
-                    m_buttons[0] |= BUTTON_MASK_PAUSE | BUTTON_MASK_RETURN;
-                    m_button_down_time[0][BUTTON_PAUSE] = UINT_MAX;
-                    m_button_down_time[0][BUTTON_RETURN] = UINT_MAX;
-                } else {
-                    m_buttons[0] |= BUTTON_MASK_PAUSE;
-                    m_button_down_time[0][BUTTON_PAUSE] = UINT_MAX;
-                }
-                p8_show_pause_menu();
-            } else if (event.key.keysym.sym == INPUT_ESCAPE && (m_buttons[0] & BUTTON_MASK_ESCAPE) == 0) {
-                SDL_PeepEvents(&event, 1, SDL_GETEVENT, SDL_KEYDOWNMASK);
+    while (SDL_PeepEvents(&event, 1, SDL_GETEVENT, SDL_QUITMASK) > 0)
+        p8_abort();
+
+    // Consume all pending keydown events.  Handle pause/escape immediately,
+    // and re-queue everything else so p8_update_input processes it normally.
+    SDL_Event keyevents[64];
+    int n = SDL_PeepEvents(keyevents, 64, SDL_GETEVENT, SDL_KEYDOWNMASK);
+    for (int i = 0; i < n; i++) {
+        SDLKey sym = keyevents[i].key.keysym.sym;
+        bool is_pause = (sym == SDLK_RETURN || sym == SDLK_p);
+        bool is_escape = (sym == INPUT_ESCAPE);
+        if (is_pause || is_escape) {
+            if (sym == SDLK_RETURN) {
+                m_buttons[0] |= BUTTON_MASK_PAUSE | BUTTON_MASK_RETURN;
+                m_button_down_time[0][BUTTON_PAUSE] = UINT_MAX;
+                m_button_down_time[0][BUTTON_RETURN] = UINT_MAX;
+            } else if (sym == SDLK_p) {
+                m_buttons[0] |= BUTTON_MASK_PAUSE;
+                m_button_down_time[0][BUTTON_PAUSE] = UINT_MAX;
+            } else if (sym == INPUT_ESCAPE) {
                 m_buttons[0] |= BUTTON_MASK_ESCAPE;
                 m_button_down_time[0][BUTTON_ESCAPE] = UINT_MAX;
-                p8_abort();
             }
+            if (!m_dialog_showing) {
+                if (is_pause)
+                    p8_show_pause_menu();
+                else if (is_escape)
+                    p8_abort();
+            }
+        } else {
+            SDL_PushEvent(&keyevents[i]);
         }
     }
 #endif
@@ -1064,6 +1190,7 @@ void p8_reset(void)
     m_memory[MEMORY_SCREEN_PHYS] = 0x60;
     m_memory[MEMORY_MAP_START] = 0x20;
     m_memory[MEMORY_MAP_WIDTH] = 128;
+    m_memory[MEMORY_RW_MASK] = 0xff;
     pencolor_set(6);
     reset_color();
     clip_set(0, 0, P8_WIDTH, P8_HEIGHT);
