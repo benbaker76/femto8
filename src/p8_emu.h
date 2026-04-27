@@ -137,9 +137,17 @@
 #define STAT_MEM_USAGE 0
 #define STAT_CPU_USAGE 1
 #define STAT_SYSTEM_CPU_USAGE 2
+#define STAT_CURRENT_DISPLAY 3
+#define STAT_CLIPBOARD 4
+#define STAT_VERSION 5
 #define STAT_PARAM 6
 #define STAT_FRAMERATE 7
 #define STAT_TARGET_FRAMERATE 8
+#define STAT_NUM_DISPLAYS 11
+#define STAT_PAUSE_MENU_X1 12
+#define STAT_PAUSE_MENU_Y1 13
+#define STAT_PAUSE_MENU_X2 14
+#define STAT_PAUSE_MENU_Y2 15
 #define STAT_RAW_KEYBOARD 28
 #define STAT_KEY_PRESSED 30
 #define STAT_KEY_NAME 31
@@ -161,8 +169,12 @@
 #define STAT_HOUR 93
 #define STAT_MINUTE 94
 #define STAT_SECOND 95
+#define STAT_RAW_GC 99
+#define STAT_BREADCRUMB 100
+#define STAT_BBS_CART_ID 101
 #define STAT_PCM_BUFFER_SIZE 108
 #define STAT_PCM_APP_BUFFER 109
+#define STAT_CURRENT_PATH 124
 
 #define INPUT_LEFT SDLK_LEFT
 #define INPUT_RIGHT SDLK_RIGHT
@@ -253,6 +265,9 @@ extern unsigned char *m_cart_memory;
 extern char *m_font;
 
 extern uint8_t *m_overlay_memory;
+extern char *current_cart_dir;
+
+extern char *m_breadcrumb;
 
 extern int16_t m_mouse_x, m_mouse_y;
 extern int16_t m_mouse_xrel, m_mouse_yrel;

@@ -18,6 +18,7 @@
 
 #include "lauxlib.h"
 #include "lualib.h"
+#include "fix32.h"
 
 
 /*
@@ -60,6 +61,26 @@ static int str_sub (lua_State *L) {
   if (start <= end)
     lua_pushlstring(L, s + start - 1, end - start + 1);
   else lua_pushliteral(L, "");
+  return 1;
+}
+
+
+static int str_index (lua_State *L) {
+  size_t l;
+  const char *s = luaL_checklstring(L, 1, &l);
+  if (lua_type(L, 2) == LUA_TNUMBER) {
+    int k = fix32_to_int(lua_tonumber(L, 2));
+    size_t idx = k > 0 ? k - 1 : l + k;
+    if (idx >= l)
+      lua_pushnil(L);
+    else
+      lua_pushlstring(L, s + idx, 1);
+    return 1;
+  }
+  lua_pushvalue(L, lua_upvalueindex(1));
+  lua_pushvalue(L, 2);
+  lua_gettable(L, -2);
+  lua_remove(L, -2);
   return 1;
 }
 
@@ -1003,7 +1024,8 @@ static void createmetatable (lua_State *L) {
   lua_setmetatable(L, -2);  /* set table as metatable for strings */
   lua_pop(L, 1);  /* pop dummy string */
   lua_pushvalue(L, -2);  /* get string library */
-  lua_setfield(L, -2, "__index");  /* metatable.__index = string */
+  lua_pushcclosure(L, str_index, 1);
+  lua_setfield(L, -2, "__index");  /* numeric indexing plus string methods */
   lua_pop(L, 1);  /* pop metatable */
 }
 

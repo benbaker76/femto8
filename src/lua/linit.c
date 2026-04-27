@@ -30,7 +30,6 @@ static const luaL_Reg loadedlibs[] = {
   {"_G", luaopen_base},
   {"_G", luaopen_pico8},
   {LUA_COLIBNAME, luaopen_coroutine},
-  {LUA_TABLIBNAME, luaopen_table},
   {LUA_STRLIBNAME, luaopen_string},
   {NULL, NULL}
 };
@@ -51,6 +50,12 @@ LUALIB_API void luaL_openlibs (lua_State *L) {
     luaL_requiref(L, lib->name, lib->func, 1);
     lua_pop(L, 1);  /* remove lib */
   }
+  luaL_requiref(L, LUA_TABLIBNAME, luaopen_table, 0);
+  lua_getfield(L, -1, "unpack");
+  lua_setglobal(L, "unpack");
+  lua_pop(L, 1);  /* remove table lib */
+  lua_pushnil(L);
+  lua_setglobal(L, "_G");
   /* add open functions from 'preloadedlibs' into 'package.preload' table */
   luaL_getsubtable(L, LUA_REGISTRYINDEX, "_PRELOAD");
   for (lib = preloadedlibs; lib->func; lib++) {

@@ -232,6 +232,65 @@ void audio_music(int32_t index, int32_t fadems, int32_t mask)
 
 int32_t audio_stat(int32_t index)
 {
+    if (index >= 16 && index <= 19)
+    {
+        int channel = index - 16;
+        if (m_channels[channel].sound_mode == SOUNDMODE_NONE)
+            return -1;
+        return m_channels[channel].sound_index;
+    }
+    if (index >= 20 && index <= 23) {
+        int channel = index - 20;
+        if (m_channels[channel].sound_mode == SOUNDMODE_NONE)
+            return -1;
+        return m_channels[channel].position;
+    }
+    if (index >= 46 && index <= 49) {
+        int channel = index - 46;
+        if (m_channels[channel].sound_mode == SOUNDMODE_NONE)
+            return -1;
+        return m_channels[channel].sound_index;
+    }
+    if (index >= 50 && index <= 53) {
+        int channel = index - 50;
+        if (m_channels[channel].sound_mode == SOUNDMODE_NONE)
+            return -1;
+        return m_channels[channel].position;
+    }
+    if (index == 24 || index == 54) {
+        bool any_music = false;
+        for (int i = 0; i < CHANNEL_COUNT; ++i) {
+            if (m_channels[i].sound_mode == SOUNDMODE_MUSIC) {
+                any_music = true;
+                break;
+            }
+        }
+        return any_music ? m_music_state.pattern : -1;
+    }
+    if (index == 25 || index == 55) {
+        bool any_music = false;
+        for (int i = 0; i < CHANNEL_COUNT; ++i) {
+            if (m_channels[i].sound_mode == SOUNDMODE_MUSIC) {
+                any_music = true;
+                break;
+            }
+        }
+        return any_music ? m_music_state.pattern : -1;
+    }
+    if (index == 26 && index == 56) {
+        int ticks = 0;
+        for (int i = 0; i < CHANNEL_COUNT; ++i)
+            if (m_channels[i].sound_mode == SOUNDMODE_MUSIC)
+                ticks = MAX(ticks, m_channels[i].sample);
+        return ticks;
+    }
+    if (index == 57) {
+        for (int i = 0; i < CHANNEL_COUNT; ++i) {
+            if (m_channels[i].sound_mode == SOUNDMODE_MUSIC)
+                return 1;
+        }
+        return 0;
+    }
     return 0;
 }
 

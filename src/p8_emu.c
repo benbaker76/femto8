@@ -90,6 +90,8 @@ static char *load_filename = NULL;
 static char *load_param = NULL;
 char *current_cart_dir = NULL;
 
+char *m_breadcrumb = NULL;
+
 static bool skip_compat_check = false;
 static bool skip_main_loop_if_no_callbacks = false;
 
