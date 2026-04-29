@@ -352,11 +352,11 @@ int pal(lua_State *L)
             int c0 = lua_tointeger(L, -2);
             int c1 = lua_tointeger(L, -1);
             uint8_t new_val;
-            if (p == PALTYPE_SECONDARY) {
-                new_val = c1 & 0xff;
-            } else {
+            if (p == PALTYPE_DRAW) {
                 uint8_t old_val = color_get(p, c0);
-                new_val = (c1 & 0x8f) | (old_val & 0x10);
+                new_val = (c1 & 0xf) | (old_val & 0xf0);
+            } else {
+                new_val = c1 & 0xff;
             }
             color_set(p, c0, new_val);
             lua_pop(L, 1);
@@ -370,11 +370,11 @@ int pal(lua_State *L)
         int p = lua_gettop(L) == 3 ? lua_tointeger(L, 3) : PALTYPE_DRAW;
 
         uint8_t new_val;
-        if (p == PALTYPE_SECONDARY) {
-            new_val = c1 & 0xff;
-        } else {
+        if (p == PALTYPE_DRAW) {
             uint8_t old_val = color_get(p, c0);
-            new_val = (c1 & 0x8f) | (old_val & 0x10);
+            new_val = (c1 & 0xf) | (old_val & 0xf0);
+        } else {
+            new_val = c1 & 0xff;
         }
         color_set(p, c0, new_val);
     }
@@ -766,7 +766,7 @@ int tline(lua_State *L)
             uint8_t mapped = draw_pal[col & 0xf];
             int px = x0 - cx;
             int py = y0 - cy;
-            if ((mapped & 0x10) == 0) {
+            if ((mapped & 0xf0) == 0) {
                 if (px >= clip_x0 && px < clip_x1 && py >= clip_y0 && py < clip_y1) {
                     int scr_offset = screen_base + (px >> 1) + py * 64;
                     if (rw_mask != 0xff) {

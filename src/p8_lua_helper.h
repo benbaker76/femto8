@@ -407,7 +407,7 @@ static inline void draw_scaled_sprite(int sx, int sy, int sw, int sh, int dx, in
             uint8_t index = gfx_get(src_x, src_y, MEMORY_SPRITES, MEMORY_SPRITES_SIZE);
             uint8_t color = color_get(PALTYPE_DRAW, (int)index);
 
-            if ((color & 0x10) == 0)
+            if ((color & 0xf0) == 0)
                 pixel_set(dx + x, dy + y, index, 0, DRAWTYPE_SPRITE);
         }
     }
@@ -427,7 +427,7 @@ static inline void draw_sprite(int n, int left, int top, bool flip_x, bool flip_
             uint8_t index = gfx_get(sx + x, sy + y, MEMORY_SPRITES, MEMORY_SPRITES_SIZE);
             uint8_t color = color_get(PALTYPE_DRAW, index);
 
-            if ((color & 0x10) == 0)
+            if ((color & 0xf0) == 0)
                 pixel_set(left + fx, top + fy, index, 0, DRAWTYPE_SPRITE);
         }
     }
