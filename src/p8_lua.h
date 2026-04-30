@@ -14,7 +14,7 @@
 void lua_load_api();
 void lua_shutdown_api();
 void lua_print_error(const char *where);
-void lua_init_script(const char *script);
+void lua_init_script(const char *file_name, const char *script);
 void lua_call_function(const char *name, int ret);
 void lua_update();
 void lua_draw();

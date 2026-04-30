@@ -271,7 +271,7 @@ static int p8_init_common(const char *file_name, const char *lua_script)
     clear_screen(0);
     p8_update_input();
 
-    lua_init_script(lua_script);
+    lua_init_script(file_name, lua_script);
 
     lua_init();
 

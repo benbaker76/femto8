@@ -60,7 +60,7 @@ static int m_tline_precision = 13;
 void lua_load_api();
 void lua_shutdown_api();
 void lua_print_error(const char *where);
-void lua_init_script(const char *script);
+void lua_init_script(const char *file_name, const char *script);
 void lua_call_function(const char *name, int ret);
 void lua_update();
 void lua_draw();
@@ -2038,7 +2038,7 @@ void lua_print_error(const char *where)
     }
 }
 
-void lua_init_script(const char *script)
+void lua_init_script(const char *file_name, const char *script)
 {
     free(s_saved_script);
     s_saved_script = script ? strdup(script) : NULL;
@@ -2046,9 +2046,26 @@ void lua_init_script(const char *script)
     if (!L)
         L = luaL_newstate();
 
-    if (luaL_loadstring(L, script))
+    char *temp_file_name = malloc(strlen(file_name) + 2);
+    temp_file_name[0] = '@';
+    strcpy(temp_file_name + 1, file_name);
+#if 1
+    // Prepend newlines so Lua's line numbers match the original .p8 file.
+    // The Lua section starts at line 4 (after the 3-line pico-8 header), so
+    // prepend 3 newlines to make line 1 of the script appear as line 4.
+    size_t script_len = strlen(script);
+    char *padded_script = malloc(3 + script_len + 1);
+    padded_script[0] = padded_script[1] = padded_script[2] = '\n';
+    memcpy(padded_script + 3, script, script_len + 1);
+    int ret = luaL_loadbuffer(L, padded_script, 3 + script_len, temp_file_name);
+    free(padded_script);
+#else
+    int ret = lua_loadBuffer(L, script, strlen(script), temp_file_name);
+#endif
+    free(temp_file_name);
+    if (ret)
     {
-        lua_print_error("luaL_loadString");
+        lua_print_error("luaL_loadBuffer");
         return;
     }
 
