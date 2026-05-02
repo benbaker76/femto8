@@ -852,15 +852,20 @@ void luaV_execute (lua_State *L) {
       )
       vmcase(OP_FORLOOP,
         lua_Number step = nvalue(ra+2);
-        lua_Number idx = luai_numadd(L, (lua_Number)nvalue(ra), step); /* increment index */
+        lua_Number prev = nvalue(ra);  /* index before increment */
+        lua_Number idx = luai_numadd(L, prev, step); /* increment index */
         lua_Number limit = nvalue(ra+1);
-        /* check for idx sign wrap-around is disabled because FORPREP may wrap
-           (e.g., -32768 - 1 = 32767), and the loop should continue as long as the
-           limit check passes. This allows for i=0x8000,0xffff to work. */
-        /* if (luai_numlt(L, 0, step) ? luai_numle(L, nvalue(ra), idx)
-                                     : luai_numle(L, idx, nvalue(ra))) */
-        if (luai_numlt(L, 0, step) ? luai_numle(L, idx, limit)
-                                   : luai_numle(L, limit, idx)) {
+        /* fix32 addition wraps on overflow.  Detect when idx wrapped past the
+           representable range: for a positive step idx should never decrease,
+           and for a negative step it should never increase.  When a wrap is
+           detected AND prev was still inside the loop bounds, the loop is
+           done (we overflowed past the limit rather than wrapping back to
+           init as FORPREP does for loops starting at FIX32_MIN). */
+        int wrapped = luai_numlt(L, 0, step)
+            ? (luai_numlt(L, idx, prev) && luai_numle(L, prev, limit))
+            : (luai_numlt(L, prev, idx) && luai_numle(L, limit, prev));
+        if (!wrapped && (luai_numlt(L, 0, step) ? luai_numle(L, idx, limit)
+                                                : luai_numle(L, limit, idx))) {
           ci->u.l.savedpc += GETARG_sBx(i);  /* jump back */
           setnvalue(ra, idx);  /* update internal index... */
           setnvalue(ra+3, idx);  /* ...and external index */

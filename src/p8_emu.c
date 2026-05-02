@@ -30,7 +30,6 @@
 #include "ble_controller.h"
 #endif
 #include "p8_audio.h"
-#include "p8_compat.h"
 #include "p8_dialog.h"
 #include "p8_emu.h"
 #include "p8_lua.h"
@@ -67,7 +66,6 @@ static inline int color_index(uint8_t c)
 
 static int p8_init_lcd(void);
 static void p8_main_loop();
-static void p8_show_compatibility_error(int severity);
 
 uint8_t *m_memory = NULL;
 uint8_t *m_cart_memory = NULL;
@@ -90,7 +88,8 @@ static char *load_filename = NULL;
 static char *load_param = NULL;
 char *current_cart_dir = NULL;
 
-static bool skip_compat_check = false;
+char *m_breadcrumb = NULL;
+
 static bool skip_main_loop_if_no_callbacks = false;
 
 const char *m_param_string = "";
@@ -257,16 +256,7 @@ static int p8_init_common(const char *file_name, const char *lua_script)
             return 0;
     }
 
-    if (!skip_compat_check) {
-        int ret = check_compatibility(file_name, lua_script);
-        if (ret != COMPAT_OK)
-            p8_show_compatibility_error(ret);
-        if (ret == COMPAT_NONE)
-            return -1;
-    }
     restart = false;
-    // Skip compat check after first cart
-    skip_compat_check = true;
 
     memcpy(m_memory, m_cart_memory, CART_MEMORY_SIZE);
 
@@ -281,7 +271,7 @@ static int p8_init_common(const char *file_name, const char *lua_script)
     clear_screen(0);
     p8_update_input();
 
-    lua_init_script(lua_script);
+    lua_init_script(file_name, lua_script);
 
     lua_init();
 
@@ -1249,11 +1239,6 @@ void __attribute__ ((noreturn)) p8_load_new(const char *filename, const char *pa
     longjmp(jmpbuf_load, 1);
 }
 
-void p8_set_skip_compat_check(bool skip)
-{
-    skip_compat_check = skip;
-}
-
 void p8_set_skip_main_loop_if_no_callbacks(bool skip)
 {
     skip_main_loop_if_no_callbacks = skip;
@@ -1307,41 +1292,6 @@ void p8_close_cartdata(void)
         fclose(cartdata);
         cartdata = NULL;
     }
-}
-
-static void p8_show_compatibility_error(int severity)
-{
-    m_dialog_showing = true;
-    p8_reset();
-
-
-    p8_dialog_control_t compat_controls_some[] = {
-        DIALOG_LABEL("this cart may not be"),
-        DIALOG_LABEL("fully compatible with"),
-        DIALOG_LABEL(PROGNAME),
-        DIALOG_SPACING(),
-        DIALOG_BUTTONBAR_OK_ONLY(),
-    };
-
-    p8_dialog_control_t compat_controls_none[] = {
-        DIALOG_LABEL("this cart is not"),
-        DIALOG_LABEL("compatible with"),
-        DIALOG_LABEL(PROGNAME),
-        DIALOG_SPACING(),
-        DIALOG_BUTTONBAR_OK_ONLY(),
-    };
-
-    p8_dialog_t compat_dialog;
-    if (severity <= COMPAT_SOME)
-        p8_dialog_init(&compat_dialog, NULL, compat_controls_some, 5, 0);
-    else
-        p8_dialog_init(&compat_dialog, NULL, compat_controls_none, 5, 0);
-
-    p8_dialog_run(&compat_dialog);
-    p8_dialog_cleanup(&compat_dialog);
-
-    m_button_down_time[0][BUTTON_ACTION1] = UINT_MAX;
-    m_dialog_showing = false;
 }
 
 void p8_show_io_icon(bool show)

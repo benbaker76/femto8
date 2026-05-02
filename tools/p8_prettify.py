@@ -144,12 +144,128 @@ def load_grammar():
         return f.read()
 
 
+def _find_matching_paren(s, start):
+    """Return the index of ')' closing the '(' at s[start], or -1."""
+    depth = 0
+    for i in range(start, len(s)):
+        if s[i] == '(':
+            depth += 1
+        elif s[i] == ')':
+            depth -= 1
+            if depth == 0:
+                return i
+    return -1
+
+
+def _lower_keywords_in_cond(cond):
+    """Lowercase Lua boolean/logic keywords inside a condition string."""
+    return re.sub(
+        r'\b(not|and|or|true|false|nil)\b',
+        lambda m: m.group(0).lower(),
+        cond,
+        flags=re.IGNORECASE,
+    )
+
+
+def _split_comment(s):
+    """Split a Lua source fragment into (code_part, comment_part).
+
+    Handles '--' only if not inside a string literal.  Returns
+    (s, '') if no comment is found.
+    """
+    in_str = None
+    i = 0
+    while i < len(s):
+        c = s[i]
+        if in_str:
+            if c == '\\':
+                i += 2
+                continue
+            if c == in_str:
+                in_str = None
+        else:
+            if c in ('"', "'"):
+                in_str = c
+            elif s[i:i+2] == '--':
+                return s[:i], s[i:]
+        i += 1
+    return s, ''
+
+
+def expand_shorthand_one_line_if_while(code):
+    """Expand single-line shorthand forms:
+    IF (cond) stmt...  -> if cond then stmt... end
+    WHILE (cond) stmt... -> while cond do stmt... end
+
+    Brackets around the condition are required (and may contain nested
+    parentheses such as function calls). This is case-insensitive and
+    preserves indentation.
+    """
+    out_lines = []
+    for line in code.splitlines():
+        stripped = line.lstrip()
+        indent = line[: len(line) - len(stripped)]
+        low = stripped.lower()
+
+        for keyword in ('if', 'while'):
+            klen = len(keyword)
+            # keyword must be followed by a non-identifier character
+            if not (low.startswith(keyword) and
+                    len(stripped) > klen and
+                    not (stripped[klen].isalnum() or stripped[klen] == '_')):
+                continue
+
+            after_kw = stripped[klen:].lstrip()
+            if not after_kw.startswith('('):
+                break
+
+            # position of '(' in the stripped string
+            paren_pos = len(stripped) - len(after_kw)
+            close = _find_matching_paren(stripped, paren_pos)
+            if close < 0:
+                break
+
+            cond = stripped[paren_pos + 1: close]
+            body = stripped[close + 1:].lstrip()
+
+            body_low = body.lower()
+            if keyword == 'if' and (body_low.startswith('then') or
+                                    body_low.startswith('do')):
+                break
+            if keyword == 'while' and body_low.startswith('do'):
+                break
+            # If the character after the closing paren looks like a binary
+            # operator continuation, this is NOT shorthand — the parens just
+            # group part of the condition expression.
+            if body and body[0] in '=<>!~+*/%^&|.\\':
+                break
+
+            cond = _lower_keywords_in_cond(cond)
+            joiner = 'then' if keyword == 'if' else 'do'
+            # Split body into code + trailing line-comment so the closing
+            # 'end' is not swallowed inside the comment.
+            body_code, body_comment = _split_comment(body)
+            body_code = body_code.rstrip()
+            if body_comment:
+                line = f"{indent}{keyword} {cond} {joiner} {body_code} end {body_comment}"
+            else:
+                line = f"{indent}{keyword} {cond} {joiner} {body_code} end"
+            break
+
+        out_lines.append(line)
+
+    return '\n'.join(out_lines) + ('\n' if code.endswith('\n') else '')
+
+
 def prettify_lua(code):
     """Pretty print Lua code using Lark parser."""
     grammar = load_grammar()
     if grammar is None:
         print("Error: lua_pico8.lark grammar file not found", file=sys.stderr)
         sys.exit(1)
+
+    # expand PICO-8 shorthand if/while forms before parsing
+    code = expand_shorthand_one_line_if_while(code)
 
     try:
         parser = Lark(grammar, start='chunk', parser='lalr')

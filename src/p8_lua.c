@@ -51,6 +51,8 @@ const void *m_lua_update = NULL;
 const void *m_lua_update60 = NULL;
 const void *m_lua_draw = NULL;
 
+static char *m_clipboard = NULL;
+
 char m_str_buffer[256] = {0};
 
 static int m_tline_precision = 13;
@@ -58,7 +60,7 @@ static int m_tline_precision = 13;
 void lua_load_api();
 void lua_shutdown_api();
 void lua_print_error(const char *where);
-void lua_init_script(const char *script);
+void lua_init_script(const char *file_name, const char *script);
 void lua_call_function(const char *name, int ret);
 void lua_update();
 void lua_draw();
@@ -349,8 +351,13 @@ int pal(lua_State *L)
         {
             int c0 = lua_tointeger(L, -2);
             int c1 = lua_tointeger(L, -1);
-            uint8_t old_val = color_get(p, c0);
-            uint8_t new_val = (c1 & 0x8f) | (old_val & 0x10);
+            uint8_t new_val;
+            if (p == PALTYPE_DRAW) {
+                uint8_t old_val = color_get(p, c0);
+                new_val = (c1 & 0xf) | (old_val & 0xf0);
+            } else {
+                new_val = c1 & 0xff;
+            }
             color_set(p, c0, new_val);
             lua_pop(L, 1);
         }
@@ -362,8 +369,13 @@ int pal(lua_State *L)
         int c1 = lua_tointeger(L, 2);
         int p = lua_gettop(L) == 3 ? lua_tointeger(L, 3) : PALTYPE_DRAW;
 
-        uint8_t old_val = color_get(p, c0);
-        uint8_t new_val = (c1 & 0x8f) | (old_val & 0x10);
+        uint8_t new_val;
+        if (p == PALTYPE_DRAW) {
+            uint8_t old_val = color_get(p, c0);
+            new_val = (c1 & 0xf) | (old_val & 0xf0);
+        } else {
+            new_val = c1 & 0xff;
+        }
         color_set(p, c0, new_val);
     }
 
@@ -545,10 +557,27 @@ int rrectfill(lua_State *L)
     int r = lua_gettop(L) >= 5 ? lua_tointeger(L, 5) : 0;
     int col = lua_gettop(L) >= 6 ? lua_tointeger(L, 6) : pencolor_get() & 0xF;
     int fillp = lua_gettop(L) >= 6 ? (fix32_bits(lua_tonumber(L, 6)) & 0xffff) : 0;
+    bool invert = fillp_invert_enabled(col);
 
     int right = left + w;
     int bottom = top + h;
     r = MAX(0, MIN(r, MIN(w, h) / 2));
+
+    if (invert) {
+        int cx, cy;
+        camera_get(&cx, &cy);
+        int clip_x0, clip_y0, clip_x1, clip_y1;
+        clip_get(&clip_x0, &clip_y0, &clip_x1, &clip_y1);
+        for (int y = clip_y0; y < clip_y1; y++) {
+            for (int x = clip_x0; x < clip_x1; x++) {
+                int wx = x + cx;
+                int wy = y + cy;
+                if (!point_in_round_rect(wx, wy, left, top, right, bottom, r))
+                    pixel_set(wx, wy, col, fillp, DRAWTYPE_GRAPHIC);
+            }
+        }
+        return 0;
+    }
 
     draw_rectfill(left, top+r, right, bottom-r, col, fillp);
     draw_rectfill(left+r, top, right-r, top+r, col, fillp);
@@ -737,7 +766,7 @@ int tline(lua_State *L)
             uint8_t mapped = draw_pal[col & 0xf];
             int px = x0 - cx;
             int py = y0 - cy;
-            if ((mapped & 0x10) == 0) {
+            if ((mapped & 0xf0) == 0) {
                 if (px >= clip_x0 && px < clip_x1 && py >= clip_y0 && py < clip_y1) {
                     int scr_offset = screen_base + (px >> 1) + py * 64;
                     if (rw_mask != 0xff) {
@@ -874,9 +903,9 @@ int sfx(lua_State *L)
     int n = lua_tointeger(L, 1);
     int channel = lua_to_or_default(L, integer, 2, -1);
     int offset = lua_to_or_default(L, integer, 3, 0);
-    int length = lua_to_or_default(L, integer, 3, 32);
+    int length = lua_to_or_default(L, integer, 4, 32 - offset);
 
-    audio_sound(n, channel, offset, m_memory[MEMORY_SFX + length * 64]);
+    audio_sound(n, channel, offset, length);
 #endif
 
     return 0;
@@ -1396,6 +1425,8 @@ int reset(lua_State *L)
 
 int __attribute__ ((noreturn)) run(lua_State *L)
 {
+    m_param_string = (lua_gettop(L) >= 1) ? lua_tostring(L, 1) : "";
+
     p8_restart();
 }
 
@@ -1413,6 +1444,18 @@ int _load(lua_State *L)
     const char *filename = lua_tostring(L, 1);
     if (!filename)
         luaL_error(L, "load() filename must be a string");
+
+    const char *breadcrumb = NULL;
+    if (nargs >= 2)
+        breadcrumb = lua_tostring(L, 2);
+
+    /* Set breadcrumb */
+    if (m_breadcrumb) {
+        free(m_breadcrumb);
+        m_breadcrumb = NULL;
+    }
+    if (breadcrumb)
+        m_breadcrumb = strdup(breadcrumb);
 
     char *full_filename = NULL;
     if (strstr(filename, ".p8") == NULL && strstr(filename, ".P8") == NULL) {
@@ -1459,6 +1502,13 @@ int _load(lua_State *L)
 int printh(lua_State *L)
 {
     const char *str = lua_tostring(L, 1);
+    const char *filename = lua_gettop(L) >= 2 ? lua_tostring(L, 2) : NULL;
+
+    if (filename && strcmp(filename, "@clip") == 0)
+    {
+        free(m_clipboard);
+        m_clipboard = strdup(str ? str : "");
+    }
 
     printf("%s\r\n", str);
     fflush(stdout);
@@ -1473,47 +1523,16 @@ int _stat(lua_State *L)
 
     switch (n)
     {
-case STAT_MEM_USAGE: {
-    double kb = 0.0;
-
-#if defined(_WIN32)
-    PROCESS_MEMORY_COUNTERS_EX pmc;
-    if (GetProcessMemoryInfo(GetCurrentProcess(),
-                             (PROCESS_MEMORY_COUNTERS*)&pmc,
-                             sizeof(pmc))) {
-        // PrivateUsage = committed private bytes
-        kb = (double)pmc.PrivateUsage / 1024.0;
+    case STAT_MEM_USAGE: {
+        lua_gc(L, LUA_GCCOLLECT, 0);
+        int kb = lua_gc(L, LUA_GCCOUNT, 0);
+        lua_pushnumber(L, fix32_from_int(kb));
+        break;
     }
-
-#elif defined(__GLIBC__)
-  #if defined(__GLIBC_PREREQ)
-    #if defined(__GLIBC_PREREQ) && __GLIBC_PREREQ(2,33)
-      struct mallinfo2 mi = mallinfo2();
-      kb = (double)mi.uordblks / 1024.0;
-    #else
-      struct mallinfo mi = mallinfo();
-      kb = (double)mi.uordblks / 1024.0;
-    #endif
-  #else
-    struct mallinfo mi = mallinfo();
-    kb = (double)mi.uordblks / 1024.0;
-  #endif
-
-#else
-    // Fallback for Linux/non-glibc: /proc/self/statm
-    long pages = 0;
-    FILE* f = fopen("/proc/self/statm", "r");
-    if (f && fscanf(f, "%*ld %ld", &pages) == 1) {
-        fclose(f);
-        long page_sz = sysconf(_SC_PAGESIZE);
-        kb = (double)pages * (double)page_sz / 1024.0;
-    } else if (f) {
-        fclose(f);
-    }
-#endif
-
-    lua_pushnumber(L, fix32_from_double(kb));
-    break;
+    case STAT_RAW_GC: {
+        int kb = lua_gc(L, LUA_GCCOUNT, 0);
+        lua_pushnumber(L, fix32_from_int(kb));
+        break;
     }
     case STAT_CPU_USAGE:
     case STAT_SYSTEM_CPU_USAGE: {
@@ -1523,6 +1542,18 @@ case STAT_MEM_USAGE: {
         lua_pushnumber(L, fix32_from_double(f));
         break;
     }
+    case STAT_CURRENT_DISPLAY:
+        lua_pushinteger(L, 0);
+        break;
+    case STAT_CLIPBOARD:
+        if (m_clipboard)
+            lua_pushstring(L, m_clipboard);
+        else
+            lua_pushnil(L);
+        break;
+    case STAT_VERSION:
+        lua_pushnumber(L, fix32_from_double(0.43));
+        break;
     case STAT_PARAM:
         lua_pushstring(L, m_param_string);
         break;
@@ -1531,6 +1562,21 @@ case STAT_MEM_USAGE: {
         break;
     case STAT_TARGET_FRAMERATE:
         lua_pushinteger(L, m_fps);
+        break;
+    case STAT_NUM_DISPLAYS:
+        lua_pushinteger(L, 1);
+        break;
+    case STAT_PAUSE_MENU_X1:
+        lua_pushinteger(L, 0);
+        break;
+    case STAT_PAUSE_MENU_Y1:
+        lua_pushinteger(L, 0);
+        break;
+    case STAT_PAUSE_MENU_X2:
+        lua_pushinteger(L, P8_WIDTH);
+        break;
+    case STAT_PAUSE_MENU_Y2:
+        lua_pushinteger(L, P8_HEIGHT);
         break;
     case STAT_RAW_KEYBOARD: {
         int key = lua_tointeger(L, 2);
@@ -1632,8 +1678,25 @@ case STAT_MEM_USAGE: {
     case STAT_PCM_APP_BUFFER:
         lua_pushinteger(L, audio_pcm_app_buffer());
         break;
+    case STAT_BREADCRUMB:
+        if (m_breadcrumb)
+            lua_pushstring(L, m_breadcrumb);
+        else
+            lua_pushstring(L, "");
+        break;
+    case STAT_BBS_CART_ID:
+        lua_pushstring(L, "");
+        break;
+    case STAT_CURRENT_PATH:
+        if (current_cart_dir)
+            lua_pushstring(L, current_cart_dir);
+        else
+            lua_pushstring(L, ".");
+        break;
     default:
-        if ((n >= 46 && n <= 56) || (n >= 16 && n <= 26)) {
+        if (n == 57) {
+            lua_pushboolean(L, audio_stat(n) != 0);
+        } else if ((n >= 46 && n <= 57) || (n >= 16 && n <= 26)) {
             lua_pushinteger(L, audio_stat(n));
         } else {
             lua_pushinteger(L, 0);
@@ -1909,15 +1972,13 @@ void lua_load_api()
 
     lua_register_functions(L);
 
-    // Set debug hook to pump events every ~3000 instructions
-    lua_sethook(L, lua_event_pump_hook, LUA_MASKCOUNT, 3000);
-
     if (luaL_dostring(L, lua_api_string))
         lua_print_error("Error loading extended PICO-8 Api");
 
     lua_setpico8memory(L, m_memory);
 
-    lua_sethook(L, lua_event_pump_hook, LUA_MASKCOUNT, 5000);
+    // Set debug hook to pump events every ~3000 instructions
+    lua_sethook(L, lua_event_pump_hook, LUA_MASKCOUNT, 3000);
 }
 
 void lua_shutdown_api()
@@ -1975,7 +2036,7 @@ void lua_print_error(const char *where)
     }
 }
 
-void lua_init_script(const char *script)
+void lua_init_script(const char *file_name, const char *script)
 {
     free(s_saved_script);
     s_saved_script = script ? strdup(script) : NULL;
@@ -1983,8 +2044,28 @@ void lua_init_script(const char *script)
     if (!L)
         L = luaL_newstate();
 
-    if (luaL_loadstring(L, script))
-        lua_print_error("luaL_loadString");
+    char *temp_file_name = malloc(strlen(file_name) + 2);
+    temp_file_name[0] = '@';
+    strcpy(temp_file_name + 1, file_name);
+#if 1
+    // Prepend newlines so Lua's line numbers match the original .p8 file.
+    // The Lua section starts at line 4 (after the 3-line pico-8 header), so
+    // prepend 3 newlines to make line 1 of the script appear as line 4.
+    size_t script_len = strlen(script);
+    char *padded_script = malloc(3 + script_len + 1);
+    padded_script[0] = padded_script[1] = padded_script[2] = '\n';
+    memcpy(padded_script + 3, script, script_len + 1);
+    int ret = luaL_loadbuffer(L, padded_script, 3 + script_len, temp_file_name);
+    free(padded_script);
+#else
+    int ret = lua_loadBuffer(L, script, strlen(script), temp_file_name);
+#endif
+    free(temp_file_name);
+    if (ret)
+    {
+        lua_print_error("luaL_loadBuffer");
+        return;
+    }
 
     int error = lua_pcall(L, 0, 0, 0);
 

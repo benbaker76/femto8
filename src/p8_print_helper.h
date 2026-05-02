@@ -38,6 +38,7 @@ typedef struct {
     bool solid_bg;
     int char_w;
     int char_h;
+    int char_w2;
     bool outline_enabled;
     int outline_colour;
     int outline_mask;
@@ -120,14 +121,16 @@ static inline void draw_char_styled(int n, int left, int top, int fg, int bg, pr
     int scale_x = state->wide ? 2 : 1;
     int scale_y = state->tall ? 2 : 1;
 
+    int render_width = state->use_custom_font ? get_custom_font_char_width(n) : (n >= 0x80 ? state->char_w2 : state->char_w);
     int render_height = state->char_h;
+    if (render_width > 8) render_width = 8;
     if (render_height > 8) render_height = 8;
 
     int outline_dx[] = {-1, 0, 1, -1, 1, -1, 0, 1};
     int outline_dy[] = {-1, -1, -1, 0, 0, 1, 1, 1};
 
-    for (int y = 0; y < render_height; y++) {
-        for (int x = 0; x < 8; x++) {
+    for (int y = 0; y < state->char_h; y++) {
+        for (int x = 0; x < render_width; x++) {
             bool is_fg = get_font_pixel(n, x, y, state->use_custom_font);
 
             if (state->invert)
@@ -202,6 +205,7 @@ static inline void draw_text(const char *str, unsigned str_len, int x, int y, in
         .solid_bg = use_defaults && (text_attrs & 0x10),
         .char_w = GLYPH_WIDTH,
         .char_h = GLYPH_HEIGHT,
+        .char_w2 = GLYPH_WIDTH * 2,
         .outline_enabled = false,
         .outline_colour = 0,
         .outline_mask = 0,
@@ -210,19 +214,25 @@ static inline void draw_text(const char *str, unsigned str_len, int x, int y, in
         .delay_frames = 0
     };
 
-    if (use_defaults) {
-        uint8_t char_size = m_memory[MEMORY_TEXT_CHAR_SIZE];
-
-        int cw = char_size & 0xf;
-        int ch = (char_size >> 4) & 0xf;
-        if (cw > 0) state.char_w = cw;
-        if (ch > 0) state.char_h = ch;
-
-        if (text_attrs & 0x80) {
-            int font_height = m_memory[MEMORY_FONT + 2];
-            if (font_height > 0) state.char_h = font_height;
-        }
+    if (state.use_custom_font) {
+        int font_height = m_memory[MEMORY_FONT + 2];
+        if (font_height > 0) state.char_h = font_height;
     }
+
+    uint8_t char_size = m_memory[MEMORY_TEXT_CHAR_SIZE];
+    uint8_t char_size2 = m_memory[MEMORY_TEXT_CHAR_SIZE2];
+    int cw = char_size & 0xf;
+    int ch = (char_size >> 4) & 0xf;
+    int cw2 = char_size2 & 0xf;
+    int tw = (char_size2 >> 4) & 0xf;
+    if (cw > 0)
+        state.char_w = cw;
+    if (cw2 > 0)
+        state.char_w2 = cw2;
+    if (ch > 0)
+        state.char_h = ch;
+    if (tw > 0)
+        tab_width = tw;
 
     for (unsigned i = 0; i < str_len; i++)
     {
@@ -525,16 +535,16 @@ static inline void draw_text(const char *str, unsigned str_len, int x, int y, in
                 }
 
                 if (index >= 0) {
-                    int base_char_width = state.use_custom_font ? get_custom_font_char_width(index) : (index >= 0x80 ? state.char_w * 2 : state.char_w);
+                    int base_char_width = state.use_custom_font ? get_custom_font_char_width(index) : (index >= 0x80 ? state.char_w2 : state.char_w);
                     int char_width = base_char_width * (state.wide ? 2 : 1);
-                    int char_height = state.char_h * (state.tall ? 2 : 1);
 
-                    bool use_styled = state.wide || state.tall || state.invert || !state.border || state.outline_enabled || state.use_custom_font || (state.char_h != GLYPH_HEIGHT);
+                    bool use_styled = state.wide || state.tall || state.invert || !state.border || state.outline_enabled || state.use_custom_font || (state.char_w != GLYPH_WIDTH) || (state.char_w2 != GLYPH_WIDTH) || (state.char_h != GLYPH_HEIGHT);
 
                     int draw_bg = state.solid_bg ? (bg != -1 ? bg : 0) : bg;
                     if (use_styled) {
                         draw_char_styled(index, x, y, fg, draw_bg, &state);
                     } else if (draw_bg != -1) {
+                        int char_height = state.char_h * (state.tall ? 2 : 1);
                         draw_rectfill(x, y, x + char_width - 1, y + char_height - 1, draw_bg, 0);
                         draw_char(index, x, y, fg);
                     } else {

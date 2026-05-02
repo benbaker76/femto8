@@ -108,14 +108,14 @@ BINOP: "<=" | ">=" | "==" | "~=" | "!=" | "<<" | ">>" | "^^" | ".."
      | "and" | "or"
 binop: BINOP
 
-UNOP: "#" | "~" | "not" | "-"
+UNOP: "#" | "~" | "not" | "-" | "@" | "$"
 unop: UNOP
 
 number: HEXNUMBER | BINNUMBER | NUMBER
 
 HEXNUMBER: /0[xX][0-9a-fA-F]+(\.[0-9a-fA-F]+)?/
 BINNUMBER: /0[bB][01]+/
-NUMBER: /\d+(\.\d+)?([eE][+-]?\d+)?|\.\d+([eE][+-]?\d+)?/
+NUMBER: /(?!0[xX])(?!0[bB])\d+(\.\d+)?([eE][+-]?\d+)?|\.\d+([eE][+-]?\d+)?/
 
 string: SHORTSTRING | LONGSTRING
 

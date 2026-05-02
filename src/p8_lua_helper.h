@@ -199,11 +199,43 @@ static inline void draw_ovalfill_segment(int xc, int yc, int x, int y, int r, in
         draw_hline(xc - y * xr / r, yc - x * yr / r, xc, col, fillp);
 }
 
+static inline bool fillp_invert_enabled(int color)
+{
+    return (m_memory[MEMORY_COLOR_FILLP] & 0x3) == 0x3 && (color & 0x1800) == 0x1800;
+}
+
+static inline bool point_in_oval(int x, int y, int xc, int yc, int xr, int yr)
+{
+    if (xr <= 0 || yr <= 0)
+        return false;
+
+    int dx = x - xc;
+    int dy = y - yc;
+    int64_t lhs = (int64_t)dx * dx * yr * yr + (int64_t)dy * dy * xr * xr;
+    int64_t rhs = (int64_t)xr * xr * yr * yr;
+    return lhs <= rhs;
+}
+
 static inline void draw_ovalfill_mask(int xc, int yc, int xr, int yr, int col, int fillp, int mask)
 {
     int r = MAX(xr, yr);
     if (r <= 0)
         return;
+
+    if (fillp_invert_enabled(col)) {
+        int left = xc - xr;
+        int top = yc - yr;
+        int right = xc + xr;
+        int bottom = yc + yr;
+        for (int y = top; y <= bottom; y++) {
+            for (int x = left; x <= right; x++) {
+                if (!point_in_oval(x, y, xc, yc, xr, yr))
+                    pixel_set(x, y, col, fillp, DRAWTYPE_GRAPHIC);
+            }
+        }
+        return;
+    }
+
     int x = 0, y = abs(r);
     int d = 3 - 2 * abs(r);
 
@@ -243,11 +275,50 @@ static inline void draw_rect(int x0, int y0, int x1, int y1, int col, int fillp)
     draw_vline(x1, y0, y1, col, fillp);
 }
 
+static inline bool point_in_rect(int x, int y, int x0, int y0, int x1, int y1)
+{
+    return x >= x0 && x <= x1 && y >= y0 && y <= y1;
+}
+
 static inline void draw_rectfill(int x0, int y0, int x1, int y1, int col, int fillp)
 {
+    bool invert = fillp_invert_enabled(col);
+    if (invert) {
+        int cx, cy;
+        camera_get(&cx, &cy);
+        int clip_x0, clip_y0, clip_x1, clip_y1;
+        clip_get(&clip_x0, &clip_y0, &clip_x1, &clip_y1);
+
+        for (int y = clip_y0; y < clip_y1; y++) {
+            for (int x = clip_x0; x < clip_x1; x++) {
+                if (!point_in_rect(x, y, x0, y0, x1, y1))
+                    pixel_set(x + cx, y + cy, col, fillp, DRAWTYPE_GRAPHIC);
+            }
+        }
+        return;
+    }
+
     for (int x=x0;x<=x1;x++)
         for(int y=y0;y<=y1;y++)
             pixel_set(x, y, col, fillp, DRAWTYPE_GRAPHIC);
+}
+
+static inline bool point_in_round_rect(int x, int y, int left, int top, int right, int bottom, int r)
+{
+    if (x < left || x > right || y < top || y > bottom)
+        return false;
+
+    if (r <= 0)
+        return true;
+
+    if (x >= left + r && x <= right - r)
+        return true;
+    if (y >= top + r && y <= bottom - r)
+        return true;
+
+    int cx = (x < left + r) ? (left + r) : (right - r);
+    int cy = (y < top + r) ? (top + r) : (bottom - r);
+    return point_in_oval(x, y, cx, cy, r, r);
 }
 
 static inline void draw_oval(int x0, int y0, int x1, int y1, int col, int fillp)
@@ -279,22 +350,19 @@ static inline void pixel_set(int x, int y, int c, int fillp, int draw_type)
 
     if (x >= x0 && x < x1 && y >= y0 && y < y1)
     {
-        bool fillp_sprites, fillp_graphics_secondary, transparency, invert;
+        bool fillp_sprites, fillp_graphics_secondary, transparency;
         if (c & 0x1000) {
             transparency = (c & 0x100) != 0;
             fillp_sprites = (c & 0x200) != 0;
             fillp_graphics_secondary = (c & 0x400) != 0;
-            invert = (c & 0x800) != 0;
         } else {
             fillp = m_memory[MEMORY_FILLP] | (m_memory[MEMORY_FILLP + 1] << 8);
             transparency = (m_memory[MEMORY_FILLP_ATTR] & 1) != 0;
             fillp_sprites = (m_memory[MEMORY_FILLP_ATTR] & 2) != 0;
             fillp_graphics_secondary = (m_memory[MEMORY_FILLP_ATTR] & 4) != 0;
-            invert = false;
         }
         unsigned bit = ((3-y) & 0x3) * 4 + ((3-x) & 0x3);
         bool on = (fillp & (1 << bit)) != 0;
-        if (invert) on = !on;
         bool use_fillp = (draw_type == DRAWTYPE_GRAPHIC) || (draw_type == DRAWTYPE_SPRITE && fillp_sprites);
         bool use_secondary_palette = (draw_type == DRAWTYPE_SPRITE  && fillp_sprites) || (draw_type == DRAWTYPE_GRAPHIC && fillp_graphics_secondary);
         if (!use_fillp || (use_fillp && !transparency) || !on) {
@@ -339,7 +407,7 @@ static inline void draw_scaled_sprite(int sx, int sy, int sw, int sh, int dx, in
             uint8_t index = gfx_get(src_x, src_y, MEMORY_SPRITES, MEMORY_SPRITES_SIZE);
             uint8_t color = color_get(PALTYPE_DRAW, (int)index);
 
-            if ((color & 0x10) == 0)
+            if ((color & 0xf0) == 0)
                 pixel_set(dx + x, dy + y, index, 0, DRAWTYPE_SPRITE);
         }
     }
@@ -359,7 +427,7 @@ static inline void draw_sprite(int n, int left, int top, bool flip_x, bool flip_
             uint8_t index = gfx_get(sx + x, sy + y, MEMORY_SPRITES, MEMORY_SPRITES_SIZE);
             uint8_t color = color_get(PALTYPE_DRAW, index);
 
-            if ((color & 0x10) == 0)
+            if ((color & 0xf0) == 0)
                 pixel_set(left + fx, top + fy, index, 0, DRAWTYPE_SPRITE);
         }
     }
@@ -557,6 +625,11 @@ static inline int map_cell_addr(int celx, int cely)
     if (map_start < 0x10 ||
         (map_start >= 0x40 && map_start < 0x80))
         map_start = 0x20;
+    if (map_start < 0x80) {
+        int start_offset = m_memory[MEMORY_MAP_START] & 0x0f;
+        if (cely >= 32 && cely + start_offset >= 64)
+            return 0;
+    }
     if (cely >= 32 && map_start < 0x80) {
         map_start = 0x10;
         cely -= 32;

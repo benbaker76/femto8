@@ -20,7 +20,6 @@ int main(int argc, char *argv[])
 {
     const char *file_name = NULL;
     const char *param_string = NULL;
-    bool skip_compat = false;
     bool skip_main_loop = false;
     int exit_code = EXIT_SUCCESS;
 
@@ -29,7 +28,7 @@ int main(int argc, char *argv[])
             printf("v%s\n", VERSION);
             return 0;
         } else if (strcmp(argv[i], "--skip-compat-check") == 0) {
-            skip_compat = true;
+            // Ignore for compatibiliy
         } else if (strcmp(argv[i], "-x") == 0) {
             skip_main_loop = true;
         } else if (strcmp(argv[i], "-p") == 0 && i + 1 < argc) {
@@ -42,8 +41,6 @@ int main(int argc, char *argv[])
     if (file_name == NULL)
         file_name = browse_for_cart();
 
-    if (skip_compat)
-        p8_set_skip_compat_check(true);
     if (skip_main_loop)
         p8_set_skip_main_loop_if_no_callbacks(true);
     if (file_name != NULL) {
