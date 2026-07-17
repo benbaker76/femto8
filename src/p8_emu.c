@@ -173,20 +173,38 @@ int p8_init()
     m_window = SDL_CreateWindow("femto-8", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
                                SCREEN_WIDTH, SCREEN_HEIGHT, SDL_WINDOW_SHOWN);
     if (!m_window) {
-        printf("Error creating SDL window.\n");
+        fprintf(stderr, "Error creating SDL window.\n");
         return 1;
     }
     m_renderer = SDL_CreateRenderer(m_window, -1, SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
     if (!m_renderer) {
         SDL_DestroyWindow(m_window);
         m_window = NULL;
-        printf("Error creating SDL renderer.\n");
+        fprintf(stderr, "Error creating SDL renderer.\n");
         return 1;
     }
 
     /* Texture at native P8 resolution; we'll update it from the output surface. */
-    m_texture = SDL_CreateTexture(m_renderer, SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STREAMING, P8_WIDTH, P8_HEIGHT);
     m_output = SDL_CreateRGBSurfaceWithFormat(0, P8_WIDTH, P8_HEIGHT, 32, SDL_PIXELFORMAT_ARGB8888);
+    if (!m_output) {
+        SDL_DestroyRenderer(m_renderer);
+        m_renderer = NULL;
+        SDL_DestroyWindow(m_window);
+        m_window = NULL;
+        fprintf(stderr, "Error creating SDL output surface.\n");
+        return 1;
+    }
+    m_texture = SDL_CreateTexture(m_renderer, SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STREAMING, P8_WIDTH, P8_HEIGHT);
+    if (!m_texture) {
+        SDL_FreeSurface(m_output);
+        m_output = NULL;
+        SDL_DestroyRenderer(m_renderer);
+        m_renderer = NULL;
+        SDL_DestroyWindow(m_window);
+        m_window = NULL;
+        fprintf(stderr, "Error creating SDL texture.\n");
+        return 1;
+    }
     m_format = m_output->format;
 
     SDL_SetWindowTitle(m_window, "femto-8");
@@ -216,6 +234,14 @@ int p8_init()
         free(m_decompression_buffer);
         free(m_lua_script);
         free(m_temp_lua_script);
+        m_memory = NULL;
+        m_cart_memory = NULL;
+        m_temp_cart_memory = NULL;
+        m_overlay_memory = NULL;
+        m_file_buffer = NULL;
+        m_decompression_buffer = NULL;
+        m_lua_script = NULL;
+        m_temp_lua_script = NULL;
         return 1;
     }
 
@@ -982,17 +1008,17 @@ bool p8_is_quit_requested(void)
 
 int p8_make_full_path(char *ret, int ret_size, const char *dir_path, const char *file_name)
 {
-    if (!ret || !dir_path || !file_name) {
+    if (!ret || !dir_path || !file_name || ret_size < 2) {
         errno = EINVAL;
         return -1;
     }
 
     size_t dir_len = strlen(dir_path);
-    size_t file_len = strlen(file_name);
-    if (dir_len > PATH_MAX || file_len > PATH_MAX || dir_len + 1 + file_len > PATH_MAX)
-        return -1;
 
     if (strcmp(file_name, "..") == 0) {
+        // Go up one directory
+        if (dir_len + 1 > (size_t)ret_size)
+            return -1;
         strcpy(ret, dir_path);
         char *slash = strrchr(ret, '/');
         if (!slash)
@@ -1011,14 +1037,16 @@ int p8_make_full_path(char *ret, int ret_size, const char *dir_path, const char 
             } else {
                 slash[0] = '\0';
             }
+        } else {
+            // No slash found - now we are in the current directory
+            ret[0] = '.';
+            ret[1] = '\0';
         }
     } else {
-        strcpy(ret, dir_path);
-        if (dir_len > 0 &&
-            ret[dir_len - 1] != '/' &&
-            ret[dir_len - 1] != '\\')
-            strcat(ret, "/");
-        strcat(ret, file_name);
+        // Build full path with dir/file
+        int written = snprintf(ret, ret_size, "%s/%s", dir_path, file_name);
+        if (written < 0 || (size_t)written >= (size_t)ret_size)
+            return -1;
     }
     return 0;
 }
