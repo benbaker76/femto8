@@ -305,11 +305,13 @@ int p8_load(const char *file_name, const char *param, const char *bbs_cart_id, c
     p8_show_io_icon(true);
 
     printf("Loading %s\n", file_name);
-    if (parse_cart_file(file_name, m_cart_memory, m_file_buffer, m_decompression_buffer, m_lua_script, NULL) != 0) {
+    memset(m_temp_cart_memory, 0, CART_MEMORY_SIZE);
+    if (parse_cart_file(file_name, m_temp_cart_memory, m_file_buffer, m_decompression_buffer, m_lua_script, NULL) != 0) {
         p8_show_io_icon(false);
         return -1;
     }
 
+    memcpy(m_cart_memory, m_temp_cart_memory, CART_MEMORY_SIZE);
     strtcpy(m_param_string, param ? param : "", sizeof(m_param_string));
     strtcpy(m_breadcrumb, breadcrumb ? breadcrumb : "", sizeof(m_breadcrumb));
 
