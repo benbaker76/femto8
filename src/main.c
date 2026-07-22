@@ -43,7 +43,8 @@ int main(int argc, char *argv[])
         }
     }
 
-    p8_init();
+    if (p8_init() != 0)
+        return EXIT_FAILURE;
 
     if (file_name[0] == '\0') {
         if (browse_for_cart(file_name, sizeof(file_name)) < 0)
