@@ -73,6 +73,8 @@ char    *m_temp_lua_script  = NULL;
 unsigned m_fps = 30;
 unsigned m_actual_fps = 0;
 unsigned m_frames = 0;
+bool m_no_frame_delay = false;
+bool m_no_frame_skip = false;
 
 p8_clock_t m_start_time;
 
@@ -177,6 +179,8 @@ int p8_init()
         return 1;
     }
     m_renderer = SDL_CreateRenderer(m_window, -1, SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
+    if (!m_renderer)
+        m_renderer = SDL_CreateRenderer(m_window, -1, 0);
     if (!m_renderer) {
         SDL_DestroyWindow(m_window);
         m_window = NULL;
@@ -821,9 +825,12 @@ void p8_flip()
     unsigned elapsed_time = p8_elapsed_time();
     const unsigned target_frame_time = 1000 / m_fps;
     int sleep_time = target_frame_time - elapsed_time;
-    if (sleep_time < 0)
+    if (sleep_time < 0 || m_no_frame_delay)
         sleep_time = 0;
-    m_actual_fps = 1000 / (elapsed_time + sleep_time);
+    if (elapsed_time + sleep_time > 0)
+        m_actual_fps = 1000 / (elapsed_time + sleep_time);
+    else
+        m_actual_fps = 9999;
 
     if (sleep_time > 0)
         p8_sleep(sleep_time);
@@ -851,7 +858,7 @@ static int p8_main_loop()
 
         time_debt += elapsed;
 
-        if (time_debt < target_frame_time || updates_since_last_flip >= m_fps) {
+        if (time_debt < target_frame_time || updates_since_last_flip >= m_fps || m_no_frame_skip) {
             ret = lua_draw();
             if (ret != 0)
                 return ret;

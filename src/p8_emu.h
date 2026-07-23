@@ -235,6 +235,8 @@ typedef enum {
 extern unsigned m_fps;
 extern unsigned m_actual_fps;
 extern unsigned m_frames;
+extern bool m_no_frame_delay;
+extern bool m_no_frame_skip;
 
 #ifdef OS_FREERTOS
 typedef long p8_clock_t;

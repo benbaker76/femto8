@@ -30,9 +30,13 @@ int main(int argc, char *argv[])
             printf("v%s\n", VERSION);
             return 0;
         } else if (strcmp(argv[i], "--skip-compat-check") == 0) {
-            // Ignore for compatibiliy
+            // Ignore for compatibility
         } else if (strcmp(argv[i], "-x") == 0) {
             skip_main_loop = true;
+        } else if (strcmp(argv[i], "--no-frame-delay") == 0) {
+            m_no_frame_delay = true;
+        } else if (strcmp(argv[i], "--no-frame-skip") == 0) {
+            m_no_frame_skip = true;
         } else if (strcmp(argv[i], "-p") == 0 && i + 1 < argc) {
             param_string = argv[++i];
         } else if (file_name[0] == '\0') {
