@@ -263,7 +263,7 @@ int parse_cart_file(const char *file_name, uint8_t *memory, uint8_t *file_buffer
         return -1;
     }
 
-    if (fread(m_file_buffer, 1, file_size, file) != (size_t)file_size) {
+    if (fread(file_buffer, 1, file_size, file) != (size_t)file_size) {
         fprintf(stderr, "Error reading file: %s\n", file_name);
         fclose(file);
         return -1;
@@ -271,10 +271,10 @@ int parse_cart_file(const char *file_name, uint8_t *memory, uint8_t *file_buffer
 
     fclose(file);
 
-    m_file_buffer[file_size] = '\0';
+    file_buffer[file_size] = '\0';
 
     const char *lua_script = NULL;
-    if (parse_cart_ram0(file_name, m_file_buffer, (int)file_size, memory, decompression_buffer, &lua_script, label_image) != 0)
+    if (parse_cart_ram0(file_name, file_buffer, (int)file_size, memory, decompression_buffer, &lua_script, label_image) != 0)
         return -1;
 
     // lua_script either points into file_buffer or decompression_buffer
