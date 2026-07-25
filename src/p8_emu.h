@@ -266,7 +266,7 @@ extern char m_param_string[256];
 extern bool m_load_available;
 
 void __attribute__ ((noreturn)) p8_abort();
-void p8_quit();
+void p8_check_for_next_frame(void);
 void p8_check_for_pause(void);
 p8_clock_t p8_clock(void);
 unsigned p8_clock_ms(p8_clock_t clocks);
@@ -287,6 +287,7 @@ int p8_make_full_path(char *ret, int ret_size, const char *dir_path, const char 
 void p8_new_cart(void);
 bool p8_open_cartdata(const char *id);
 void p8_pump_events(void);
+void p8_quit(void);
 int p8_shutdown(void);
 void p8_render();
 void p8_reset_cart(void);

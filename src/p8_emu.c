@@ -83,6 +83,7 @@ static bool restart;
 static bool cart_running = false;
 static bool lua_running = false;
 static bool quit_requested = false;
+static bool in_main_loop = false;
 
 char m_current_cart_dir[PATH_MAX];
 char m_current_cart_file_name[PATH_MAX];
@@ -366,6 +367,7 @@ int p8_run(void)
     p8_reset_cart();
 
     cart_running = true;
+    m_start_time = p8_clock();
 
     int ret = lua_init_script(m_current_cart_file_name, m_lua_script);
     if (ret != 0) {
@@ -840,18 +842,32 @@ void p8_flip()
     p8_post_flip();
 }
 
+void p8_check_for_next_frame()
+{
+    if (in_main_loop)
+        return;
+    unsigned elapsed_time = p8_elapsed_time();
+    const unsigned target_frame_time = 1000 / m_fps;
+    int remaining_time = target_frame_time - elapsed_time;
+    if (remaining_time < 0)
+        p8_flip();
+}
+
 static int p8_main_loop()
 {
     int time_debt = 0;
     unsigned updates_since_last_flip = 0;
 
+    in_main_loop = true;
     for (;;)
     {
         const int target_frame_time = 1000 / m_fps;
 
         int ret = lua_update();
-        if (ret != 0)
+        if (ret != 0) {
+            in_main_loop = false;
             return ret;
+        }
         updates_since_last_flip++;
 
         unsigned elapsed = p8_elapsed_time();
@@ -860,8 +876,10 @@ static int p8_main_loop()
 
         if (time_debt < target_frame_time || updates_since_last_flip >= m_fps || m_no_frame_skip) {
             ret = lua_draw();
-            if (ret != 0)
+            if (ret != 0) {
+                in_main_loop = false;
                 return ret;
+            }
             time_debt += p8_elapsed_time() - elapsed;
 
             p8_flip();
