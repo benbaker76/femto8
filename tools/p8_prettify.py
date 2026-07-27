@@ -203,56 +203,126 @@ def expand_shorthand_one_line_if_while(code):
     """
     out_lines = []
     for line in code.splitlines():
+        # Process the line looking for shorthand if/while patterns
+        result = []
+        i = 0
         stripped = line.lstrip()
         indent = line[: len(line) - len(stripped)]
-        low = stripped.lower()
 
-        for keyword in ('if', 'while'):
-            klen = len(keyword)
-            # keyword must be followed by a non-identifier character
-            if not (low.startswith(keyword) and
-                    len(stripped) > klen and
-                    not (stripped[klen].isalnum() or stripped[klen] == '_')):
-                continue
+        while i < len(stripped):
+            # Look for 'if' or 'while' at position i
+            found = None
+            for keyword in ('if', 'while'):
+                if (stripped[i:i+len(keyword)].lower() == keyword and
+                    len(stripped) > i + len(keyword) and
+                    not (stripped[i + len(keyword)].isalnum() or stripped[i + len(keyword)] == '_')):
+                    found = keyword
+                    break
 
-            after_kw = stripped[klen:].lstrip()
-            if not after_kw.startswith('('):
-                break
+            if found:
+                kw_end = i + len(found)
+                # after_kw is the stripped version starting from kw_end
+                after_kw = stripped[kw_end:].lstrip()
+                # paren_pos is the position of '(' in the original stripped string
+                # Since after_kw = stripped[kw_end:].lstrip(), the position of '(' is:
+                # kw_end + (number of chars skipped by lstrip)
+                # = kw_end + (len(stripped[kw_end:]) - len(after_kw))
+                # = kw_end + (len(stripped) - kw_end - len(after_kw))
+                # = len(stripped) - len(after_kw)
+                paren_pos = kw_end + (len(stripped) - kw_end - len(after_kw))
 
-            # position of '(' in the stripped string
-            paren_pos = len(stripped) - len(after_kw)
-            close = _find_matching_paren(stripped, paren_pos)
-            if close < 0:
-                break
+                if after_kw.startswith('('):
+                    close = _find_matching_paren(stripped, paren_pos)
+                    if close >= 0:
+                        cond = stripped[paren_pos + 1: close]
+                        body_start = close + 1
+                        body = stripped[body_start:].lstrip()
 
-            cond = stripped[paren_pos + 1: close]
-            body = stripped[close + 1:].lstrip()
+                        body_low = body.lower()
+                        print(f'found: {found}')
+                        print(f'body_low: {body_low}')
+                        # Skip if already has then/do
+                        if not (found == 'if' and (body_low.startswith('then') or body_low.startswith('do'))) and \
+                           not (found == 'while' and body_low.startswith('do')) and\
+                           not body_low.startswith('or') and not body_low.startswith('and'):
+                            # Check if this looks like a binary operator continuation
+                            if not (body and body[0] in '=<>!~+*/%^&|.\\'):
+                                # This is a shorthand form - expand it
+                                cond = _lower_keywords_in_cond(cond)
+                                joiner = 'then' if found == 'if' else 'do'
 
-            body_low = body.lower()
-            if keyword == 'if' and (body_low.startswith('then') or
-                                    body_low.startswith('do')):
-                break
-            if keyword == 'while' and body_low.startswith('do'):
-                break
-            # If the character after the closing paren looks like a binary
-            # operator continuation, this is NOT shorthand — the parens just
-            # group part of the condition expression.
-            if body and body[0] in '=<>!~+*/%^&|.\\':
-                break
+                                # The body continues until we find a keyword that starts
+                                # a new top-level statement. In Pico-8 shorthand, the body
+                                # is a single statement, but multiple if/while can be chained.
+                                # We need to find where the body ends by looking for:
+                                # - 'end' - closes a block
+                                # - 'elseif' - part of if chain
+                                # - 'else' - part of if chain
+                                # We do NOT stop at 'if' or 'while' because they're part of the body
+                                body_end = len(body)
+                                i_body = 0
+                                depth = 0
+                                else_count = 0
+                                if_count = 0
+                                while i_body < len(body):
+                                    c = body[i_body]
+                                    if c == '(':
+                                        depth += 1
+                                    elif c == ')':
+                                        depth -= 1
+                                    elif depth == 0:
+                                        # Check for keywords that end the current block
+                                        rest = body[i_body:].lower()
+                                        if (rest.startswith('else') and
+                                            len(rest) > len('else') and
+                                            (not (rest[len('else')].isalnum() or rest[len('else')] == '_'))):
+                                            print(f'rest: {rest} {rest.startswith("else")}')
+                                            else_count += 1
+                                            if else_count > if_count + 1:
+                                                # Found a block terminator - body ends before this
+                                                body_end = i_body
+                                                break
+                                        elif (rest.startswith('if') and
+                                            len(rest) > len('if') and
+                                            (not (rest[len('if')].isalnum() or rest[len('if')] == '_'))):
+                                            if_count += 1
+                                        if body_end < len(body):
+                                            break
+                                    i_body += 1
 
-            cond = _lower_keywords_in_cond(cond)
-            joiner = 'then' if keyword == 'if' else 'do'
-            # Split body into code + trailing line-comment so the closing
-            # 'end' is not swallowed inside the comment.
-            body_code, body_comment = _split_comment(body)
-            body_code = body_code.rstrip()
-            if body_comment:
-                line = f"{indent}{keyword} {cond} {joiner} {body_code} end {body_comment}"
-            else:
-                line = f"{indent}{keyword} {cond} {joiner} {body_code} end"
-            break
+                                body_code_raw = body[:body_end]
+                                body_comment_start = body_code_raw.find('--')
+                                if body_comment_start >= 0:
+                                    body_code = body_code_raw[:body_comment_start].rstrip()
+                                    body_comment = body_code_raw[body_comment_start:]
+                                else:
+                                    body_code = body_code_raw.rstrip()
+                                    body_comment = ''
 
-        out_lines.append(line)
+                                if body_comment:
+                                    expansion = f"{found} {cond} {joiner} {body_code} end {body_comment}"
+                                elif i_body == len(body):
+                                    expansion = f"{found} {cond} {joiner} {body_code} end"
+                                else:
+                                    expansion = f"{found} {cond} {joiner} {body_code} end "
+
+                                # Recursively expand any nested if/while in the body
+                                print(f'expansion: {expansion}')
+                                expanded_expansion = expand_shorthand_one_line_if_while(expansion)
+
+                                # The expansion replaces everything from the keyword to the end of body
+                                # body is body_raw.lstrip(), so we need to find where body_raw starts
+                                body_start_raw = kw_end + (len(stripped) - kw_end - len(body))
+                                # Skip past the entire if/while construct (including the body)
+                                # to avoid re-processing the body characters
+                                i = body_start_raw + len(body_code) + (1 + len(body_comment) if body_comment else 0)
+                                result.append(expanded_expansion)
+                                continue
+
+            result.append(stripped[i])
+            i += 1
+
+        out_lines.append(indent + ''.join(result))
 
     return '\n'.join(out_lines) + ('\n' if code.endswith('\n') else '')
 
