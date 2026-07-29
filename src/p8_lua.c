@@ -55,11 +55,6 @@
 lua_State *L = NULL;
 static int m_status = 0;
 
-const void *m_lua_init = NULL;
-const void *m_lua_update = NULL;
-const void *m_lua_update60 = NULL;
-const void *m_lua_draw = NULL;
-
 /* m_clipboard is a fixed-size buffer defined in p8_emu.c */
 
 char m_str_buffer[256] = {0};
@@ -2561,6 +2556,55 @@ void lua_print_error()
         print_script_context(filename, lineno);
 }
 
+
+const void *lua_get_init()
+{
+    const void *ret = NULL;
+    if (L) {
+        lua_getglobal(L, "_init");
+        if (lua_isfunction(L, -1))
+            ret = lua_topointer(L, -1);
+        lua_pop(L, 1);
+    }
+    return ret;
+}
+
+const void *lua_get_update()
+{
+    const void *ret = NULL;
+    if (L) {
+        lua_getglobal(L, "_update");
+        if (lua_isfunction(L, -1))
+            ret = lua_topointer(L, -1);
+        lua_pop(L, 1);
+    }
+    return ret;
+}
+
+const void *lua_get_update60()
+{
+    const void *ret = NULL;
+    if (L) {
+        lua_getglobal(L, "_update60");
+        if (lua_isfunction(L, -1))
+            ret = lua_topointer(L, -1);
+        lua_pop(L, 1);
+    }
+    return ret;
+}
+
+const void *lua_get_draw()
+{
+    const void *ret = NULL;
+    if (L) {
+        lua_getglobal(L, "_draw");
+        if (lua_isfunction(L, -1))
+            ret = lua_topointer(L, -1);
+        lua_pop(L, 1);
+    }
+    return ret;
+}
+
 int lua_init_script(const char *file_name, const char *script)
 {
     if (!L)
@@ -2582,45 +2626,7 @@ int lua_init_script(const char *file_name, const char *script)
         return m_status;
 
     m_status = lua_pcall(L, 0, 0, 0);
-
-    if (m_status)
-        return m_status;
-
-    lua_getglobal(L, "_update");
-
-    if (lua_isfunction(L, -1))
-    {
-        m_lua_update = lua_topointer(L, -1);
-        m_fps = 30;
-        lua_pop(L, 1);
-    }
-
-    lua_getglobal(L, "_update60");
-
-    if (lua_isfunction(L, -1))
-    {
-        m_lua_update60 = lua_topointer(L, -1);
-        m_fps = 60;
-        lua_pop(L, 1);
-    }
-
-    lua_getglobal(L, "_draw");
-
-    if (lua_isfunction(L, -1))
-    {
-        m_lua_draw = lua_topointer(L, -1);
-        lua_pop(L, 1);
-    }
-
-    lua_getglobal(L, "_init");
-
-    if (lua_isfunction(L, -1))
-    {
-        m_lua_init = lua_topointer(L, -1);
-        lua_pop(L, 1);
-    }
-
-    return 0;
+    return m_status;
 }
 
 int lua_call_function(const char *name, int ret)
@@ -2633,62 +2639,43 @@ int lua_call_function(const char *name, int ret)
 
 int lua_update()
 {
-    if (!m_lua_update && !m_lua_update60)
-    {
-        lua_getglobal(L, "_update");
-        if (lua_isfunction(L, -1))
-        {
-            m_lua_update = lua_topointer(L, -1);
-            m_fps = 30;
-        }
-        lua_pop(L, 1);
-
-        lua_getglobal(L, "_update60");
-        if (lua_isfunction(L, -1))
-        {
-            m_lua_update60 = lua_topointer(L, -1);
-            m_fps = 60;
-        }
-        lua_pop(L, 1);
-    }
-
+    const void *update_ptr = lua_get_update();
+    const void *update60_ptr = lua_get_update60();
     lua_settop(L, 0);
     m_status = 0;
-
-    if (m_lua_update60)
+    if (update60_ptr) {
+        m_fps = 60;
         return lua_call_function("_update60", 0);
-    else if (m_lua_update)
+    } else if (update_ptr) {
+        m_fps = 30;
         return lua_call_function("_update", 0);
+    }
     return 0;
 }
 
 int lua_draw()
 {
-    if (!m_lua_draw)
-    {
-        lua_getglobal(L, "_draw");
-        if (lua_isfunction(L, -1))
-            m_lua_draw = lua_topointer(L, -1);
-        lua_pop(L, 1);
-    }
-
+    const void *draw_ptr = lua_get_draw();
     lua_settop(L, 0);
     m_status = 0;
-
-    if (m_lua_draw)
+    if (draw_ptr)
         return lua_call_function("_draw", 0);
     return 0;
 }
 
 bool lua_has_main_loop_callbacks()
 {
-    return (m_lua_update != NULL || m_lua_update60 != NULL || m_lua_draw != NULL);
+    const void *update_ptr = lua_get_update();
+    const void *update60_ptr = lua_get_update60();
+    const void *draw_ptr = lua_get_draw();
+    return (update_ptr != NULL || update60_ptr != NULL || draw_ptr != NULL);
 }
 
 int lua_init()
 {
+    const void *init_ptr = lua_get_init();
     m_status = 0;
-    if (m_lua_init)
+    if (init_ptr)
         return lua_call_function("_init", 0);
     return 0;
 }
