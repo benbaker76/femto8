@@ -1346,9 +1346,9 @@ static void whilestat (LexState *ls, int line) {
     check_match(ls, TK_END, TK_WHILE, line);
   else {
     ls->short_nest--;
-    if (ls->t.token == TK_EOL || ls->t.token == TK_EOS)
-      luaX_next(ls);  /* eat EOL or EOS */
-    else if (block_follow(ls, 1))
+    if (ls->t.token == TK_EOL || ls->t.token == TK_EOS) {
+      if (ls->short_nest == 0) luaX_next(ls);  /* eat EOL or EOS */
+    } else if (block_follow(ls, 1))
       ls->emiteol = 0;  /* close the short WHILE */
     else
       check_match(ls, TK_EOL, TK_WHILE, line);  /* we expected EOL */
@@ -1544,9 +1544,9 @@ static void ifstat (LexState *ls, int line) {
      check_match(ls, TK_END, TK_IF, line);
   else {
     ls->short_nest--;
-    if (ls->t.token == TK_EOL || ls->t.token == TK_EOS)
-      luaX_next(ls);  /* eat EOL or EOS */
-    else if (block_follow(ls, 1))
+    if (ls->t.token == TK_EOL || ls->t.token == TK_EOS) {
+      if (ls->short_nest == 0) luaX_next(ls);  /* eat EOL or EOS */
+    } else if (block_follow(ls, 1))
       ls->emiteol = 0;  /* close the short IF */
     else
       check_match(ls, TK_EOL, TK_IF, line);  /* we expected EOL */
