@@ -55,6 +55,7 @@ typedef struct BlockCnt {
 */
 static void statement (LexState *ls);
 static void expr (LexState *ls, expdesc *v);
+static void printexpr (LexState *ls, expdesc *v, int line);
 
 
 static void anchor_token (LexState *ls) {
@@ -1019,6 +1020,10 @@ static void simpleexp (LexState *ls, expdesc *v) {
       body(ls, v, 0, ls->linenumber);
       return;
     }
+    case TK_PRINT: {  /* '?' - print as expression, returns right-most x position */
+      printexpr(ls, v, ls->linenumber);
+      return;
+    }
     default: {
       suffixedexp(ls, v);
       return;
@@ -1665,8 +1670,14 @@ static void retstat (LexState *ls) {
 }
 
 
-static void shortprint (LexState *ls) {
-  int line = ls->linenumber;
+/*
+** Parse ?args as an expression (returns the right-most x position)
+** Works in both expression and statement context.
+**
+** When used in expression context (from simpleexp), no EOL handling needed.
+** When used in statement context (from shortprint), handle EOL based on short_nest.
+*/
+static void printexpr (LexState *ls, expdesc *v, int line) {
   FuncState *fs = ls->fs;
 
   /* same as suffixedexp() except we push "print" first */
@@ -1708,9 +1719,22 @@ static void shortprint (LexState *ls) {
     nparams = fs->freereg - (base+1);
   }
 
-  init_exp(&f, VCALL, luaK_codeABC(fs, OP_CALL, base, nparams+1, 2));
+  init_exp(v, VCALL, luaK_codeABC(fs, OP_CALL, base, nparams+1, 2));
   luaK_fixline(fs, line);
-  fs->freereg = fs->nactvar;
+  /* Note: the result stays on stack */
+}
+
+
+static void shortprint (LexState *ls) {
+  int line = ls->linenumber;
+
+  /* Parse ?args as expression */
+  expdesc v;
+  printexpr(ls, &v, line);
+
+  /* Discard the result since this is a statement context */
+  luaK_exp2nextreg(ls->fs, &v);
+  ls->fs->freereg = ls->fs->nactvar;
 }
 
 
