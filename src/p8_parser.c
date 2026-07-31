@@ -157,14 +157,81 @@ static int process_includes(char *lua_script_out, const char *lua_script, const 
     size_t length = 0;
     char *result = lua_script_out;
 
+    // Track comment state
+    bool in_multiline_comment = false;
     const char *p = lua_script;
     while (*p) {
+        // If not in a multi-line comment, check for comment starts
+        if (!in_multiline_comment) {
+            // Check for multi-line comment first: --[[ or --[=[ etc.
+            // Multi-line comments start with -- followed by [, optionally with = signs
+            if (*p == '-' && *(p + 1) == '-') {
+                const char *check_p = p + 2;
+                // Skip any = signs
+                while (*check_p == '=')
+                    check_p++;
+                // If next char is [, it's a multi-line comment
+                if (*check_p == '[') {
+                    // Find the closing ]]
+                    const char *end_p = check_p + 1;
+                    int num_equals = check_p - (p + 2);  // Count = signs
+                    while (*end_p) {
+                        // Check for ]] or ]=] or ]==] etc.
+                        if (*end_p == ']') {
+                            int end_equals = 0;
+                            const char *eq_p = end_p + 1;
+                            while (*eq_p == '=')
+                                { end_equals++; eq_p++; }
+                            if (*eq_p == ']' && end_equals == num_equals) {
+                                p = eq_p + 1;
+                                break;
+                            }
+                        }
+                        end_p++;
+                    }
+                    if (*end_p == '\0') {
+                        // No closing found, skip to end
+                        p = end_p;
+                    }
+                    continue;
+                }
+                // Otherwise it's a single-line comment: skip to end of line
+                const char *eol = strchr(p, '\n');
+                if (eol) {
+                    p = eol + 1;
+                    continue;
+                } else {
+                    break; // End of input
+                }
+            }
+        } else {
+            // We're inside a multi-line comment, look for ]]
+            const char *end_p = p;
+            while (*end_p) {
+                if (*end_p == ']') {
+                    int end_equals = 0;
+                    const char *eq_p = end_p + 1;
+                    while (*eq_p == '=')
+                        { end_equals++; eq_p++; }
+                    if (*eq_p == ']') {
+                        in_multiline_comment = false;
+                        p = eq_p + 1;
+                        break;
+                    }
+                }
+                end_p++;
+            }
+            if (*end_p == '\0')
+                p = end_p;
+            continue;
+        }
+
         // Find end of current line
         const char *eol = strchr(p, '\n');
         int line_len = eol ? (int)(eol - p) : (int)strlen(p);
 
-        // Check for #include at start of line
-        if (strncmp(p, "#include ", 9) == 0) {
+        // Check for #include at start of line (only if not in comment)
+        if (!in_multiline_comment && strncmp(p, "#include ", 9) == 0) {
             // Extract filename (skip "#include ")
             const char *fname_start = p + 9;
             int fname_len = line_len - 9;
