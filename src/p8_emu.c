@@ -977,7 +977,6 @@ void p8_reset(void)
 
 static void p8_common_reset_cart()
 {
-    assert(!cart_running);
     p8_close_cartdata();
     lua_shutdown_api();
     lua_load_api();
@@ -998,7 +997,6 @@ void p8_new_cart(void)
 
 void p8_reset_cart(void)
 {
-    assert(!cart_running);
     memcpy(m_memory, m_cart_memory, CART_MEMORY_SIZE);
     p8_common_reset_cart();
 }
