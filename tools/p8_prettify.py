@@ -17,7 +17,13 @@ except ImportError:
 
 
 def extract_lua_from_p8(filename):
-    """Extract Lua code section from a .p8 file."""
+    """Extract Lua code section from a .p8 file.
+
+    Returns: (lua_code, line_offset) where line_offset is the number of lines
+    in the file before the __lua__ section.
+    """
+    import re
+
     content = None
     used_latin1 = False
     for encoding in ['utf-8', 'latin-1']:
@@ -32,16 +38,20 @@ def extract_lua_from_p8(filename):
 
     lua_start = content.find('__lua__')
     if lua_start == -1:
-        return None
+        return None, 0
 
-    lua_start = content.find('\n', lua_start) + 1
-    lua_end = content.find('\n__', lua_start)
-    if lua_end == -1:
-        lua_end = len(content)
+    # Count lines before the lua section
+    lua_start_pos = content.find('\n', lua_start) + 1
+    line_offset = content[:lua_start_pos].count('\n')
 
-    lua_code = content[lua_start:lua_end]
+    # Match section markers like __section__ at start of line (e.g., __gfx__, __map__)
+    # These are at the start of a line, start with __, have lowercase letters/numbers, end with __
+    lua_end_match = re.search(r'\n__[a-z][a-z0-9]*__\n?', content[lua_start_pos:])
+    lua_end = lua_start_pos + lua_end_match.start() if lua_end_match else len(content)
 
-    return lua_code
+    lua_code = content[lua_start_pos:lua_end]
+
+    return lua_code, line_offset
 
 
 def extract_full_p8(filename):
@@ -60,20 +70,19 @@ def extract_full_p8(filename):
 
     lua_start = content.find('__lua__')
     if lua_start == -1:
-        return None, None, None
+        return None, None, None, 0
+
+    lua_start_pos = content.find('\n', lua_start) + 1
+    line_offset = content[:lua_start_pos].count('\n')
 
     header = content[:lua_start]
-    lua_marker_end = content.find('\n', lua_start) + 1
-    lua_end = content.find('\n__', lua_marker_end)
+    lua_end_match = re.search(r'\n__[a-z][a-z0-9]*__\n?', content[lua_start_pos:])
+    lua_end = lua_start_pos + lua_end_match.start() if lua_end_match else len(content)
 
-    if lua_end == -1:
-        lua_code = content[lua_marker_end:]
-        other_sections = ""
-    else:
-        lua_code = content[lua_marker_end:lua_end]
-        other_sections = content[lua_end:]
+    lua_code = content[lua_start_pos:lua_end]
+    other_sections = content[lua_end:]
 
-    return header + "__lua__\n", lua_code, other_sections
+    return header + "__lua__\n", lua_code, other_sections, line_offset
 
 
 def extract_full_p8png(filename):
@@ -92,20 +101,24 @@ def extract_full_p8png(filename):
             if os.path.exists(png_to_p8):
                 subprocess.run([png_to_p8, filename, tmp_name], check=True,
                              capture_output=True)
-                result = extract_full_p8(tmp_name)
+                header, lua_code, other_sections, line_offset = extract_full_p8(tmp_name)
                 os.unlink(tmp_name)
-                return result
+                return header, lua_code, other_sections, line_offset
         except:
             if os.path.exists(tmp_name):
                 os.unlink(tmp_name)
     except:
         pass
 
-    return None, None, None
+    return None, None, None, 0
 
 
 def extract_lua_from_p8png(filename):
-    """Extract Lua code from a .p8.png file by reading it as a .p8 cart."""
+    """Extract Lua code from a .p8.png file by reading it as a .p8 cart.
+
+    Returns: (lua_code, line_offset) where line_offset is the number of lines
+    in the p8 file before the __lua__ section.
+    """
     try:
         import subprocess
         import tempfile
@@ -120,16 +133,16 @@ def extract_lua_from_p8png(filename):
             if os.path.exists(png_to_p8):
                 subprocess.run([png_to_p8, filename, tmp_name], check=True,
                              capture_output=True)
-                lua_code = extract_lua_from_p8(tmp_name)
+                lua_code, line_offset = extract_lua_from_p8(tmp_name)
                 os.unlink(tmp_name)
-                return lua_code
+                return lua_code, line_offset
         except:
             if os.path.exists(tmp_name):
                 os.unlink(tmp_name)
     except:
         pass
 
-    return None
+    return None, 0
 
 
 def load_grammar():
@@ -239,8 +252,6 @@ def expand_shorthand_one_line_if_while(code):
                         body = stripped[body_start:].lstrip()
 
                         body_low = body.lower()
-                        print(f'found: {found}')
-                        print(f'body_low: {body_low}')
                         # Skip if already has then/do
                         if not (found == 'if' and (body_low.startswith('then') or body_low.startswith('do'))) and \
                            not (found == 'while' and body_low.startswith('do')) and\
@@ -307,7 +318,6 @@ def expand_shorthand_one_line_if_while(code):
                                     expansion = f"{found} {cond} {joiner} {body_code} end "
 
                                 # Recursively expand any nested if/while in the body
-                                print(f'expansion: {expansion}')
                                 expanded_expansion = expand_shorthand_one_line_if_while(expansion)
 
                                 # The expansion replaces everything from the keyword to the end of body
@@ -327,7 +337,7 @@ def expand_shorthand_one_line_if_while(code):
     return '\n'.join(out_lines) + ('\n' if code.endswith('\n') else '')
 
 
-def prettify_lua(code):
+def prettify_lua(code, line_offset=0):
     """Pretty print Lua code using Lark parser."""
     grammar = load_grammar()
     if grammar is None:
@@ -342,7 +352,16 @@ def prettify_lua(code):
         tree = parser.parse(code)
         return format_tree(tree, 0)
     except Exception as e:
-        print(f"Error: Parse error: {e}", file=sys.stderr)
+        # Adjust line numbers in error message to match original file
+        error_str = str(e)
+        if line_offset > 0:
+            import re
+            # Match patterns like "line 5, column 10" or "at line 5, column 10"
+            def adjust_line(match):
+                line_num = int(match.group(1))
+                return f"line {line_num + line_offset}"
+            error_str = re.sub(r'line (\d+)', adjust_line, error_str)
+        print(f"Error: Parse error: {error_str}", file=sys.stderr)
         sys.exit(1)
 
 
@@ -633,20 +652,21 @@ def main():
     header = None
     other_sections = None
     lua_code = None
+    line_offset = 0
 
     if input_file.endswith('.p8.png'):
         if preserve_sections:
-            header, lua_code, other_sections = extract_full_p8png(input_file)
+            header, lua_code, other_sections, line_offset = extract_full_p8png(input_file)
         else:
-            lua_code = extract_lua_from_p8png(input_file)
+            lua_code, line_offset = extract_lua_from_p8png(input_file)
         if lua_code is None:
             print(f"Error: Could not extract Lua code from {input_file}")
             sys.exit(1)
     elif input_file.endswith('.p8'):
         if preserve_sections:
-            header, lua_code, other_sections = extract_full_p8(input_file)
+            header, lua_code, other_sections, line_offset = extract_full_p8(input_file)
         else:
-            lua_code = extract_lua_from_p8(input_file)
+            lua_code, line_offset = extract_lua_from_p8(input_file)
         if lua_code is None:
             print(f"Error: Could not find __lua__ section in {input_file}")
             sys.exit(1)
@@ -654,12 +674,12 @@ def main():
         with open(input_file, 'r', encoding='utf-8', errors='ignore') as f:
             lua_code = f.read()
     else:
-        lua_code = extract_lua_from_p8(input_file)
+        lua_code, line_offset = extract_lua_from_p8(input_file)
         if lua_code is None:
             with open(input_file, 'r', encoding='utf-8', errors='ignore') as f:
                 lua_code = f.read()
 
-    pretty_code = prettify_lua(lua_code)
+    pretty_code = prettify_lua(lua_code, line_offset=line_offset)
 
     with open(output_file, 'w', encoding='utf-8') as f:
         if preserve_sections:
