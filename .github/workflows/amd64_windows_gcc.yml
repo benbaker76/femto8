@@ -25,13 +25,13 @@ jobs:
             mingw-w64-ucrt-x86_64-gcc
             mingw-w64-ucrt-x86_64-make
             mingw-w64-ucrt-x86_64-pkgconf
-            mingw-w64-ucrt-x86_64-SDL
+            mingw-w64-ucrt-x86_64-SDL2
 
       - run: mingw32-make
 
       - name: Copy runtime DLLs
         run: |
-          cp /ucrt64/bin/SDL.dll build-windows/
+          cp /ucrt64/bin/SDL2.dll build-windows/
           cp /ucrt64/bin/libwinpthread-1.dll build-windows/
           cp /ucrt64/bin/libgcc_s_seh-1.dll build-windows/ || true
           cp /ucrt64/bin/libstdc++-6.dll build-windows/ || true
@@ -46,7 +46,7 @@ jobs:
       - name: Compress Files
         uses: vimtor/action-zip@v1
         with:
-          files: README.md LICENSE build-windows/femto8.exe build-windows/SDL.dll build-windows/libwinpthread-1.dll
+          files: README.md LICENSE build-windows/femto8.exe build-windows/SDL2.dll build-windows/libwinpthread-1.dll
           dest: build-windows/femto8_Windows_amd64.zip
 
       - name: Upload to Artifacts
