@@ -155,7 +155,7 @@ int clip(lua_State *L)
     int prev_x0, prev_y0, prev_x1, prev_y1;
     clip_get(&prev_x0, &prev_y0, &prev_x1, &prev_y1);
 
-    if (lua_gettop(L) == 0)
+    if (lua_gettop(L) < 4)
         clip_set(0, 0, P8_WIDTH, P8_HEIGHT);
     else
     {
