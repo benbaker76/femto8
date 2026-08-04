@@ -115,7 +115,7 @@ number: HEXNUMBER | BINNUMBER | NUMBER
 
 HEXNUMBER: /0[xX][0-9a-fA-F]*\.?[0-9a-fA-F]+/
 BINNUMBER: /0[bB][01]+/
-NUMBER: /(?!0[xX])(?!0[bB])\d+(\.\d+)?([eE][+-]?\d+)?|\.\d+([eE][+-]?\d+)?/
+NUMBER: /(?!0[xX])(?!0[bB])\d+(\.\d+)?|\.\d+/
 
 string: SHORTSTRING | LONGSTRING
 
