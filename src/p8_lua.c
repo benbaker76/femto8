@@ -1649,6 +1649,11 @@ int extcmd(lua_State *L)
         p8_restart();
     } else if (strcmp(cmd, "shutdown") == 0) {
         p8_abort();
+    } else if (strcmp(cmd, "breadcrumb") == 0) {
+        if (m_breadcrumb_cart_file_name[0] != '\0') {
+            if (p8_load(m_breadcrumb_cart_file_name, NULL, NULL, NULL) == 0)
+                p8_run();
+        }
     } else {
         fprintf(stderr, "unsupported extcmd command: %s\n", cmd);
     }
@@ -2604,7 +2609,7 @@ const void *lua_get_draw()
 int lua_init_script(const char *file_name, const char *script)
 {
     if (!L)
-        L = luaL_newstate();
+        lua_load_api();
 
     char temp_file_name[PATH_MAX + 1];
     temp_file_name[0] = '@';

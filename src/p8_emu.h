@@ -260,6 +260,8 @@ extern char *m_font;
 extern char m_current_cart_dir[PATH_MAX];
 extern char m_current_cart_file_name[PATH_MAX];
 extern char m_breadcrumb[256];
+extern char m_breadcrumb_cart_file_name[PATH_MAX];
+extern char m_bbs_cart_id[256];
 extern char m_clipboard[1024];
 extern char m_param_string[256];
 
