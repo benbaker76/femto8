@@ -1336,8 +1336,8 @@ int poke(lua_State *L)
 
     addr = addr_remap(addr);
 
-    for (int i=2;i<=lua_gettop(L);++i) {
-        unsigned val = lua_tounsigned(L, i);
+    for (int i=2;i<=MAX(lua_gettop(L), 2);++i) {
+        unsigned val = i <= lua_gettop(L) ? lua_tounsigned(L, i) : 0;
 
         m_memory[addr + i-2] = val;
     }
@@ -1356,8 +1356,8 @@ int poke2(lua_State *L)
 
     addr = addr_remap(addr);
 
-    for (int i=2;i<=lua_gettop(L);++i) {
-        unsigned val = lua_tounsigned(L, i);
+    for (int i=2;i<=MAX(lua_gettop(L), 2);++i) {
+        unsigned val = i <= lua_gettop(L) ? lua_tounsigned(L, i) : 0;
 
         m_memory[addr + (i-2)*2] = val;
         m_memory[addr + (i-2)*2 + 1] = val >> 8;
@@ -1377,8 +1377,8 @@ int poke4(lua_State *L)
 
     addr = addr_remap(addr);
 
-    for (int i=2;i<=lua_gettop(L);++i) {
-        uint32_t val = lua_tonumber(L, i);
+    for (int i=2;i<=MAX(lua_gettop(L), 2);++i) {
+        uint32_t val = i <= lua_gettop(L) ? lua_tonumber(L, i) : 0;
 
         m_memory[addr + (i-2)*4] = val;
         m_memory[addr + (i-2)*4 + 1] = val >> 8;
