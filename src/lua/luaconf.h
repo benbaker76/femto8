@@ -609,7 +609,34 @@ static inline fix32_t lua_str2number_fn(const char *s, char **endptr) {
 ** Returns the length written (matching the C++ lambda that was here before).
 */
 static inline int lua_number2str_fn(char *s, fix32_t n) {
-  int i = sprintf(s, "%1.4f", fix32_to_double(n));
+  int negative = (n < 0);
+  /* Get absolute value: for negative n, use -n (two's complement) */
+  unsigned x = negative ? (unsigned)(-n) : (unsigned)n;
+  unsigned w = x >> 16;
+  unsigned frac = x & 0xffff;
+
+  /*
+   * Convert fractional part to decimal string with 4 decimal places.
+   * frac is in [0, 65535], representing frac/65536.
+   * For very small values (frac <= 6), the scaled value is < 1, so we truncate.
+   * For larger values, use standard rounding to nearest.
+   */
+  unsigned f;
+  if (frac <= 6U) {
+    /* Very small values: truncate */
+    f = frac * 10000U / 65536U;
+  } else {
+    /* Larger values: round to nearest */
+    f = (frac * 10000U + 32768U) / 65536U;
+  }
+
+  /* Handle carry when fractional part rounds to 10000 */
+  if (f >= 10000U) {
+    f -= 10000U;
+    w++;
+  }
+
+  int i = sprintf(s, "%s%d.%04d", negative ? "-" : "", w, f);
   while (i > 0 && s[i - 1] == '0') s[--i] = '\0';
   if (i > 0 && s[i - 1] == '.') s[--i] = '\0';
   return i;
