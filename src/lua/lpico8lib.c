@@ -369,6 +369,445 @@ static int pico8_split(lua_State *l) {
     return 1;
 }
 
+// Nil iterator - returns nothing
+static int pico8_all_nil_iter(lua_State *L)
+{
+    (void)L;
+    return 0;
+}
+
+// String iterator state: [1] = string, [2] = index
+static int pico8_all_string_iter(lua_State *L)
+{
+    size_t len;
+    const char *s;
+    lua_Integer i;
+
+    s = lua_tolstring(L, lua_upvalueindex(1), &len);
+    i = lua_tointeger(L, lua_upvalueindex(2));
+    i++;
+
+    if ((size_t)i <= len) {
+        lua_pushinteger(L, i);
+        lua_replace(L, lua_upvalueindex(2));  // update index
+        lua_pushlstring(L, s + i - 1, 1);
+        return 1;
+    }
+
+    return 0;
+}
+
+// Table iterator state: [1] = table, [2] = index, [3] = cached value (r)
+static int pico8_all_table_iter(lua_State *L)
+{
+    lua_Integer saved_i = lua_tointeger(L, lua_upvalueindex(2));
+    lua_pushvalue(L, lua_upvalueindex(1)); // push table
+    lua_Integer i = saved_i;
+
+    // Stack: [table]
+    lua_pushinteger(L, i); // Stack: [table, i]
+    lua_rawget(L, -2); // get t[i], Stack: [t[i]]
+
+    // Push cached value r for comparison
+    lua_pushvalue(L, lua_upvalueindex(3)); // Stack: [t[i], r]
+
+    int equal = lua_compare(L, -2, -1, LUA_OPEQ);
+
+    if (equal) {
+        // t[i] == r, so increment i
+        i++;
+        lua_pushinteger(L, i);
+        lua_replace(L, lua_upvalueindex(2));
+    }
+    lua_pop(L, 2); // pop t[i] and r
+
+    // Skip nil values
+    while (1) {
+        lua_pushvalue(L, lua_upvalueindex(1));
+        lua_len(L, -1);
+        lua_Integer len = lua_tointeger(L, -1);
+        lua_pop(L, 2); // pop table and length
+
+        if (i > len) {
+            // No more elements
+            return 0;
+        }
+
+        lua_pushinteger(L, i);
+        lua_gettable(L, lua_upvalueindex(1));
+
+        if (lua_isnil(L, -1)) {
+            lua_pop(L, 1);
+            i++;
+            lua_pushinteger(L, i);
+            lua_replace(L, lua_upvalueindex(2));
+        } else {
+            // Found non-nil value at t[i]
+            // Stack: [t[i]]
+            // Store t[i] in upvalue 3 for comparison on next call
+            lua_pushvalue(L, -1); // duplicate t[i]
+            lua_replace(L, lua_upvalueindex(3)); // r = t[i]
+            // Stack: [t[i]]
+            // Don't increment i here - it will be incremented on next call if t[i] == r
+            return 1;
+        }
+    }
+
+    return 0;
+}
+
+// all(t) - Returns an iterator function for table or string
+static int pico8_all(lua_State *L)
+{
+    if (lua_isnil(L, 1)) {
+        // Return a no-op iterator
+        lua_pushcclosure(L, pico8_all_nil_iter, 0);
+        return 1;
+    }
+
+    int type = lua_type(L, 1);
+    if (type == LUA_TSTRING) {
+        // String iteration - iterate over each character
+        lua_pushvalue(L, 1); // string as upvalue 1
+        lua_pushinteger(L, 0); // index i as upvalue 2
+
+        lua_pushcclosure(L, pico8_all_string_iter, 2);
+    } else if (type == LUA_TTABLE) {
+        lua_pushvalue(L, 1);   // table as upvalue 1
+        lua_pushinteger(L, 0); // index i as upvalue 2
+        lua_pushnil(L);        // cached value r as upvalue 3
+
+        lua_pushcclosure(L, pico8_all_table_iter, 3);
+    } else {
+        lua_pushnil(L);
+    }
+    return 1;
+}
+
+// add(t, v, i) - Add value to table at position i
+static int pico8_add(lua_State *L)
+{
+    if (!lua_istable(L, 1))
+        return 0;
+
+    lua_len(L, 1);
+    lua_Integer n = lua_tointeger(L, -1);
+    lua_pop(L, 1);
+
+    if (lua_isnoneornil(L, 3)) {
+        // Add to end: t[#t+1] = v
+        lua_pushvalue(L, 2);
+        lua_pushinteger(L, n + 1);
+        lua_insert(L, -2);
+        lua_settable(L, 1);
+    } else {
+        // Insert at position i: shift elements
+        lua_Integer i = lua_tointeger(L, 3);
+
+        // Shift elements from end to i (from high to low)
+        for (lua_Integer j = n; j >= i; --j) {
+            lua_pushinteger(L, j);
+            lua_gettable(L, 1);
+            lua_pushinteger(L, j + 1);
+            lua_insert(L, -2);
+            lua_settable(L, 1);
+        }
+
+        // Insert new value
+        lua_pushvalue(L, 2);
+        lua_pushinteger(L, i);
+        lua_insert(L, -2);
+        lua_settable(L, 1);
+    }
+
+    lua_pushvalue(L, 2); // return v
+    return 1;
+}
+
+// foreach(c, f) - Call f for each element in c
+static int pico8_foreach(lua_State *L)
+{
+    if (lua_isnil(L, 1))
+        return 0;
+
+    luaL_checktype(L, 2, LUA_TFUNCTION);
+
+    // Get iterator from all()
+    lua_pushcfunction(L, pico8_all);
+    lua_pushvalue(L, 1);
+    lua_call(L, 1, 1);
+
+    // Call iterator in loop
+    while (1) {
+        lua_pushvalue(L, -1);  // push iterator
+        lua_call(L, 0, 1);     // call iterator, get result
+
+        if (lua_isnil(L, -1)) {
+            lua_pop(L, 2);     // pop result and iterator
+            break;
+        }
+
+        // Call f(value)
+        lua_pushvalue(L, 2);   // function f
+        lua_pushvalue(L, -2);  // value
+        lua_call(L, 1, 0);     // call f(value)
+
+        lua_pop(L, 1);         // pop value
+    }
+
+    return 0;
+}
+
+// mapdraw(...) - Calls map with unpacked args
+static int pico8_mapdraw(lua_State *L)
+{
+    int nargs = lua_gettop(L);
+    if (nargs > 0) {
+        // Create table from arguments
+        lua_newtable(L);
+        for (int i = 1; i <= nargs; i++) {
+            lua_pushvalue(L, i);
+            lua_pushinteger(L, i);
+            lua_insert(L, -2);
+            lua_settable(L, -3);
+        }
+
+        // Call map with the table
+        lua_getglobal(L, "map");
+        lua_pushvalue(L, -2);
+        lua_call(L, 1, 0);
+    } else {
+        lua_getglobal(L, "map");
+        lua_call(L, 0, 0);
+    }
+    return 0;
+}
+
+// count(t, v) - Count elements in table, or occurrences of v
+static int pico8_count(lua_State *L)
+{
+    if (!lua_istable(L, 1))
+        return 0;
+
+    lua_len(L, 1);
+    lua_Integer n = lua_tointeger(L, -1);
+    lua_pop(L, 1);
+
+    if (lua_isnoneornil(L, 2)) {
+        // Return #t
+        lua_pushinteger(L, n);
+        return 1;
+    } else {
+        // Count occurrences of v
+        lua_Integer c = 0;
+        for (lua_Integer i = 1; i <= n; i++) {
+            lua_pushinteger(L, i);
+            lua_gettable(L, 1);
+            if (lua_compare(L, -1, 2, LUA_OPEQ)) {
+                c++;
+            }
+            lua_pop(L, 1);
+        }
+        lua_pushinteger(L, c);
+    }
+    return 1;
+}
+
+// del(t, v) - Delete first occurrence of v from table
+static int pico8_del(lua_State *L)
+{
+    if (!lua_istable(L, 1))
+        return 0;
+
+    lua_len(L, 1);
+    lua_Integer n = lua_tointeger(L, -1);
+    lua_pop(L, 1);
+    int found = 0;
+
+    for (lua_Integer i = 1; i <= n; i++) {
+        lua_pushinteger(L, i);
+        lua_gettable(L, 1);
+
+        if (!found && lua_compare(L, -1, 2, LUA_OPEQ))
+            found = 1;
+
+        lua_pop(L, 1);
+
+        if (found) {
+            lua_pushinteger(L, i + 1);
+            lua_gettable(L, 1);
+            lua_pushinteger(L, i);
+            lua_insert(L, -2);
+            lua_settable(L, 1);
+        }
+    }
+
+    if (found) {
+        lua_pushvalue(L, 2);
+        return 1;
+    }
+
+    return 0;
+}
+
+// deli(t, i) - Delete element at index i
+static int pico8_deli(lua_State *L)
+{
+    if (!lua_istable(L, 1))
+        return 0;
+
+    lua_len(L, 1);
+    lua_Integer n = lua_tointeger(L, -1);
+    lua_pop(L, 1);
+    lua_Integer i;
+
+    if (lua_isnoneornil(L, 2))
+        i = n;
+    else
+        i = lua_tointeger(L, 2);
+
+    if (i < 1 || i > n)
+        return 0;
+
+    // Get value at i and save it on top
+    lua_pushinteger(L, i);
+    lua_gettable(L, 1);
+
+    // Shift elements left: for j from i to n, t[j] = t[j+1]
+    // Note: when j == n, t[n] = t[n+1] = nil, effectively removing the last element
+    for (lua_Integer j = i; j <= n; j++) {
+        lua_pushinteger(L, j + 1);
+        lua_gettable(L, 1);
+        lua_pushinteger(L, j);
+        lua_insert(L, -2);
+        lua_settable(L, 1);
+    }
+
+    return 1;
+}
+
+// cocreate(f) - Create coroutine (copy from lcorolib.c)
+static int pico8_cocreate(lua_State *L)
+{
+    luaL_checktype(L, 1, LUA_TFUNCTION);
+    lua_State *NL = lua_newthread(L);
+    lua_pushvalue(L, 1);  /* move function to top */
+    lua_xmove(L, NL, 1);  /* move function from L to NL */
+    return 1;
+}
+
+// yield(...) - Yield coroutine (copy from lcorolib.c)
+static int pico8_yield_wrapper(lua_State *L)
+{
+    return lua_yield(L, lua_gettop(L));
+}
+
+/* auxresume - copy from lcorolib.c */
+static int auxresume(lua_State *L, lua_State *co, int narg)
+{
+    int status;
+
+    if (!lua_checkstack(co, narg)) {
+        lua_pushliteral(L, "too many arguments to resume");
+        return -1;  /* error flag */
+    }
+
+    if (lua_status(co) == LUA_OK && lua_gettop(co) == 0) {
+        lua_pushliteral(L, "cannot resume dead coroutine");
+        return -1;  /* error flag */
+    }
+
+    lua_xmove(L, co, narg);
+    status = lua_resume(co, L, narg);
+
+    if (status == LUA_OK || status == LUA_YIELD) {
+        int nres = lua_gettop(co);
+        if (!lua_checkstack(L, nres + 1)) {
+            lua_pop(co, nres);  /* remove results anyway */
+            lua_pushliteral(L, "too many results to resume");
+            return -1;  /* error flag */
+        }
+        lua_xmove(co, L, nres);  /* move yielded values */
+        return nres;
+    } else {
+        lua_xmove(co, L, 1);  /* move error message */
+        return -1;  /* error flag */
+    }
+}
+
+// coresume(f, ...) - Resume coroutine (copy from lcorolib.c)
+static int pico8_coresume(lua_State *L)
+{
+    lua_State *co = lua_tothread(L, 1);
+    int r;
+
+    luaL_argcheck(L, co, 1, "coroutine expected");
+    r = auxresume(L, co, lua_gettop(L) - 1);
+
+    if (r < 0) {
+        lua_pushboolean(L, 0);
+        lua_insert(L, -2);
+        return 2;  /* return false + error message */
+    } else {
+        lua_pushboolean(L, 1);
+        lua_insert(L, -(r + 1));
+        return r + 1;  /* return true + `resume' returns */
+    }
+}
+
+// costatus(f) - Get coroutine status (copy from lcorolib.c)
+static int pico8_costatus(lua_State *L)
+{
+    lua_State *co = lua_tothread(L, 1);
+    luaL_argcheck(L, co, 1, "coroutine expected");
+
+    if (L == co) {
+        lua_pushstring(L, "running");
+    } else {
+        switch (lua_status(co)) {
+            case LUA_YIELD:
+                lua_pushstring(L, "suspended");
+                break;
+            case LUA_OK: {
+                lua_Debug ar;
+                if (lua_getstack(co, 0, &ar) > 0) {  /* does it have frames? */
+                    lua_pushstring(L, "normal");  /* it is running */
+                } else if (lua_gettop(co) == 0)
+                    lua_pushstring(L, "dead");
+                else
+                    lua_pushstring(L, "suspended");  /* initial state */
+                break;
+            }
+            default:  /* some error occurred */
+                lua_pushstring(L, "dead");
+                break;
+        }
+    }
+    return 1;
+}
+
+// pack(...) - Pack arguments into table with n field
+static int pico8_pack(lua_State *L)
+{
+    int nargs = lua_gettop(L);
+
+    // Create table with array part
+    lua_createtable(L, nargs, 1);
+
+    for (int i = 1; i <= nargs; i++) {
+        lua_pushvalue(L, i);
+        lua_pushinteger(L, i);
+        lua_insert(L, -2);
+        lua_settable(L, -3);
+    }
+
+    // Set n field
+    lua_pushinteger(L, nargs);
+    lua_setfield(L, -2, "n");
+
+    return 1;
+}
+
 static const luaL_Reg pico8lib[] = {
   {"max",   pico8_max},
   {"min",   pico8_min},
@@ -395,6 +834,18 @@ static const luaL_Reg pico8lib[] = {
   {"chr",   pico8_chr},
   {"ord",   pico8_ord},
   {"split", pico8_split},
+  {"all", pico8_all},
+  {"add", pico8_add},
+  {"foreach", pico8_foreach},
+  {"mapdraw", pico8_mapdraw},
+  {"count", pico8_count},
+  {"del", pico8_del},
+  {"deli", pico8_deli},
+  {"pack", pico8_pack},
+  {"cocreate", pico8_cocreate},
+  {"coresume", pico8_coresume},
+  {"costatus", pico8_costatus},
+  {"yield", pico8_yield_wrapper},
   {NULL, NULL}
 };
 

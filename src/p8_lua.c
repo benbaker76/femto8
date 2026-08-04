@@ -46,7 +46,6 @@
 #include "p8_parser.h"
 #include "p8_cstore.h"
 #include "p8_pause_menu.h"
-#include "lua_api.h"
 #include "lua.h"
 #include "lualib.h"
 #include "lauxlib.h"
@@ -2319,11 +2318,11 @@ void lua_register_functions(lua_State *L)
     // ****************************************************************
     // *** Tables ***
     // ****************************************************************
-    // lua_register(L, "add", add);
-    // lua_register(L, "all", all);
-    // lua_register(L, "count", count);
-    // lua_register(L, "del", del);
-    // lua_register(L, "foreach", foreach);
+    //lua_register(L, "add", add);
+    //lua_register(L, "all", all);
+    //lua_register(L, "count", count);
+    //lua_register(L, "del", del);
+    //lua_register(L, "foreach", foreach);
     // lua_register(L, "pairs", pairs);
     // ****************************************************************
     // *** Input ***
@@ -2488,9 +2487,6 @@ int lua_load_api()
 
     lua_register_functions(L);
 
-    int ret = luaL_dostring(L, lua_api_string);
-    if (ret != 0)
-        return ret;
     lua_setpico8memory(L, m_memory);
 
     // Set debug hook to pump events every ~3000 instructions
