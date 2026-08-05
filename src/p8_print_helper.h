@@ -121,7 +121,8 @@ static inline void draw_char_styled(int n, int left, int top, int fg, int bg, pr
     int scale_x = state->wide ? 2 : 1;
     int scale_y = state->tall ? 2 : 1;
 
-    int render_width = state->use_custom_font ? get_custom_font_char_width(n) : (n >= 0x80 ? state->char_w2 : state->char_w);
+    int char_w = state->use_custom_font ? get_custom_font_char_width(n) : (n >= 0x80 ? state->char_w2 : state->char_w);
+    int render_width = char_w;
     int render_height = state->char_h;
     if (render_width > 8) render_width = 8;
     if (render_height > 8) render_height = 8;
@@ -130,8 +131,8 @@ static inline void draw_char_styled(int n, int left, int top, int fg, int bg, pr
     int outline_dy[] = {-1, -1, -1, 0, 0, 1, 1, 1};
 
     for (int y = 0; y < state->char_h; y++) {
-        for (int x = 0; x < render_width; x++) {
-            bool is_fg = get_font_pixel(n, x, y, state->use_custom_font);
+        for (int x = 0; x < char_w; x++) {
+            bool is_fg = (x < render_width && y < render_height) ? get_font_pixel(n, x, y, state->use_custom_font) : false;
 
             if (state->invert)
                 is_fg = !is_fg;
