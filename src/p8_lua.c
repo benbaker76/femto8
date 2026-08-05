@@ -2607,9 +2607,6 @@ const void *lua_get_draw()
 
 int lua_init_script(const char *file_name, const char *script)
 {
-    if (!L)
-        lua_load_api();
-
     char temp_file_name[PATH_MAX + 1];
     temp_file_name[0] = '@';
     if (file_name)

@@ -520,6 +520,7 @@ static int parse_p8_ram(const char *file_name, uint8_t *buffer, int size, uint8_
     int write_offset = 0;
     int read_length = 0;
     int write_length = 0;
+    bool in_header = true;
     bool seen_ident = false;
 
     if (lua_script)
@@ -538,7 +539,7 @@ static int parse_p8_ram(const char *file_name, uint8_t *buffer, int size, uint8_
 
         file_offset += line_length;
 
-        for (int i = P8TYPE_IDENT; i < P8TYPE_COUNT; i++)
+        for (int i = in_header ? P8TYPE_IDENT : P8TYPE_LUA; i < P8TYPE_COUNT; i++)
         {
             if (strncmp(line, m_p8_name[i], strlen(m_p8_name[i])) == 0)
             {
@@ -551,6 +552,8 @@ static int parse_p8_ram(const char *file_name, uint8_t *buffer, int size, uint8_
 
         if (token_found)
         {
+            if (p8_type >= P8TYPE_LUA)
+                in_header = false;
             if (p8_type == P8TYPE_LUA)
             {
                 lua_start = file_offset;
