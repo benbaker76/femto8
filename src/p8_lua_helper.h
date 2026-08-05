@@ -537,7 +537,7 @@ static inline int gfx_addr_remap(int location)
 
 static inline uint8_t gfx_addr_get(int x, int y, uint8_t *memory, int location, int size)
 {
-    if (x < 0 || y < 0 || x > P8_WIDTH || y > P8_HEIGHT)
+    if (x < 0 || y < 0 || x >= P8_WIDTH || y >= P8_HEIGHT)
         return 0;
     int offset = location + (x >> 1) + y * 64;
 
@@ -546,7 +546,7 @@ static inline uint8_t gfx_addr_get(int x, int y, uint8_t *memory, int location, 
 
 static inline uint8_t gfx_get(int x, int y, int location, int size)
 {
-    if (x < 0 || y < 0 || x > P8_WIDTH || y > P8_HEIGHT)
+    if (x < 0 || y < 0 || x >= P8_WIDTH || y >= P8_HEIGHT)
         return 0;
     location = gfx_addr_remap(location);
     return gfx_addr_get(x, y, m_memory, location, size);
@@ -554,7 +554,7 @@ static inline uint8_t gfx_get(int x, int y, int location, int size)
 
 static inline void gfx_set(int x, int y, int location, int size, int col)
 {
-    if (x < 0 || y < 0 || x > P8_WIDTH || y > P8_HEIGHT)
+    if (x < 0 || y < 0 || x >= P8_WIDTH || y >= P8_HEIGHT)
         return;
 
     int offset = gfx_addr_remap(location) + (x >> 1) + y * 64;
