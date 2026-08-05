@@ -227,8 +227,10 @@ static inline bool fillp_invert_enabled(int color)
 
 static inline bool point_in_oval(int x, int y, int xc, int yc, int xr, int yr)
 {
-    if (xr <= 0 || yr <= 0)
+    if (xr < 0 || yr < 0)
         return false;
+    else if (xr == 0 || yr == 0)
+        return x - xc == 0 && y - yc == 0;
 
     int dx = x - xc;
     int dy = y - yc;
@@ -240,17 +242,22 @@ static inline bool point_in_oval(int x, int y, int xc, int yc, int xr, int yr)
 static inline void draw_ovalfill_mask(int xc, int yc, int xr, int yr, int col, int fillp, int mask)
 {
     int r = MAX(xr, yr);
-    if (r <= 0)
+    if (r == 0 && !fillp_invert_enabled(col)) {
+        pixel_set(xc, yc, col, fillp, DRAWTYPE_GRAPHIC);
         return;
+    } else if (r < 0) {
+        return;
+    }
     if (!fillp_invert_enabled(col) && is_bbox_offscreen(xc - xr, yc - yr, xc + xr, yc + yr)) return;
 
     if (fillp_invert_enabled(col)) {
-        int left = xc - xr;
-        int top = yc - yr;
-        int right = xc + xr;
-        int bottom = yc + yr;
-        for (int y = top; y <= bottom; y++) {
-            for (int x = left; x <= right; x++) {
+        int cx, cy;
+        camera_get(&cx, &cy);
+        int clip_x0, clip_y0, clip_x1, clip_y1;
+        clip_get(&clip_x0, &clip_y0, &clip_x1, &clip_y1);
+
+        for (int y = clip_y0+cx; y < clip_y1+cy; y++) {
+            for (int x = clip_x0+cx; x < clip_x1+cy; x++) {
                 if (!point_in_oval(x, y, xc, yc, xr, yr))
                     pixel_set(x, y, col, fillp, DRAWTYPE_GRAPHIC);
             }
@@ -312,10 +319,10 @@ static inline void draw_rectfill(int x0, int y0, int x1, int y1, int col, int fi
         int clip_x0, clip_y0, clip_x1, clip_y1;
         clip_get(&clip_x0, &clip_y0, &clip_x1, &clip_y1);
 
-        for (int y = clip_y0; y < clip_y1; y++) {
-            for (int x = clip_x0; x < clip_x1; x++) {
+        for (int y = clip_y0+cx; y < clip_y1+cy; y++) {
+            for (int x = clip_x0+cx; x < clip_x1+cy; x++) {
                 if (!point_in_rect(x, y, x0, y0, x1, y1))
-                    pixel_set(x + cx, y + cy, col, fillp, DRAWTYPE_GRAPHIC);
+                    pixel_set(x, y, col, fillp, DRAWTYPE_GRAPHIC);
             }
         }
         return;
