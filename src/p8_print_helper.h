@@ -184,9 +184,10 @@ static inline void draw_char_styled(int n, int left, int top, int fg, int bg, pr
     }
 }
 
-static inline void draw_text(const char *str, unsigned str_len, int x, int y, int col, int left_margin, bool no_scroll, int *out_left, int *out_top, int *out_right)
+static inline void draw_text(const char *str, unsigned str_len, int x, int y, int col, int left_margin, bool no_scroll, int *out_left, int *out_top, int *out_right, int *out_bottom)
 {
     int right = x;
+    int bottom = y;
     int repeat = 1;
     int bg = 0;
     int fg = col;
@@ -624,6 +625,8 @@ static inline void draw_text(const char *str, unsigned str_len, int x, int y, in
                     }
 
                     if (x > right) right = x;
+                    int char_bottom =  y + state.char_h * (state.tall ? 2 : 1);
+                    if (char_bottom > bottom) bottom = char_bottom;
                 }
             }
         }
@@ -642,6 +645,8 @@ static inline void draw_text(const char *str, unsigned str_len, int x, int y, in
         *out_top = y;
     if (out_right)
         *out_right = right;
+    if (out_bottom)
+        *out_bottom = bottom;
 }
 
 #endif // P8_PRINT_HELPER_H

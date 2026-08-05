@@ -527,7 +527,7 @@ int print(lua_State *L)
     size_t len = 0;
     const char *str = lua_gettop(L) >= 1 ? lua_tolstring(L, 1, &len) : NULL;
     if (!str) { str = ""; len = 0; }
-    int right;
+    int right, bottom;
 
     if (lua_gettop(L) <= 2)
     {
@@ -536,7 +536,7 @@ int print(lua_State *L)
         int col = lua_gettop(L) == 2 ? lua_tointeger(L, 2) : pencolor_get();
         if (lua_gettop(L) == 2)
             pencolor_set(col);
-        draw_text(str, len, x, y, col, left_margin_get(), false, &x, &y, &right);
+        draw_text(str, len, x, y, col, left_margin_get(), false, &x, &y, &right, &bottom);
         cursor_set(x, y, -1);
     }
     else
@@ -547,12 +547,13 @@ int print(lua_State *L)
         if (lua_gettop(L) >= 4)
             pencolor_set(col);
         left_margin_set(x);
-        draw_text(str, len, x, y, col, x, true, &x, &y, &right);
+        draw_text(str, len, x, y, col, x, true, &x, &y, &right, &bottom);
         cursor_set(x, y, -1);
     }
 
     lua_pushinteger(L, right);
-    return 1;
+    lua_pushinteger(L, bottom);
+    return 2;
 }
 
 // pset(x, y, [c])
@@ -1995,15 +1996,13 @@ int _stop(lua_State *L)
                 int x = lua_tointeger(L, 2);
                 int y = lua_tointeger(L, 3);
                 int col = nargs >= 4 ? lua_tointeger(L, 4) : pencolor_get();
-                int right;
-                draw_text(str, len, x, y, col, x, true, &x, &y, &right);
+                draw_text(str, len, x, y, col, x, true, &x, &y, NULL, NULL);
                 cursor_set(x, y, -1);
             } else {
                 int x, y;
                 cursor_get(&x, &y);
                 int col = nargs >= 2 ? lua_tointeger(L, 2) : pencolor_get();
-                int right;
-                draw_text(str, len, x, y, col, left_margin_get(), false, &x, &y, &right);
+                draw_text(str, len, x, y, col, left_margin_get(), false, &x, &y, NULL, NULL);
                 cursor_set(x, y, -1);
             }
             p8_render();
