@@ -222,7 +222,7 @@ static inline void draw_ovalfill_segment(int xc, int yc, int x, int y, int r, in
 
 static inline bool fillp_invert_enabled(int color)
 {
-    return (m_memory[MEMORY_COLOR_FILLP] & 0x3) == 0x3 && (color & 0x1800) == 0x1800;
+    return (m_memory[MEMORY_COLOR_FILLP] & 0x2) == 0x2 && (color & 0x1800) == 0x1800;
 }
 
 static inline bool point_in_oval(int x, int y, int xc, int yc, int xr, int yr)
