@@ -787,6 +787,16 @@ int sspr(lua_State *L)
     int dh = lua_to_or_default(L, integer, 8, sh);
     bool flip_x = lua_to_or_default(L, boolean, 9, false);
     bool flip_y = lua_to_or_default(L, boolean, 10, false);
+    if (dw < 0) {
+        flip_x = !flip_x;
+        dw = -dw;
+        if (flip_x) dx -= dw; else dx += dw;
+    }
+    if (dh < 0) {
+        flip_y = !flip_y;
+        dh = -dh;
+        if (flip_y) dy -= dh; else dy += dh;
+    }
     float scale_x = (float)dw / sw;
     float scale_y = (float)dh / sh;
 
