@@ -1706,9 +1706,22 @@ int _load(lua_State *L)
     char resolved_path[PATH_MAX];
     const char *bbs_cart_id = NULL;
 
-    if (strstr(filename, ".p8") == NULL && strstr(filename, ".P8") == NULL) {
-        snprintf(full_filename, sizeof(full_filename), "%s.p8", filename);
-        filename = full_filename;
+    /* Check if filename starts with '#' for BBS download */
+    if (filename[0] == '#') {
+        m_load_result = -3;
+        fprintf(stderr, "load: bbs download not supported\n");
+        lua_pushboolean(L, 0);
+        lua_pushstring(L, "bbs download not supported");
+        return 2;
+    } else {
+        if (strstr(filename, ".p8") == NULL && strstr(filename, ".P8") == NULL) {
+            snprintf(full_filename, sizeof(full_filename), "%s.p8", filename);
+            filename = full_filename;
+        }
+
+        if (p8_resolve_relative_path(resolved_path, filename, sizeof(resolved_path), false) < 0) {
+            luaL_error(L, "out of memory");
+        }
     }
 
     if (p8_resolve_relative_path(resolved_path, filename, sizeof(resolved_path), false) < 0) {
