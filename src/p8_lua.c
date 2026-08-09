@@ -285,13 +285,15 @@ int _update_buttons(lua_State *L)
 int fset(lua_State *L)
 {
     int n = lua_tointeger(L, 1);
-    assert(n >= 0 && n <= 255);
+    if (n < 0 || n > 255)
+        return luaL_argerror(L, 1, "sprite index must be 0-255");
 
     if (lua_gettop(L) == 3)
     {
         int f = lua_tointeger(L, 2);
         bool v = lua_toboolean(L, 3);
-        assert(f >= 0 && f <= 7);
+        if (f < 0 || f > 7)
+            return luaL_argerror(L, 2, "flag index must be 0-7");
 
         if (v)
             m_memory[MEMORY_SPRITEFLAGS + n] |= (1 << f);
@@ -301,7 +303,8 @@ int fset(lua_State *L)
     else
     {
         int f = lua_tointeger(L, 2);
-        assert(f >= 0 && f <= 255);
+        if (f < 0 || f > 255)
+            return luaL_argerror(L, 2, "value must be 0-255");
         m_memory[MEMORY_SPRITEFLAGS + n] = f;
     }
 
