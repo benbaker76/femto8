@@ -392,7 +392,17 @@ static void convert_utf8_to_p8scii(uint8_t *buffer, size_t len)
                 *write_ptr++ = (uint8_t)p8_index;
                 read_ptr += symbol_length;
             } else {
-                *write_ptr++ = *read_ptr++;
+                // Skip the entire UTF-8 sequence (1-4 bytes)
+                // Determine sequence length from first byte
+                if ((*read_ptr & 0xF8) == 0xF0) {
+                    read_ptr += 4;  // 4-byte sequence
+                } else if ((*read_ptr & 0xF0) == 0xE0) {
+                    read_ptr += 3;  // 3-byte sequence
+                } else if ((*read_ptr & 0xE0) == 0xC0) {
+                    read_ptr += 2;  // 2-byte sequence
+                } else {
+                    read_ptr++;  // Invalid UTF-8, skip one byte
+                }
             }
         } else {
             *write_ptr++ = *read_ptr++;
@@ -432,7 +442,7 @@ void hex_to_bytes(uint8_t *memory, int mem_len, char *str, int str_len, int *wri
     *write_length = write_offset;
 }
 
-void read_sfx(uint8_t *dest, uint8_t *src, int read_length, int *write_length)
+void read_sfx(uint8_t *dest, int dest_length, uint8_t *src, int read_length, int *write_length)
 {
     int read_offset = 0;
     int write_offset = 0;
@@ -471,12 +481,18 @@ void read_sfx(uint8_t *dest, uint8_t *src, int read_length, int *write_length)
                              ((note2_waveform > 7 ? note2_waveform - 8 : note2_waveform) << 6) |
                              note2_pitch;
 
+            if (write_offset + 4 > dest_length)
+                break;
+
             dest[write_offset++] = note1;
             dest[write_offset++] = note1 >> 8;
             dest[write_offset++] = note2;
             dest[write_offset++] = note2 >> 8;
         }
 
+        if (write_offset + 4 > dest_length) {
+            break;
+        }
         dest[write_offset++] = byte_0; // Editor Mode
         dest[write_offset++] = byte_1; // Speed
         dest[write_offset++] = byte_2; // Loop Start
@@ -486,12 +502,11 @@ void read_sfx(uint8_t *dest, uint8_t *src, int read_length, int *write_length)
     *write_length = write_offset;
 }
 
-void read_music(uint8_t *dest, uint8_t *src, int read_length, int *write_length)
+void read_music(uint8_t *dest, int dest_length, uint8_t *src, int read_length, int *write_length)
 {
     int read_offset = 0;
     int write_offset = 0;
-
-    while (read_offset < read_length)
+    while (read_offset < read_length && write_offset + 4 <= dest_length)
     {
         uint8_t flags_byte = src[read_offset++];
         uint8_t effect_id1 = src[read_offset++];
@@ -608,7 +623,7 @@ static int parse_p8_ram(const char *file_name, uint8_t *buffer, int size, uint8_
             hex_to_bytes(tmpbuf, sizeof(tmpbuf),line, line_length-1, &read_length);
 
             if (read_length > 0)
-                read_sfx(write_mem, tmpbuf, read_length, &write_length);
+                read_sfx(write_mem, memory + MEMORY_SIZE - write_mem, tmpbuf, read_length, &write_length);
 
             write_offset += write_length;
             break;
@@ -620,7 +635,7 @@ static int parse_p8_ram(const char *file_name, uint8_t *buffer, int size, uint8_
             hex_to_bytes(tmpbuf, sizeof(tmpbuf), line, line_length-1, &read_length);
 
             if (read_length > 0)
-                read_music(write_mem, tmpbuf, read_length, &write_length);
+                read_music(write_mem, memory + MEMORY_SIZE - write_mem, tmpbuf, read_length, &write_length);
 
             write_offset += write_length;
             break;
@@ -639,12 +654,15 @@ static int parse_p8_ram(const char *file_name, uint8_t *buffer, int size, uint8_
     for (int i = MEMORY_SPRITES_MAP; i < MEMORY_SPRITES_MAP + MEMORY_SPRITES_MAP_SIZE; i++)
         memory[i] = NIBBLE_SWAP(memory[i]);
 
-    buffer[lua_end] = '\0';
-
-    convert_utf8_to_p8scii(&buffer[lua_start], lua_end - lua_start);
-
-    if (lua_script && lua_start)
-        *lua_script = (const char *) &buffer[lua_start];
+    // Bounds check for lua_start and lua_end
+    if (lua_start > 0 && lua_start < size && lua_end >= lua_start && lua_end <= size) {
+        buffer[lua_end] = '\0';
+        convert_utf8_to_p8scii(&buffer[lua_start], lua_end - lua_start);
+        if (lua_script)
+            *lua_script = (const char *) &buffer[lua_start];
+    } else if (lua_script) {
+        *lua_script = NULL;
+    }
 
     return 0;
 }
