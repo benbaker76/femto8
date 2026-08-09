@@ -29,8 +29,6 @@ int main(int argc, char *argv[])
         if (strcmp(argv[i], "--version") == 0) {
             printf("v%s\n", VERSION);
             return 0;
-        } else if (strcmp(argv[i], "--skip-compat-check") == 0) {
-            // Flag accepted but currently no compat check logic to skip
         } else if (strcmp(argv[i], "-x") == 0) {
             skip_main_loop = true;
         } else if (strcmp(argv[i], "--no-frame-delay") == 0) {
