@@ -851,6 +851,10 @@ int tline(lua_State *L)
     int offset_y = m_memory[MEMORY_TLINE_OFFSET_Y] * 8;
     int precision = m_tline_precision;
 
+    // Clamp precision to reasonable bounds to prevent integer overflow
+    if (precision < 0) precision = 0;
+    if (precision > 24) precision = 24;
+
     uint32_t mask_x_bits = ((uint32_t)m_memory[MEMORY_TLINE_MASK_X] << (precision + 3)) - 1;
     uint32_t mask_y_bits = ((uint32_t)m_memory[MEMORY_TLINE_MASK_Y] << (precision + 3)) - 1;
 
