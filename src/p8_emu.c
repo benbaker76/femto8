@@ -1065,9 +1065,12 @@ int p8_make_full_path(char *ret, int ret_size, const char *dir_path, const char 
 
     if (strcmp(file_name, "..") == 0) {
         // Go up one directory
-        if (dir_len + 1 > (size_t)ret_size)
+        if (dir_len + 1 > (size_t)ret_size) {
+            errno = ENAMETOOLONG;
             return -1;
-        strcpy(ret, dir_path);
+        }
+        memcpy(ret, dir_path, dir_len);
+        ret[dir_len] = '\0';
         char *slash = strrchr(ret, '/');
         if (!slash)
             slash = strrchr(ret, '\\');
