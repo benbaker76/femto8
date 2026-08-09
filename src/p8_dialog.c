@@ -59,26 +59,56 @@ static int get_control_height(const p8_dialog_control_t *control)
 /* Helper function to check if dialog is in quick mode */
 static bool is_quick_dialog_mode(const p8_dialog_t *dialog)
 {
-    int selectable_count = 0;
-    int listbox_or_inputbox_count = 0;
-    int buttonbar_count = 0;
+    /* Quick mode is enabled only if ALL selectable controls have O/X behavior
+     * that either accepts/cancels the dialog or is ignored (no state change).
+     *
+     * For quick mode to be safe:
+     * - Button 1/O must either accept or be ignored
+     * - Button 2/X must either cancel or be ignored
+     *
+     * BUTTONBAR is safe because it explicitly handles O/X for accept/cancel.
+     * LISTBOX is safe only if it's the last selectable control (O then accepts).
+     * INPUTBOX is safe because O/X (button presses) are ignored in input mode
+     *   (keyboard Z/X are typed as characters, not processed as buttons).
+     * Other controls have O/X behavior that conflicts with quick mode.
+     */
 
     for (int i = 0; i < dialog->control_count; i++) {
         if (dialog->controls[i].selectable) {
-            selectable_count++;
-            if (dialog->controls[i].type == DIALOG_LISTBOX ||
-                dialog->controls[i].type == DIALOG_INPUTBOX)
-                listbox_or_inputbox_count++;
-            if (dialog->controls[i].type == DIALOG_BUTTONBAR)
-                buttonbar_count++;
+            switch (dialog->controls[i].type) {
+                case DIALOG_BUTTONBAR:
+                    /* OK: O on sub-button 0 accepts, sub-button 1 cancels;
+                     * X is ignored in non-quick mode */
+                    break;
+                case DIALOG_LISTBOX: {
+                    /* OK only if this is the last selectable control
+                     * (O then accepts instead of navigating) */
+                    int last_selectable_idx = -1;
+                    for (int i = 0; i < dialog->control_count; i++) {
+                        if (dialog->controls[i].selectable) {
+                            last_selectable_idx = i;
+                        }
+                    }
+                    if (i != last_selectable_idx) {
+                        return false;
+                    }
+                    break;
+                }
+                case DIALOG_INPUTBOX:
+                    /* OK: O/X button presses are ignored in input mode
+                     * (keyboard Z/X are typed as characters, not processed as buttons) */
+                    break;
+                default:
+                    /* All other controls have O/X behavior that conflicts with quick mode:
+                     * - CHECKBOX: O toggles (not accept/ignore)
+                     * - BUTTON/MENUITEM: O triggers action (not accept/ignore)
+                     */
+                    return false;
+            }
         }
     }
 
-    if (selectable_count == buttonbar_count + listbox_or_inputbox_count &&
-        buttonbar_count == 1 && listbox_or_inputbox_count <= 1)
-        return true;
-
-    return false;
+    return true;
 }
 
 /* Initialize dialog structure */
@@ -330,8 +360,10 @@ static void draw_control(const p8_dialog_t *dialog, int control_idx, int x, int 
                 scroll_offset = (selected_idx + 1) * (GLYPH_HEIGHT + 1) - content_height;
 
             // Clamp scroll
-            if (scroll_offset > (control->data.listbox.item_count * (GLYPH_HEIGHT + 1)) - content_height)
-                scroll_offset = (control->data.listbox.item_count * (GLYPH_HEIGHT + 1)) - content_height;
+            int max_offset = (control->data.listbox.item_count * (GLYPH_HEIGHT + 1)) - content_height;
+            if (max_offset < 0) max_offset = 0;
+            if (scroll_offset > max_offset)
+                scroll_offset = max_offset;
             if (scroll_offset < 0)
                 scroll_offset = 0;
 
@@ -340,11 +372,11 @@ static void draw_control(const p8_dialog_t *dialog, int control_idx, int x, int 
 
             int text_offset = control->data.listbox.draw_border ? 3 : 1;
             int first_visible_line = scroll_offset / (GLYPH_HEIGHT + 1);
-            int last_visible_lne = (scroll_offset + list_height + GLYPH_HEIGHT - 2) / (GLYPH_HEIGHT + 1);
+            int last_visible_line = (scroll_offset + list_height + GLYPH_HEIGHT - 2) / (GLYPH_HEIGHT + 1);
 
             overlay_clip_set(x + item_offset_x, y + item_offset_y, width - item_offset_x * 2, list_height - item_offset_y * 2);
 
-            for (int i = first_visible_line; i < last_visible_lne && i < control->data.listbox.item_count; i++) {
+            for (int i = first_visible_line; i < last_visible_line && i < control->data.listbox.item_count; i++) {
                 int item_y = y + item_offset_y + 1 + i * (GLYPH_HEIGHT + 1) - scroll_offset;
                 bool is_selected = (i == selected_idx);
 
