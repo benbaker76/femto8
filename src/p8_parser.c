@@ -402,7 +402,7 @@ static void convert_utf8_to_p8scii(uint8_t *buffer, size_t len)
     *write_ptr = '\0';
 }
 
-void hex_to_bytes(uint8_t *memory, char *str, int str_len, int *write_length)
+void hex_to_bytes(uint8_t *memory, int mem_len, char *str, int str_len, int *write_length)
 {
     *write_length = 0;
 
@@ -415,7 +415,7 @@ void hex_to_bytes(uint8_t *memory, char *str, int str_len, int *write_length)
     int read_offset = 0;
     int write_offset = 0;
 
-    while (read_offset < str_len)
+    while (read_offset < str_len && write_offset < mem_len)
     {
         if (!isxdigit(str[read_offset]))
         {
@@ -511,7 +511,7 @@ void read_music(uint8_t *dest, uint8_t *src, int read_length, int *write_length)
 
 static int parse_p8_ram(const char *file_name, uint8_t *buffer, int size, uint8_t *memory, uint8_t *decompression_buffer, const char **lua_script, uint8_t *label_image)
 {
-    static uint8_t tmpbuf[180];
+    uint8_t tmpbuf[180];
     char *line;
     char *rest = (char *)buffer;
     int lua_start = 0, lua_end = 0;
@@ -579,7 +579,7 @@ static int parse_p8_ram(const char *file_name, uint8_t *buffer, int size, uint8_
         case P8TYPE_MAP:
         {
             uint8_t *write_mem = memory + m_p8_mem_offset[p8_type] + write_offset;
-            hex_to_bytes(write_mem, line, line_length-1, &write_length);
+            hex_to_bytes(write_mem, memory + MEMORY_SIZE - write_mem, line, line_length-1, &write_length);
 
             write_offset += write_length;
             break;
@@ -605,7 +605,7 @@ static int parse_p8_ram(const char *file_name, uint8_t *buffer, int size, uint8_
         {
             uint8_t *write_mem = memory + MEMORY_SFX + write_offset;
 
-            hex_to_bytes(tmpbuf, line, line_length-1, &read_length);
+            hex_to_bytes(tmpbuf, sizeof(tmpbuf),line, line_length-1, &read_length);
 
             if (read_length > 0)
                 read_sfx(write_mem, tmpbuf, read_length, &write_length);
@@ -617,7 +617,7 @@ static int parse_p8_ram(const char *file_name, uint8_t *buffer, int size, uint8_
         {
             uint8_t *write_mem = memory + MEMORY_MUSIC + write_offset;
 
-            hex_to_bytes(tmpbuf, line, line_length-1, &read_length);
+            hex_to_bytes(tmpbuf, sizeof(tmpbuf), line, line_length-1, &read_length);
 
             if (read_length > 0)
                 read_music(write_mem, tmpbuf, read_length, &write_length);
