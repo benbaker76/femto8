@@ -13,6 +13,16 @@ strtcpy(char *restrict dst, const char *restrict src, size_t dsize)
     bool    trunc;
     size_t  dlen, slen;
 
+    if (dst == NULL) {
+        errno = EINVAL;
+        return -1;
+    }
+
+    if (src == NULL) {
+        errno = EINVAL;
+        return -1;
+    }
+
     if (dsize == 0) {
         errno = ENOBUFS;
         return -1;
