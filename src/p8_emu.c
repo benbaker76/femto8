@@ -421,7 +421,12 @@ int p8_run(void)
 
 int p8_shutdown()
 {
+    if (!m_initialized)
+        return 0;
+
+#ifdef ENABLE_AUDIO
     audio_close();
+#endif
 
     lua_shutdown_api();
 
