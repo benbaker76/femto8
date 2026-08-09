@@ -30,14 +30,18 @@ int main(int argc, char *argv[])
             printf("v%s\n", VERSION);
             return 0;
         } else if (strcmp(argv[i], "--skip-compat-check") == 0) {
-            // Ignore for compatibility
+            // Flag accepted but currently no compat check logic to skip
         } else if (strcmp(argv[i], "-x") == 0) {
             skip_main_loop = true;
         } else if (strcmp(argv[i], "--no-frame-delay") == 0) {
             m_no_frame_delay = true;
         } else if (strcmp(argv[i], "--no-frame-skip") == 0) {
             m_no_frame_skip = true;
-        } else if (strcmp(argv[i], "-p") == 0 && i + 1 < argc) {
+        } else if (strcmp(argv[i], "-p") == 0) {
+            if (i + 1 >= argc) {
+                fprintf(stderr, "Error: -p flag requires an argument\n");
+                return EXIT_FAILURE;
+            }
             param_string = argv[++i];
         } else if (file_name[0] == '\0') {
             if (strtcpy(file_name, argv[i], PATH_MAX) < 0) {
