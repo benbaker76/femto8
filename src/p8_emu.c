@@ -381,8 +381,8 @@ int p8_run(void)
         cart_running = false;
         if (!restart)
             return 0;
+        restart = false;
     }
-    restart = false;
     assert(!lua_running && !cart_running);
 
     p8_reset_cart();
