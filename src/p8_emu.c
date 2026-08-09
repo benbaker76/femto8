@@ -257,6 +257,7 @@ int p8_init()
     memset(m_cart_memory, 0, CART_MEMORY_SIZE);
     memset(m_overlay_memory, (OVERLAY_TRANSPARENT_COLOR << 4) | OVERLAY_TRANSPARENT_COLOR, MEMORY_SCREEN_SIZE);
     m_lua_script[0] = '\0';
+    m_real_current_cart_file_name[0] = '\0';
     m_breadcrumb_cart_file_name[0] = '\0';
     m_breadcrumb[0] = '\0';
 
