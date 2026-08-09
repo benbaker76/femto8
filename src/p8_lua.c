@@ -1353,6 +1353,9 @@ int poke(lua_State *L)
     for (int i=2;i<=MAX(lua_gettop(L), 2);++i) {
         unsigned val = i <= lua_gettop(L) ? lua_tounsigned(L, i) : 0;
 
+        size_t offset = (size_t)(i - 2);
+        // Skip if offset would overflow memory
+        if (offset > MEMORY_SIZE - addr) break;
         m_memory[addr + i-2] = val;
     }
 
@@ -1372,9 +1375,11 @@ int poke2(lua_State *L)
 
     for (int i=2;i<=MAX(lua_gettop(L), 2);++i) {
         unsigned val = i <= lua_gettop(L) ? lua_tounsigned(L, i) : 0;
-
-        m_memory[addr + (i-2)*2] = val;
-        m_memory[addr + (i-2)*2 + 1] = val >> 8;
+        size_t offset = (size_t)(i - 2) * 2;
+        // Skip if offset would overflow memory
+        if (offset > MEMORY_SIZE - addr) break;
+        m_memory[addr + offset] = val;
+        m_memory[addr + offset + 1] = val >> 8;
     }
 
     if (addr >= MEMORY_CARTDATA && addr + 2 <= MEMORY_CARTDATA + MEMORY_CARTDATA_SIZE)
@@ -1393,11 +1398,13 @@ int poke4(lua_State *L)
 
     for (int i=2;i<=MAX(lua_gettop(L), 2);++i) {
         uint32_t val = i <= lua_gettop(L) ? lua_tonumber(L, i) : 0;
-
-        m_memory[addr + (i-2)*4] = val;
-        m_memory[addr + (i-2)*4 + 1] = val >> 8;
-        m_memory[addr + (i-2)*4 + 2] = val >> 16;
-        m_memory[addr + (i-2)*4 + 3] = val >> 24;
+        size_t offset = (size_t)(i - 2) * 4;
+        // Skip if offset would overflow memory
+        if (offset > MEMORY_SIZE - addr) break;
+        m_memory[addr + offset] = val;
+        m_memory[addr + offset + 1] = val >> 8;
+        m_memory[addr + offset + 2] = val >> 16;
+        m_memory[addr + offset + 3] = val >> 24;
     }
 
     if (addr >= MEMORY_CARTDATA && addr + 4 <= MEMORY_CARTDATA + MEMORY_CARTDATA_SIZE)
