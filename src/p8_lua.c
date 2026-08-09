@@ -674,12 +674,11 @@ int rrectfill(lua_State *L)
         camera_get(&cx, &cy);
         int clip_x0, clip_y0, clip_x1, clip_y1;
         clip_get(&clip_x0, &clip_y0, &clip_x1, &clip_y1);
-        for (int y = clip_y0; y < clip_y1; y++) {
-            for (int x = clip_x0; x < clip_x1; x++) {
-                int wx = x + cx;
-                int wy = y + cy;
-                if (!point_in_round_rect(wx, wy, left, top, right, bottom, r))
-                    pixel_set(wx, wy, col, fillp, DRAWTYPE_GRAPHIC);
+
+        for (int y = clip_y0+cx; y < clip_y1+cy; y++) {
+            for (int x = clip_x0+cx; x < clip_x1+cy; x++) {
+                if (!point_in_round_rect(x, y, left, top, right, bottom, r))
+                    pixel_set(x, y, col, fillp, DRAWTYPE_GRAPHIC);
             }
         }
         return 0;
