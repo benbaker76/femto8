@@ -2705,6 +2705,9 @@ int lua_init()
 
 void lua_get_error(const char **err_type, char *err, int err_size, const char **filename, int *lineno)
 {
+    assert(err_type != NULL);
+    assert(err != NULL);
+
     if (!L) {
         strtcpy(err, "no lua state", err_size);
         return;
