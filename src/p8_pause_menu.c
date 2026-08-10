@@ -76,6 +76,8 @@ static bool call_menuitem_callback(int lua_callback_ref, int button)
 {
     if (lua_callback_ref == LUA_NOREF || !L)
         return false;
+    if (!lua_checkstack(L, 3))
+        return false;
     lua_rawgeti(L, LUA_REGISTRYINDEX, lua_callback_ref);
     lua_pushinteger(L, button);
     bool stay_open = false;
