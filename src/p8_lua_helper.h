@@ -617,10 +617,19 @@ static inline void clip_set(int x, int y, int w, int h)
 {
     int x1 = x + w;
     int y1 = y + h;
+
+    // Clamp to valid screen bounds [0, P8_WIDTH] x [0, P8_HEIGHT]
+    if (x < 0) x = 0;
+    if (y < 0) y = 0;
+    if (x > P8_WIDTH) x = P8_WIDTH;
+    if (y > P8_HEIGHT) y = P8_HEIGHT;
     if (x1 < 0) x1 = 0;
     if (y1 < 0) y1 = 0;
-    m_memory[MEMORY_CLIPRECT] = x;
-    m_memory[MEMORY_CLIPRECT + 1] = y;
+    if (x1 > P8_WIDTH) x1 = P8_WIDTH;
+    if (y1 > P8_HEIGHT) y1 = P8_HEIGHT;
+
+    m_memory[MEMORY_CLIPRECT] = (uint8_t)x;
+    m_memory[MEMORY_CLIPRECT + 1] = (uint8_t)y;
     m_memory[MEMORY_CLIPRECT + 2] = (uint8_t)x1;
     m_memory[MEMORY_CLIPRECT + 3] = (uint8_t)y1;
 }
