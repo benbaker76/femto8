@@ -26,7 +26,7 @@ static inline int hexy(int c)
     else if (c >= 'A' && c <= 'Z')
         return c - 'A' + 10;
     else
-        return c;
+        return -1;
 }
 
 typedef struct {
@@ -260,28 +260,43 @@ static inline void draw_text(const char *str, unsigned str_len, int x, int y, in
                     str_len = 0;
                     break;
                 case 1: // "\*"
-                    if (i + 1 < str_len)
-                        repeat = hexy(str[++i]);
+                    if (i + 1 < str_len) {
+                        int r = hexy(str[++i]);
+                        if (r != -1)
+                            repeat = r;
+                    }
                     break;
                 case 2: // "\#"
-                    if (i + 1 < str_len)
-                    {
-                        bg = hexy(str[++i]);
-                        state.solid_bg = true;
+                    if (i + 1 < str_len) {
+                        int b = hexy(str[++i]);
+                        if (b != -1) {
+                            bg = b;
+                            state.solid_bg = true;
+                        }
                     }
                     break;
                 case 3: // "\-"
-                    if (i + 1 < str_len)
-                        x += hexy(str[++i]) - 16;
+                    if (i + 1 < str_len) {
+                        int offset = hexy(str[++i]);
+                        if (offset != -1)
+                            x += offset - 16;
+                    }
                     break;
                 case 4: // "\|"
-                    if (i + 1 < str_len)
-                        y += hexy(str[++i]) - 16;
+                    if (i + 1 < str_len) {
+                        int offset = hexy(str[++i]);
+                        if (offset != -1)
+                            y += offset - 16;
+                    }
                     break;
                 case 5: // "\+"
                     if (i + 2 < str_len) {
-                        x += hexy(str[++i]) - 16;
-                        y += hexy(str[++i]) - 16;
+                        int x_offset = hexy(str[++i]);
+                        int y_offset = hexy(str[++i]);
+                        if (x_offset != -1 && y_offset != -1) {
+                            x += x_offset - 16;
+                            y += y_offset - 16;
+                        }
                     }
                     break;
                 case 6: // "\^"
@@ -300,17 +315,21 @@ static inline void draw_text(const char *str, unsigned str_len, int x, int y, in
                         case 'c':
                             if (i + 1 < str_len) {
                                 int clear_col = hexy(str[++i]);
-                                clear_screen(clear_col);
-                                x = 0;
-                                y = 0;
-                                home_x = 0;
-                                home_y = 0;
-                                left_margin = 0;
+                                if (clear_col != -1) {
+                                    clear_screen(clear_col);
+                                    x = 0;
+                                    y = 0;
+                                    home_x = 0;
+                                    home_y = 0;
+                                    left_margin = 0;
+                                }
                             }
                             break;
                         case 'd': // "\^d"
                             if (i + 1 < str_len) {
-                                state.delay_frames = hexy(str[++i]);
+                                int df = hexy(str[++i]);
+                                if (df != -1)
+                                    state.delay_frames = df;
                             }
                             break;
                         case 'g':
@@ -323,29 +342,42 @@ static inline void draw_text(const char *str, unsigned str_len, int x, int y, in
                             break;
                         case 'j':
                             if (i + 2 < str_len) {
-                                x = hexy(str[++i]) * 4;
-                                y = hexy(str[++i]) * 4;
+                                int jx = hexy(str[++i]);
+                                int jy = hexy(str[++i]);
+                                if (jx != -1 && jy != -1) {
+                                    x = jx * 4;
+                                    y = jy * 4;
+                                }
                             }
                             break;
                         case 'r':
                             if (i + 1 < str_len) {
-                                wrap_boundary = hexy(str[++i]) * 4;
-                                wrap_enabled = true;
+                                int wb = hexy(str[++i]);
+                                if (wb != -1) {
+                                    wrap_boundary = wb * 4;
+                                    wrap_enabled = true;
+                                }
                             }
                             break;
                         case 's':
                             if (i + 1 < str_len) {
-                                tab_width = hexy(str[++i]);
+                                int tw = hexy(str[++i]);
+                                if (tw != -1)
+                                    tab_width = tw;
                             }
                             break;
                         case 'x':
                             if (i + 1 < str_len) {
-                                state.char_w = hexy(str[++i]);
+                                int cw = hexy(str[++i]);
+                                if (cw != -1)
+                                    state.char_w = cw;
                             }
                             break;
                         case 'y':
                             if (i + 1 < str_len) {
-                                state.char_h = hexy(str[++i]);
+                                int ch = hexy(str[++i]);
+                                if (ch != -1)
+                                    state.char_h = ch;
                             }
                             break;
                         case 'u':
@@ -421,78 +453,109 @@ static inline void draw_text(const char *str, unsigned str_len, int x, int y, in
                                 int draw_x = x + (respect_padding && state.border ? 1 : 0);
                                 int draw_y = y + (respect_padding && state.border ? 1 : 0);
 
-                                for (int row = 0; row < 8; row++) {
-                                    uint8_t byte = (hexy(str[i + row*2 + 1]) << 4) | hexy(str[i + row*2 + 2]);
-                                    for (int bit = 0; bit < 8; bit++) {
-                                        if (byte & (1 << bit)) {
-                                            pixel_set(draw_x + bit, draw_y + row, fg, 0, DRAWTYPE_DEFAULT);
-                                        } else if (state.solid_bg) {
-                                            pixel_set(draw_x + bit, draw_y + row, bg, 0, DRAWTYPE_DEFAULT);
-                                        }
+                                bool valid_hex = true;
+                                for (int row = 0; row < 8 && valid_hex; row++) {
+                                    int h1 = hexy(str[i + row*2 + 1]);
+                                    int h2 = hexy(str[i + row*2 + 2]);
+                                    if (h1 == -1 || h2 == -1) {
+                                        valid_hex = false;
                                     }
                                 }
-                                i += 16;
-                                x += 8;
-                                last_advance = 8;
+                                if (valid_hex) {
+                                    for (int row = 0; row < 8; row++) {
+                                        uint8_t byte = (hexy(str[i + row*2 + 1]) << 4) | hexy(str[i + row*2 + 2]);
+                                        for (int bit = 0; bit < 8; bit++) {
+                                            if (byte & (1 << bit)) {
+                                                pixel_set(draw_x + bit, draw_y + row, fg, 0, DRAWTYPE_DEFAULT);
+                                            } else if (state.solid_bg) {
+                                                pixel_set(draw_x + bit, draw_y + row, bg, 0, DRAWTYPE_DEFAULT);
+                                            }
+                                        }
+                                    }
+                                    i += 16;
+                                    x += 8;
+                                    last_advance = 8;
+                                }
                             }
                             break;
                         case '@':
                             // \^@addrnnnn[data] — poke nnnn bytes to address addr
                             // addr and nnnn are 4 hex chars each
                             if (i + 8 < str_len) {
-                                int addr  = (hexy(str[i+1]) << 12) | (hexy(str[i+2]) << 8) |
-                                            (hexy(str[i+3]) <<  4) |  hexy(str[i+4]);
-                                int count = (hexy(str[i+5]) << 12) | (hexy(str[i+6]) << 8) |
-                                            (hexy(str[i+7]) <<  4) |  hexy(str[i+8]);
-                                i += 8;
-                                for (int k = 0; k < count && i + 1 < str_len; k++) {
-                                    uint8_t byte = str[++i];
-                                    if ((unsigned)(addr + k) < MEMORY_SIZE)
-                                        m_memory[addr + k] = byte;
-                                }
+                                int addr_h1 = hexy(str[i+1]);
+                                int addr_h2 = hexy(str[i+2]);
+                                int addr_h3 = hexy(str[i+3]);
+                                int addr_h4 = hexy(str[i+4]);
+                                int count_h1 = hexy(str[i+5]);
+                                int count_h2 = hexy(str[i+6]);
+                                int count_h3 = hexy(str[i+7]);
+                                int count_h4 = hexy(str[i+8]);
+                                if (addr_h1 != -1 && addr_h2 != -1 && addr_h3 != -1 && addr_h4 != -1 &&
+                                    count_h1 != -1 && count_h2 != -1 && count_h3 != -1 && count_h4 != -1) {
+                                    int addr = (addr_h1 << 12) | (addr_h2 << 8) |
+                                               (addr_h3 <<  4) |  addr_h4;
+                                    int count = (count_h1 << 12) | (count_h2 << 8) |
+                                                (count_h3 <<  4) |  count_h4;
+                                    i += 8;
+                                    for (int k = 0; k < count && i + 1 < str_len; k++) {
+                                        uint8_t byte = str[++i];
+                                        if ((unsigned)(addr + k) < MEMORY_SIZE)
+                                            m_memory[addr + k] = byte;
+                                    }
 
-                                add_newline = (m_memory[MEMORY_MISCFLAGS] & 0x4) == 0;
-                                wrap_enabled = (m_memory[MEMORY_MISCFLAGS] & 0x80) != 0;
-                                memory_no_scroll = (m_memory[MEMORY_MISCFLAGS] & 0x40) != 0;
-                                do_scroll = !memory_no_scroll && !no_scroll;
+                                    add_newline = (m_memory[MEMORY_MISCFLAGS] & 0x4) == 0;
+                                    wrap_enabled = (m_memory[MEMORY_MISCFLAGS] & 0x80) != 0;
+                                    memory_no_scroll = (m_memory[MEMORY_MISCFLAGS] & 0x40) != 0;
+                                    do_scroll = !memory_no_scroll && !no_scroll;
+                                }
                             }
                             break;
                         case '!':
                             // \^!addr[data] — poke all remaining characters to address addr
                             // addr is 4 hex chars; remaining string bytes are data (not printed)
                             if (i + 4 < str_len) {
-                                int addr = (hexy(str[i+1]) << 12) | (hexy(str[i+2]) << 8) |
-                                           (hexy(str[i+3]) <<  4) |  hexy(str[i+4]);
-                                i += 4;
-                                int k = 0;
-                                while (i + 1 < str_len) {
-                                    uint8_t byte = str[++i];
-                                    if ((unsigned)(addr + k) < MEMORY_SIZE)
-                                        m_memory[addr + k] = byte;
-                                    k++;
+                                int addr_h1 = hexy(str[i+1]);
+                                int addr_h2 = hexy(str[i+2]);
+                                int addr_h3 = hexy(str[i+3]);
+                                int addr_h4 = hexy(str[i+4]);
+                                if (addr_h1 != -1 && addr_h2 != -1 && addr_h3 != -1 && addr_h4 != -1) {
+                                    int addr = (addr_h1 << 12) | (addr_h2 << 8) |
+                                               (addr_h3 <<  4) |  addr_h4;
+                                    i += 4;
+                                    int k = 0;
+                                    while (i + 1 < str_len) {
+                                        uint8_t byte = str[++i];
+                                        if ((unsigned)(addr + k) < MEMORY_SIZE)
+                                            m_memory[addr + k] = byte;
+                                        k++;
+                                    }
                                 }
                             }
                             break;
                         case 'o':
                             if (i + 3 < str_len) {
                                 uint8_t colour_char = str[++i];
-                                uint8_t mask_h = hexy(str[++i]);
-                                uint8_t mask_l = hexy(str[++i]);
+                                int mask_h = hexy(str[++i]);
+                                int mask_l = hexy(str[++i]);
 
-                                state.outline_mask = (mask_h << 4) | mask_l;
+                                if (mask_h != -1 && mask_l != -1) {
+                                    state.outline_mask = (mask_h << 4) | mask_l;
 
-                                if (colour_char == '$') {
-                                    state.outline_colour = fg;
-                                    state.outline_skip_interior = false;
-                                } else if (colour_char == '!') {
-                                    state.outline_colour = fg;
-                                    state.outline_skip_interior = true;
-                                } else {
-                                    state.outline_colour = hexy(colour_char);
-                                    state.outline_skip_interior = false;
+                                    if (colour_char == '$') {
+                                        state.outline_colour = fg;
+                                        state.outline_skip_interior = false;
+                                    } else if (colour_char == '!') {
+                                        state.outline_colour = fg;
+                                        state.outline_skip_interior = true;
+                                    } else {
+                                        int oc = hexy(colour_char);
+                                        if (oc != -1)
+                                            state.outline_colour = oc;
+                                        state.outline_skip_interior = false;
+                                    }
+
+                                    state.outline_enabled = (state.outline_mask != 0);
                                 }
-
-                                state.outline_enabled = (state.outline_mask != 0);
                             }
                             break;
                         default:
@@ -501,13 +564,19 @@ static inline void draw_text(const char *str, unsigned str_len, int x, int y, in
                     }
                     break;
                 case 7: // "\a"
-                    if (i + 1 < str_len && hexy(str[i + 1]) != -1) {
-                        if (i + 2 < str_len && hexy(str[i + 2]) != -1) {
-                            int sfx_index = (hexy(str[i + 1]) << 4) | hexy(str[i + 2]);
+                    if (i + 1 < str_len) {
+                        int h1 = hexy(str[i + 1]);
+                        if (h1 != -1) {
+                            if (i + 2 < str_len) {
+                                int h2 = hexy(str[i + 2]);
+                                if (h2 != -1) {
+                                    int sfx_index = (h1 << 4) | h2;
 #ifdef ENABLE_AUDIO
-                            audio_sound(sfx_index, -1, 0, 32);
+                                    audio_sound(sfx_index, -1, 0, 32);
 #endif
-                            i += 2;
+                                    i += 2;
+                                }
+                            }
                         }
                     } else {
                         // TODO: note data support
@@ -528,33 +597,37 @@ static inline void draw_text(const char *str, unsigned str_len, int x, int y, in
                 case 0xb: // "\v"
                     if (i + 2 < str_len) {
                         int offset_code = hexy(str[++i]);
-                        uint8_t decoration_char = str[++i];
+                        if (offset_code != -1) {
+                            uint8_t decoration_char = str[++i];
 
-                        int offset_x = (offset_code % 4) - 2;
-                        int offset_y = (offset_code / 4) - 8;
+                            int offset_x = (offset_code % 4) - 2;
+                            int offset_y = (offset_code / 4) - 8;
 
-                        int save_x = x;
-                        int save_y = y;
+                            int save_x = x;
+                            int save_y = y;
 
-                        int dec_x = save_x - last_advance + offset_x;
-                        int dec_y = save_y + offset_y;
+                            int dec_x = save_x - last_advance + offset_x;
+                            int dec_y = save_y + offset_y;
 
-                        uint8_t symbol_length = 0;
-                        int dec_index = get_p8_symbol((const char*)&decoration_char, 1, &symbol_length);
-                        if (dec_index == -1) {
-                            dec_index = decoration_char;
-                        }
+                            uint8_t symbol_length = 0;
+                            int dec_index = get_p8_symbol((const char*)&decoration_char, 1, &symbol_length);
+                            if (dec_index == -1) {
+                                dec_index = decoration_char;
+                            }
 
-                        if (dec_index >= 0x20 && dec_index < 0x7F) {
-                            draw_char(dec_index, dec_x, dec_y, fg);
+                            if (dec_index >= 0x20 && dec_index < 0x7F) {
+                                draw_char(dec_index, dec_x, dec_y, fg);
+                            }
                         }
                     }
                     break;
                 case 0xc: // "\f"
                     if (i + 1 < str_len) {
-                        fg = hexy(str[++i]);
-                        if (fg > 15) fg = 16;
-                        m_memory[MEMORY_PENCOLOR] = fg;
+                        int fc = hexy(str[++i]);
+                        if (fc != -1 && fc <= 15) {
+                            fg = fc;
+                            m_memory[MEMORY_PENCOLOR] = fg;
+                        }
                     }
                     break;
                 case 0xd: // "\r"
