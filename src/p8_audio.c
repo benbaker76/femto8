@@ -440,7 +440,10 @@ void update_sound_queue()
 
 float get_frequency(int pitch)
 {
-    return m_tone_frequencies[pitch % 12] / 2 * (1 << (pitch / 12));
+    int tone_index = pitch % 12;
+    if (tone_index < 0)
+        tone_index += 12;
+    return m_tone_frequencies[tone_index] / 2 * (1 << (pitch / 12));
 }
 
 void render_sound(int waveform, int pitch, int volume, int position, int offset, int length, int16_t *buffer)
