@@ -361,7 +361,7 @@ void update_sound_queue()
 
             if (sound->index == -1)
             {
-                if (sound->channel >= 0 && sound->channel <= CHANNEL_COUNT)
+                if (sound->channel >= 0 && sound->channel < CHANNEL_COUNT)
                     m_channels[sound->channel].sound_mode = SOUNDMODE_NONE;
                 continue;
             }
