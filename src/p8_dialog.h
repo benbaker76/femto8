@@ -49,6 +49,7 @@ typedef struct {
             char *buffer;        // Text buffer (INPUTBOX)
             int buffer_size;     // Maximum buffer size
             int cursor_pos;      // Current cursor position
+            char *clipboard;     // Clipboard text for paste operations
         } inputbox;
 
         struct {

@@ -196,6 +196,12 @@ void p8_dialog_init(p8_dialog_t *dialog,
         }
     }
 
+    // Set initial input box cursor position
+    for (int i = 0; i < count; i++) {
+        if (controls[i].type == DIALOG_INPUTBOX && controls[i].data.inputbox.buffer)
+            controls[i].data.inputbox.cursor_pos = strlen(controls[i].data.inputbox.buffer);
+    }
+
     dialog->focused_subcontrol = 0;
     dialog->cursor_blink = 0;
 }
@@ -267,12 +273,16 @@ static void draw_control(const p8_dialog_t *dialog, int control_idx, int x, int 
 
             // Draw text
             if (control->data.inputbox.buffer) {
+                int cursor_pos = control->data.inputbox.cursor_pos;
+
+                // Draw text with block cursor at cursor position
+                int text_width = overlay_get_text_width_len(control->data.inputbox.buffer, cursor_pos);
                 overlay_draw_simple_text(control->data.inputbox.buffer, x + 3, y + 3, DIALOG_TEXT_NORMAL);
 
-                // Draw cursor if in input mode
+                // Draw block cursor at cursor_pos (same as code editor)
                 if (focused && (dialog->cursor_blink & 8)) {
-                    int cursor_x = x + 3 + overlay_get_text_width(control->data.inputbox.buffer);
-                    overlay_draw_vline(cursor_x, y + 3, y + GLYPH_HEIGHT + 1, DIALOG_TEXT_NORMAL);
+                    int cursor_x = x + 3 + text_width;
+                    overlay_draw_rectfill(cursor_x, y + 3, cursor_x + GLYPH_WIDTH - 1, y + GLYPH_HEIGHT + 1, DIALOG_BG_HIGHLIGHT);
                 }
             }
             break;
@@ -557,34 +567,115 @@ p8_dialog_action_t p8_dialog_update(p8_dialog_t *dialog)
         if (dialog->controls[dialog->focused_control].type == DIALOG_INPUTBOX) {
             p8_dialog_control_t *control = &dialog->controls[dialog->focused_control];
 
+            unsigned scancode;
             uint8_t keypress;
-            while (p8_get_next_keypress(NULL, &keypress, NULL)) {
+            unsigned keymod;
+
+            while (p8_get_next_keypress(&scancode, &keypress, &keymod)) {
+                // Handle printable characters (without Ctrl modifier)
+                if ((keypress >= 32 && keypress <= 126) && !(keymod & KMOD_CTRL)) {
+                    int text_len = strlen(control->data.inputbox.buffer);
+                    int cursor_pos = control->data.inputbox.cursor_pos;
+                    if (text_len < control->data.inputbox.buffer_size - 1) {
+                        // Shift characters after cursor to make room
+                        if (cursor_pos < text_len) {
+                            memmove(control->data.inputbox.buffer + cursor_pos + 1,
+                                    control->data.inputbox.buffer + cursor_pos,
+                                    text_len - cursor_pos + 1);
+                        }
+                        control->data.inputbox.buffer[cursor_pos] = keypress;
+                        control->data.inputbox.cursor_pos++;
+                    }
+                    return result;
+                }
+                // Handle Ctrl+V - paste clipboard
+                else if (keypress == 'v' && (keymod & KMOD_CTRL)) {
+                    if (control->data.inputbox.clipboard && *control->data.inputbox.clipboard) {
+                        int text_len = strlen(control->data.inputbox.buffer);
+                        int clipboard_len = strlen(control->data.inputbox.clipboard);
+                        int cursor_pos = control->data.inputbox.cursor_pos;
+                        int new_len = text_len + clipboard_len;
+                        if (new_len < control->data.inputbox.buffer_size - 1) {
+                            // Shift characters after cursor to make room
+                            if (cursor_pos < text_len) {
+                                memmove(control->data.inputbox.buffer + cursor_pos + clipboard_len,
+                                        control->data.inputbox.buffer + cursor_pos,
+                                        text_len - cursor_pos + 1);
+                            }
+                            // Insert clipboard text at cursor position
+                            memcpy(control->data.inputbox.buffer + cursor_pos,
+                                    control->data.inputbox.clipboard,
+                                    clipboard_len);
+                            control->data.inputbox.buffer[new_len] = '\0';
+                            control->data.inputbox.cursor_pos += clipboard_len;
+                        }
+                        // Clear clipboard after paste
+                        control->data.inputbox.clipboard = NULL;
+                    }
+                    return result;
+                }
+                // Handle Home
+                else if (scancode == 74) {  // SCANCODE_HOME
+                    control->data.inputbox.cursor_pos = 0;
+                    return result;
+                }
+                // Handle End
+                else if (scancode == 77) {  // SCANCODE_END
+                    control->data.inputbox.cursor_pos = strlen(control->data.inputbox.buffer);
+                    return result;
+                }
                 // Handle Return
-                if (keypress == 13) {
+                else if (keypress == 13) {
                     if (!move_to_next_control(dialog, quick_mode)) {
                         // No more controls, accept the dialog
                         result.type = DIALOG_RESULT_ACCEPTED;
                     }
-
                     return result;
                 }
-                // Handle printable characters
-                else if (keypress >= 32 && keypress <= 126) {
-                    int len = strlen(control->data.inputbox.buffer);
-                    if (len < control->data.inputbox.buffer_size - 1) {
-                        control->data.inputbox.buffer[len] = keypress;
-                        control->data.inputbox.buffer[len + 1] = '\0';
-                    }
-                    return result;
-                }
-                // Handle backspace
+                // Handle backspace - delete backward
                 else if (keypress == 8) {
-                    int len = strlen(control->data.inputbox.buffer);
-                    if (len > 0) {
-                        control->data.inputbox.buffer[len - 1] = '\0';
+                    int cursor_pos = control->data.inputbox.cursor_pos;
+                    if (cursor_pos > 0) {
+                        int text_len = strlen(control->data.inputbox.buffer);
+                        // Shift characters after cursor backward
+                        if (cursor_pos < text_len) {
+                            memmove(control->data.inputbox.buffer + cursor_pos - 1,
+                                    control->data.inputbox.buffer + cursor_pos,
+                                    text_len - cursor_pos + 1);
+                        }
+                        control->data.inputbox.buffer[text_len - 1] = '\0';
+                        control->data.inputbox.cursor_pos--;
                     }
                     return result;
                 }
+                // Handle Delete (Del) - delete forward
+                else if (scancode == 76) {  // SCANCODE_DEL
+                    int cursor_pos = control->data.inputbox.cursor_pos;
+                    int text_len = strlen(control->data.inputbox.buffer);
+                    if (cursor_pos < text_len) {
+                        // Shift characters after cursor backward
+                        memmove(control->data.inputbox.buffer + cursor_pos,
+                                control->data.inputbox.buffer + cursor_pos + 1,
+                                text_len - cursor_pos);
+                        control->data.inputbox.buffer[text_len - 1] = '\0';
+                    }
+                    return result;
+                }
+            }
+
+            // Handle button presses in input mode (cursor navigation with arrows)
+            if (buttons & BUTTON_MASK_LEFT) {
+                if (control->data.inputbox.cursor_pos > 0) {
+                    control->data.inputbox.cursor_pos--;
+                }
+                return result;
+            }
+            if (buttons & BUTTON_MASK_RIGHT) {
+                int text_len = strlen(control->data.inputbox.buffer);
+                if (control->data.inputbox.cursor_pos < text_len) {
+                    control->data.inputbox.cursor_pos++;
+                }
+                return result;
             }
         } else {
             // Action buttons
