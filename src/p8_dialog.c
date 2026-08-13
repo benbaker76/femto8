@@ -316,7 +316,7 @@ static void draw_control(const p8_dialog_t *dialog, int control_idx, int x, int 
                     break;
             }
 
-            if (!quick_mode && focused) {
+            if (focused) {
                 // Highlight the focused button
                 if (dialog->focused_subcontrol == 0 && left_text) {
                     int text_width = overlay_get_text_width(left_text);
@@ -331,14 +331,14 @@ static void draw_control(const p8_dialog_t *dialog, int control_idx, int x, int 
 
             int text_x = x + 1;
             if (left_text) {
-                int text_color = (!quick_mode && focused && dialog->focused_subcontrol == 0) ?
+                int text_color = (focused && dialog->focused_subcontrol == 0) ?
                                 DIALOG_TEXT_HIGHLIGHT : DIALOG_TEXT_NORMAL;
                 overlay_draw_simple_text(left_text, text_x, y + 2, text_color);
                 text_x += overlay_get_text_width(left_text) + 4;
             }
 
             if (right_text) {
-                int text_color = (!quick_mode && focused && dialog->focused_subcontrol == 1) ?
+                int text_color = (focused && dialog->focused_subcontrol == 1) ?
                                 DIALOG_TEXT_HIGHLIGHT : DIALOG_TEXT_NORMAL;
                 overlay_draw_simple_text(right_text, text_x, y + 2, text_color);
             }
@@ -703,19 +703,22 @@ p8_dialog_action_t p8_dialog_update(p8_dialog_t *dialog)
                         }
                         break;
 
-                    case DIALOG_BUTTONBAR:
-                        if (!quick_mode) {
-                            // Activate the focused button
-                            p8_dialog_control_t *buttonbar = &dialog->controls[dialog->focused_control];
-                            if (buttonbar->data.buttonbar.type == BUTTONBAR_CANCEL_ONLY) {
-                                result.type = DIALOG_RESULT_CANCELLED;
-                            } else if (dialog->focused_subcontrol == 0) {
-                                result.type = DIALOG_RESULT_ACCEPTED;
-                            } else {
-                                result.type = DIALOG_RESULT_CANCELLED;
-                            }
+                    case DIALOG_BUTTONBAR: {
+                        // Activate the focused button
+                        p8_dialog_control_t *buttonbar = &dialog->controls[dialog->focused_control];
+                        if (buttonbar->data.buttonbar.type == BUTTONBAR_CANCEL_ONLY) {
+                            result.type = DIALOG_RESULT_CANCELLED;
+                        } else if (dialog->focused_subcontrol == 0) {
+                            result.type = DIALOG_RESULT_ACCEPTED;
+                        } else {
+                            result.type = DIALOG_RESULT_CANCELLED;
+                        }
+                        // Return early if we've processed a button press
+                        if (buttons & (BUTTON_MASK_ACTION1 | BUTTON_MASK_ACTION2 | BUTTON_MASK_RETURN)) {
+                            return result;
                         }
                         break;
+                    }
 
                     default:
                         break;
@@ -724,8 +727,10 @@ p8_dialog_action_t p8_dialog_update(p8_dialog_t *dialog)
         }
     }
 
-    // Handle Return / (Button 1 / Space in quick mode) (before checking focused control)
-    if ((quick_mode && (buttons & (BUTTON_MASK_RETURN | BUTTON_MASK_ACTION1 | BUTTON_MASK_SPACE)))) {
+    // Handle Return / (Button 1 / Space in quick mode)
+    if ((quick_mode && (buttons & (BUTTON_MASK_RETURN | BUTTON_MASK_ACTION1 | BUTTON_MASK_SPACE))) &&
+               !(dialog->focused_control >= 0 &&
+                 dialog->controls[dialog->focused_control].type == DIALOG_BUTTONBAR)) {
         result.type = DIALOG_RESULT_ACCEPTED;
         return result;
     }
@@ -750,7 +755,7 @@ p8_dialog_action_t p8_dialog_update(p8_dialog_t *dialog)
             }
 
             // Move to previous selectable control
-            move_to_prev_control(dialog, quick_mode);
+            move_to_prev_control(dialog, false);
         }
     }
 
@@ -767,7 +772,7 @@ p8_dialog_action_t p8_dialog_update(p8_dialog_t *dialog)
             }
 
             // Move to next selectable control
-            move_to_next_control(dialog, quick_mode);
+            move_to_next_control(dialog, false);
         }
     }
 
@@ -833,10 +838,10 @@ p8_dialog_action_t p8_dialog_update(p8_dialog_t *dialog)
 
     // LEFT/RIGHT navigate to previous/next control
     if (buttons & BUTTON_MASK_LEFT) {
-        move_to_prev_control(dialog, quick_mode);
+        move_to_prev_control(dialog, false);
     }
     if (buttons & BUTTON_MASK_RIGHT) {
-        move_to_next_control(dialog, quick_mode);
+        move_to_next_control(dialog, false);
     }
 
     return result;
