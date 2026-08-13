@@ -1703,9 +1703,6 @@ int run(lua_State *L)
 // load(filename [,breadcrumb] [,param])
 int _load(lua_State *L)
 {
-    if (access(".", F_OK) == -1 && errno != EACCES)
-        luaL_error(L, "load() requires a filesystem");
-
     int nargs = lua_gettop(L);
 
     if (nargs < 1)
