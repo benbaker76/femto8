@@ -1062,43 +1062,61 @@ bool p8_is_quit_requested(void)
 
 int p8_make_full_path(char *ret, int ret_size, const char *dir_path, const char *file_name)
 {
-    if (!ret || !dir_path || !file_name || ret_size < 2) {
+    if (!ret || !dir_path || !file_name || ret_size < 3) {
         errno = EINVAL;
         return -1;
     }
 
-    size_t dir_len = strlen(dir_path);
-
     if (strcmp(file_name, "..") == 0) {
-        // Go up one directory
-        if (dir_len + 1 > (size_t)ret_size) {
-            errno = ENAMETOOLONG;
-            return -1;
-        }
-        memcpy(ret, dir_path, dir_len);
-        ret[dir_len] = '\0';
-        char *slash = strrchr(ret, '/');
-        if (!slash)
-            slash = strrchr(ret, '\\');
-        if (slash) {
-            if (slash[1] == '\0' && ret[1] == ':' && slash==ret+2) {
+        if (strcmp(dir_path, ".") == 0) {
+            ret[0] = '.';
+            ret[1] = '.';
+            ret[2] = '\0';
+        } else {
+            char *slash = strrchr(dir_path, '/');
+            if (!slash)
+                slash = strrchr(dir_path, '\\');
+            if ((slash && strcmp(slash, "..") == 0) ||
+                (!slash && strcmp(dir_path, "..") == 0)) {
+                int written = snprintf(ret, ret_size, "%s/%s", dir_path, file_name);
+                if (written < 0 || (size_t)written >= (size_t)ret_size)
+                    return -1;
+            } else if (slash && slash[1] == '\0' && dir_path[1] == ':' && slash==dir_path+2) {
                 // If going up a directory from the root of a drive,
                 // go up to the list of drives rather than the current
                 // directory of the drive.
                 // i.e. "C:\" -> "" rather than "C:\" -> "C:"
                 ret[0] = '\0';
-            } else if (ret[1] == ':' && slash==ret+2) {
+            } else if (slash && dir_path[1] == ':' && slash==dir_path+2) {
                 // If going up to the root of the drive don't erase
                 // the trailing slash.
-                slash[1] = '\0';
+                if (slash - dir_path + 2 > (size_t)ret_size) {
+                    errno = ENAMETOOLONG;
+                    return -1;
+                }
+                memcpy(ret, dir_path, slash + 1 - dir_path);
+                ret[slash + 1 - dir_path] = '\0';
+            } else if (slash && slash==dir_path) {
+                ret[0] = '/';
+                ret[1] = '\0';
+            } else if (slash) {
+                // Go up one directory
+                if (slash - dir_path + 1 > (size_t)ret_size) {
+                    errno = ENAMETOOLONG;
+                    return -1;
+                }
+                memcpy(ret, dir_path, slash - dir_path);
+                ret[slash - dir_path] = '\0';
+            } else if (dir_path[0] == '\0') {
+                ret[0] = '\0';
             } else {
-                slash[0] = '\0';
+                ret[0] = '.';
+                ret[1] = '\0';
             }
-        } else {
-            // No slash found - now we are in the current directory
-            ret[0] = '.';
-            ret[1] = '\0';
         }
+    } else if (dir_path[0] == '\0' || strcmp(dir_path, ".") == 0) {
+        if (strtcpy(ret, file_name, ret_size) == -1)
+            return -1;
     } else {
         // Build full path with dir/file
         int written = snprintf(ret, ret_size, "%s/%s", dir_path, file_name);
