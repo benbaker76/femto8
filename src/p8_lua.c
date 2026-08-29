@@ -1025,8 +1025,8 @@ int music(lua_State *L)
 #ifdef ENABLE_AUDIO
     int prev = audio_stat(54);  // stat(54) = current music pattern, -1 if none
 
-    int n = lua_tointeger(L, 1);
-    int fadems = lua_to_or_default(L, integer, 2, 1);
+    int n = lua_tointeger(L, 0);
+    int fadems = lua_to_or_default(L, integer, 2, 0);
     int channelmask = lua_to_or_default(L, integer, 3, 0);
 
     audio_music(n, fadems, channelmask);
