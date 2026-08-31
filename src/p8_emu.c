@@ -1224,6 +1224,7 @@ void p8_show_error_dialog(const char **lines, int line_count, p8_error_severity_
 
     /* Add label controls for each line */
     for (int i = 0; i < line_count; i++) {
+        fprintf(stderr, "^%s\n", lines[i]);
         controls[i] = (p8_dialog_control_t)DIALOG_LABEL(lines[i]);
     }
 
