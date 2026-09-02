@@ -870,13 +870,15 @@ void p8_flip()
 
 void p8_check_for_next_frame()
 {
-    if (in_main_loop)
-        return;
     unsigned elapsed_time = p8_elapsed_time();
     const unsigned target_frame_time = 1000 / m_fps;
     int remaining_time = target_frame_time - elapsed_time;
-    if (remaining_time < 0)
-        p8_flip();
+    if (remaining_time < 0) {
+        if (in_main_loop)
+            p8_check_for_pause();
+        else
+            p8_flip();
+    }
 }
 
 static int p8_main_loop()

@@ -2509,7 +2509,6 @@ static void lua_event_pump_hook(lua_State *L, lua_Debug *ar)
     (void)L;
     (void)ar;
     p8_pump_events();
-    p8_check_for_pause();
     p8_check_for_next_frame();
 }
 

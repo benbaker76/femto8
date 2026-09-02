@@ -107,6 +107,8 @@ void p8_show_pause_menu(void)
     if (should_pause_audio)
         audio_pause();
 
+    p8_update_input();
+
     // Build dynamic controls array:
     // "continue" + up to 5 custom items + "restart" + "show version" + "controls" + "quit"
     p8_dialog_control_t pause_controls[5 + MAX_CUSTOM_MENUITEMS];
