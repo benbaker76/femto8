@@ -43,7 +43,7 @@ stat: "do" block "end"                                                          
     | suffixedexp COMPOUND_OP exp                                                  -> compound_assign
     | suffixedexp                                                                  -> expr_stat
 
-COMPOUND_OP: "+=" | "-=" | "*=" | "/=" | "%=" | "^=" | "..=" | "\\="
+COMPOUND_OP: "+=" | "-=" | "*=" | "/=" | "%=" | "^=" | "..=" | "\\=" | "|=" | "&=" | "<<=" | ">>=" | "^^="
 
 laststat: "return" explist?  -> return_stat
         | "break"            -> break_stat
@@ -103,7 +103,7 @@ field: "[" exp "]" "=" exp      -> field_index
 
 fieldsep: "," | ";"
 
-BINOP: "<=" | ">=" | "==" | "~=" | "!=" | "<<" | ">>" | "^^" | ".."
+BINOP: "<=" | ">=" | "==" | "~=" | "!=" | "<<" | ">>" | ">>>" | "<<>" | ">><" | "^^" | ".."
      | "+" | "-" | "*" | "/" | "^" | "%" | "<" | ">" | "&" | "|" | "\\"
      | "and" | "or"
 binop: BINOP
