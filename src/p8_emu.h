@@ -202,9 +202,9 @@
 
 #define OVERLAY_TRANSPARENT_COLOR 0
 
-#define FILE_BUFFER_SIZE          (128 * 1024)
-#define DECOMPRESSION_BUFFER_SIZE (128 * 1024)
-#define LUA_SCRIPT_SIZE           (128 * 1024)
+#define FILE_BUFFER_SIZE          (96 * 1024)
+#define DECOMPRESSION_BUFFER_SIZE (96 * 1024)
+#define LUA_SCRIPT_SIZE           (96 * 1024)
 
 enum
 {
