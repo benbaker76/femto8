@@ -1025,7 +1025,7 @@ int music(lua_State *L)
 #ifdef ENABLE_AUDIO
     int prev = audio_stat(54);  // stat(54) = current music pattern, -1 if none
 
-    int n = lua_tointeger(L, 0);
+    int n = lua_to_or_default(L, integer, 1, 0);
     int fadems = lua_to_or_default(L, integer, 2, 0);
     int channelmask = lua_to_or_default(L, integer, 3, 0);
 
@@ -1043,7 +1043,7 @@ int music(lua_State *L)
 int sfx(lua_State *L)
 {
 #ifdef ENABLE_AUDIO
-    int n = lua_tointeger(L, 1);
+    int n = lua_to_or_default(L, integer, 1, 0);
     int channel = lua_to_or_default(L, integer, 2, -1);
     int offset = lua_to_or_default(L, integer, 3, 0);
     int length = lua_to_or_default(L, integer, 4, 32 - offset);
