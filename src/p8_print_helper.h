@@ -624,7 +624,7 @@ static inline void draw_text(const char *str, unsigned str_len, int x, int y, in
                 case 0xc: // "\f"
                     if (i + 1 < str_len) {
                         int fc = hexy(str[++i]);
-                        if (fc != -1 && fc <= 15) {
+                        if (fc != -1) {
                             fg = fc;
                             m_memory[MEMORY_PENCOLOR] = fg;
                         }
