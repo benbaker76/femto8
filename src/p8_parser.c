@@ -535,6 +535,7 @@ static int parse_p8_ram(const char *file_name, uint8_t *buffer, int size, uint8_
     int write_offset = 0;
     int read_length = 0;
     int write_length = 0;
+    int music_length = 0;
     bool in_header = true;
     bool seen_ident = false;
 
@@ -624,6 +625,8 @@ static int parse_p8_ram(const char *file_name, uint8_t *buffer, int size, uint8_
 
             if (read_length > 0)
                 read_sfx(write_mem, memory + MEMORY_SIZE - write_mem, tmpbuf, read_length, &write_length);
+            else
+                write_length = 0;
 
             write_offset += write_length;
             break;
@@ -636,8 +639,11 @@ static int parse_p8_ram(const char *file_name, uint8_t *buffer, int size, uint8_
 
             if (read_length > 0)
                 read_music(write_mem, memory + MEMORY_SIZE - write_mem, tmpbuf, read_length, &write_length);
+            else
+                write_length = 0;
 
             write_offset += write_length;
+            music_length += write_length;
             break;
         }
         }
@@ -653,6 +659,17 @@ static int parse_p8_ram(const char *file_name, uint8_t *buffer, int size, uint8_
 
     for (int i = MEMORY_SPRITES_MAP; i < MEMORY_SPRITES_MAP + MEMORY_SPRITES_MAP_SIZE; i++)
         memory[i] = NIBBLE_SWAP(memory[i]);
+
+    /* Fill missing music patterns with 0x41 0x42 0x43 0x44 */
+    if (music_length < MEMORY_MUSIC_SIZE) {
+        uint8_t *write_mem = memory + MEMORY_MUSIC + music_length;
+        while (write_mem < memory + MEMORY_MUSIC + MEMORY_MUSIC_SIZE) {
+            *write_mem++ = 0x41;
+            *write_mem++ = 0x42;
+            *write_mem++ = 0x43;
+            *write_mem++ = 0x44;
+        }
+    }
 
     // Bounds check for lua_start and lua_end
     if (lua_start > 0 && lua_start < size && lua_end >= lua_start && lua_end <= size) {
