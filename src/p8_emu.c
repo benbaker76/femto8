@@ -379,8 +379,10 @@ int p8_run(void)
 
     if (setjmp(jmpbuf_restart)) {
         cart_running = false;
-        if (!restart)
+        if (!restart) {
+            p8_reset_cart();
             return 0;
+        }
         restart = false;
     }
     assert(!lua_running && !cart_running);
@@ -1006,6 +1008,9 @@ void p8_reset(void)
 static void p8_common_reset_cart()
 {
     p8_close_cartdata();
+#ifdef ENABLE_AUDIO
+    audio_stop();
+#endif
     if (!lua_running) {
         lua_shutdown_api();
         lua_load_api();
