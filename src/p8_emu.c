@@ -1222,22 +1222,101 @@ void p8_show_io_icon(bool show)
     p8_flip();
 }
 
+/* Wraps text into multiple lines, breaking at spaces when possible.
+ * Returns the number of lines (1 to max_lines).
+ * Each output line is null-terminated.
+ * output_lines is assumed to be: char output_lines[max_lines][max_chars_per_line+1]
+ */
+int wrap_text(const char *text, int max_lines, int max_chars_per_line, char *output_lines)
+{
+    int text_len = (int)strlen(text);
+    int output_line_count = 0;
+    int text_pos = 0;
+
+    /* Handle empty string case */
+    if (text_len == 0) {
+        output_lines[0] = '\0';
+        return 1;
+    }
+
+    while (text_pos < text_len && output_line_count < max_lines) {
+        char *line = output_lines + (output_line_count * (max_chars_per_line + 1));
+        int line_len = 0;
+        int space_pos = -1;
+
+        /* Find where to break: look for space within max_chars_per_line */
+        while (text_pos + line_len < text_len && line_len < max_chars_per_line) {
+            if (text[text_pos + line_len] == ' ') {
+                space_pos = line_len;
+            }
+            line_len++;
+        }
+
+        /* If text needs more lines than max_lines, truncate */
+        if (output_line_count >= max_lines - 1 && text_pos + line_len < text_len) {
+            /* Copy remaining text truncated to max_chars_per_line */
+            int copy_len = max_chars_per_line;
+            if (copy_len > text_len - text_pos)
+                copy_len = text_len - text_pos;
+            memcpy(line, text + text_pos, copy_len);
+            line[copy_len] = '\0';
+            output_line_count++;
+            break;
+        }
+
+        /* If we reached end of text */
+        if (text_pos + line_len >= text_len) {
+            int copy_len = text_len - text_pos;
+            memcpy(line, text + text_pos, copy_len);
+            line[copy_len] = '\0';
+            output_line_count++;
+            break;
+        }
+
+        /* We hit max_chars_per_line boundary */
+        if (space_pos >= 0) {
+            /* Break at last space */
+            memcpy(line, text + text_pos, space_pos);
+            line[space_pos] = '\0';
+            /* Skip the space */
+            text_pos += space_pos + 1;
+        } else {
+            /* Force break after max_chars_per_line */
+            memcpy(line, text + text_pos, max_chars_per_line);
+            line[max_chars_per_line] = '\0';
+            text_pos += max_chars_per_line;
+        }
+
+        output_line_count++;
+    }
+
+    return output_line_count;
+}
+
 void p8_show_error_dialog(const char **lines, int line_count, p8_error_severity_t severity)
 {
     assert(line_count <= 4);
 
-    int control_count = line_count + 2;
-    p8_dialog_control_t controls[6];
+    char wrapped_lines[16][29];
+    p8_dialog_control_t controls[18];
+    int control_count = 0;
 
-    /* Add label controls for each line */
+    /* Add label controls for each line, wrapping if necessary */
     for (int i = 0; i < line_count; i++) {
-        fprintf(stderr, "^%s\n", lines[i]);
-        controls[i] = (p8_dialog_control_t)DIALOG_LABEL(lines[i]);
+        if (!lines[i][0])
+            continue;
+        fprintf(stderr, "%s\n", lines[i]);
+
+        int num_wrapped = wrap_text(lines[i], 16 - control_count, 28, &wrapped_lines[control_count][0]);
+        for (int j = 0; j < num_wrapped; j++) {
+            controls[control_count] = (p8_dialog_control_t)DIALOG_LABEL(wrapped_lines[control_count]);
+            control_count++;
+        }
     }
 
     /* Add spacing and button bar */
-    controls[line_count] = (p8_dialog_control_t)DIALOG_SPACING();
-    controls[line_count + 1] = (p8_dialog_control_t)DIALOG_BUTTONBAR_OK_ONLY();
+    controls[control_count++] = (p8_dialog_control_t)DIALOG_SPACING();
+    controls[control_count++] = (p8_dialog_control_t)DIALOG_BUTTONBAR_OK_ONLY();
 
     p8_dialog_t error_dialog;
     const char *title = (severity == P8_ERROR_WARNING) ? "warning" : "error";
@@ -1268,12 +1347,16 @@ void p8_show_lua_error_dialog(void)
 {
     const char *err_type;
     char err_msg[256];
+    char position[33];
+    int lineno = 0;
     err_msg[0] = '\0';
-    lua_get_error(&err_type, err_msg, sizeof(err_msg), NULL, NULL);
+    lua_get_error(&err_type, err_msg, sizeof(err_msg), NULL, &lineno);
+    snprintf(position, sizeof(position), "at line %d", lineno);
 
     const char *lines[] = {
         err_type ? err_type : "",
-        err_msg
+        err_msg,
+        position
     };
-    p8_show_error_dialog(lines, 2, P8_ERROR_ERROR);
+    p8_show_error_dialog(lines, 3, P8_ERROR_ERROR);
 }

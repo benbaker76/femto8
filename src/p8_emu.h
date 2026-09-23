@@ -300,6 +300,7 @@ void __attribute__ ((noreturn)) p8_restart();
 void p8_seed_rng_state(uint32_t seed);
 void p8_set_skip_main_loop_if_no_callbacks(bool skip);
 void p8_show_error_dialog(const char **lines, int line_count, p8_error_severity_t severity);
+
 void p8_show_io_icon(bool show);
 void p8_show_lua_error_dialog(void);
 void p8_show_version_dialog(void);
