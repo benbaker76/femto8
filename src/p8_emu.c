@@ -59,7 +59,8 @@ static inline int color_index(uint8_t c)
 }
 
 static int p8_init_lcd(void);
-static int p8_main_loop();
+static int p8_main_loop(void);
+static void p8_reset_cart_and_screen(void);
 
 uint8_t *m_memory = NULL;
 uint8_t *m_cart_memory = NULL;
@@ -380,14 +381,14 @@ int p8_run(void)
     if (setjmp(jmpbuf_restart)) {
         cart_running = false;
         if (!restart) {
-            p8_reset_cart();
+            p8_reset_cart_and_screen();
             return 0;
         }
         restart = false;
     }
     assert(!lua_running && !cart_running);
 
-    p8_reset_cart();
+    p8_reset_cart_and_screen();
 
     cart_running = true;
     m_start_time = p8_clock();
@@ -416,7 +417,7 @@ int p8_run(void)
 
     cart_running = false;
 
-    p8_reset_cart();
+    p8_reset_cart_and_screen();
 
     return 0;
 }
@@ -1035,6 +1036,14 @@ void p8_reset_cart(void)
 {
     memcpy(m_memory, m_cart_memory, CART_MEMORY_SIZE);
     p8_common_reset_cart();
+}
+
+static void p8_reset_cart_and_screen(void)
+{
+    p8_reset_cart();
+    memset(m_memory + MEMORY_SCREEN, 0, MEMORY_SCREEN_SIZE);
+    m_memory[MEMORY_CURSOR] = 0;
+    m_memory[MEMORY_CURSOR + 1] = 0;
 }
 
 void __attribute__ ((noreturn)) p8_abort()
