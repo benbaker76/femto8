@@ -8,6 +8,7 @@
 #include "p8_emu.h"
 #include "p8_input.h"
 #include "p8_overlay_helper.h"
+#include "scancodes.h"
 #include <string.h>
 #include <ctype.h>
 
@@ -615,12 +616,12 @@ p8_dialog_action_t p8_dialog_update(p8_dialog_t *dialog)
                     return result;
                 }
                 // Handle Home
-                else if (scancode == 74) {  // SCANCODE_HOME
+                else if (scancode == SCANCODE_HOME) {
                     control->data.inputbox.cursor_pos = 0;
                     return result;
                 }
                 // Handle End
-                else if (scancode == 77) {  // SCANCODE_END
+                else if (scancode == SCANCODE_END) {
                     control->data.inputbox.cursor_pos = strlen(control->data.inputbox.buffer);
                     return result;
                 }
@@ -649,7 +650,7 @@ p8_dialog_action_t p8_dialog_update(p8_dialog_t *dialog)
                     return result;
                 }
                 // Handle Delete (Del) - delete forward
-                else if (scancode == 76) {  // SCANCODE_DEL
+                else if (scancode == SCANCODE_DEL) {
                     int cursor_pos = control->data.inputbox.cursor_pos;
                     int text_len = strlen(control->data.inputbox.buffer);
                     if (cursor_pos < text_len) {
