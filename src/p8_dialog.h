@@ -34,6 +34,16 @@ typedef enum {
     BUTTONBAR_CANCEL_ONLY  // Single Cancel button
 } p8_dialog_buttonbar_type_t;
 
+typedef struct {
+    char *buffer;        // Text buffer (INPUTBOX)
+    int buffer_size;     // Maximum buffer size
+    int cursor_pos;      // Current cursor position
+    int select_start;    // Selection start position (-1 = no selection)
+    int select_end;      // Selection end position
+    int select_anchor;   // Selection anchor for shift+arrow selection (-1 = no anchor)
+    int scroll_pos;      // Current scroll position
+} p8_inputbox_t;
+
 /* Dialog Control Structure */
 typedef struct {
     p8_dialog_control_type_t type;
@@ -45,11 +55,7 @@ typedef struct {
             bool *value;         // Pointer to checkbox state (CHECKBOX)
         } checkbox;
 
-        struct {
-            char *buffer;        // Text buffer (INPUTBOX)
-            int buffer_size;     // Maximum buffer size
-            int cursor_pos;      // Current cursor position
-        } inputbox;
+        p8_inputbox_t inputbox;
 
         struct {
             int action_id;       // Button action identifier (BUTTON)

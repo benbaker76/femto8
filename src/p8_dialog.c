@@ -113,6 +113,26 @@ static bool is_quick_dialog_mode(const p8_dialog_t *dialog)
     return true;
 }
 
+/** Ensure the cursor of an inputbox is always visible. */
+static int get_content_width(p8_dialog_t *dialog)
+{
+    return dialog->draw_border ? dialog->width - CONTROL_PADDING_X * 2 : dialog->width;
+}
+
+static void inputbox_ensure_cursor_visible(p8_dialog_t *dialog, p8_inputbox_t *inputbox)
+{
+    int content_width = get_content_width(dialog);
+    int visible_width = content_width - 6;
+    int cursor_x = overlay_get_text_width_len(inputbox->buffer, inputbox->cursor_pos);
+    int text_width = overlay_get_text_width_len(inputbox->buffer, inputbox->buffer_size);
+    if (cursor_x < inputbox->scroll_pos + GLYPH_WIDTH * 4)
+        inputbox->scroll_pos = MAX(cursor_x - GLYPH_WIDTH * 4, 0);
+    if (cursor_x >= inputbox->scroll_pos + visible_width - GLYPH_WIDTH * 4)
+        inputbox->scroll_pos = MAX(cursor_x - visible_width + GLYPH_WIDTH * 4, 0);
+    if (inputbox->scroll_pos > text_width + GLYPH_WIDTH - visible_width)
+        inputbox->scroll_pos = MAX(text_width + GLYPH_WIDTH- visible_width, 0);
+}
+
 /* Initialize dialog structure */
 void p8_dialog_init(p8_dialog_t *dialog,
                     const char *title,
@@ -200,8 +220,15 @@ void p8_dialog_init(p8_dialog_t *dialog,
 
     // Set initial input box cursor position
     for (int i = 0; i < count; i++) {
-        if (controls[i].type == DIALOG_INPUTBOX && controls[i].data.inputbox.buffer)
+        if (controls[i].type == DIALOG_INPUTBOX && controls[i].data.inputbox.buffer) {
             controls[i].data.inputbox.cursor_pos = strlen(controls[i].data.inputbox.buffer);
+            // Select all text initially (for easy replacement)
+            controls[i].data.inputbox.select_start = 0;
+            controls[i].data.inputbox.select_end = controls[i].data.inputbox.cursor_pos;
+            controls[i].data.inputbox.select_anchor = -1;
+            controls[i].data.inputbox.scroll_pos = INT_MAX >> 1;
+            inputbox_ensure_cursor_visible(dialog, &controls[i].data.inputbox);
+        }
     }
 
     dialog->focused_subcontrol = 0;
@@ -273,19 +300,51 @@ static void draw_control(const p8_dialog_t *dialog, int control_idx, int x, int 
             // Draw background
             overlay_draw_rectfill(x + 2, y + 1, x + width - 3, y + GLYPH_HEIGHT + 2, DIALOG_BG_NORMAL);
 
-            // Draw text
+            // Draw text with selection
             if (control->data.inputbox.buffer) {
                 int cursor_pos = control->data.inputbox.cursor_pos;
+                int select_start = control->data.inputbox.select_start;
+                int select_end = control->data.inputbox.select_end;
+                int scroll_pos = control->data.inputbox.scroll_pos;
 
-                // Draw text with block cursor at cursor position
-                int text_width = overlay_get_text_width_len(control->data.inputbox.buffer, cursor_pos);
-                overlay_draw_simple_text(control->data.inputbox.buffer, x + 3, y + 3, DIALOG_TEXT_NORMAL);
+                int text_left = x + 3;
+                int text_right = x + width - 6; // inclusive
+                int text_x = text_left - scroll_pos;
+                int text_y = y + 3;
+                const char *str = control->data.inputbox.buffer;
+                int len = strlen(str);
 
-                // Draw block cursor at cursor_pos (same as code editor)
-                if (focused && (dialog->cursor_blink & 8)) {
-                    int cursor_x = x + 3 + text_width;
-                    overlay_draw_rectfill(cursor_x, y + 3, cursor_x + GLYPH_WIDTH - 1, y + GLYPH_HEIGHT + 1, DIALOG_BG_HIGHLIGHT);
+                int old_clip_x, old_clip_y, old_clip_w, old_clip_h;
+                overlay_clip_get(&old_clip_x, &old_clip_y, &old_clip_w, &old_clip_h);
+                overlay_clip_intersect(text_left, text_y, text_right, text_y + GLYPH_HEIGHT - 1);
+
+                // Draw each character with proper background handling
+                for (int col = 0; col <= len; col++) {
+                    int glyph_width = ((uint8_t)str[col] >= 0x80) ? GLYPH_WIDTH * 2 : GLYPH_WIDTH;
+                    if (text_x <= text_right && text_x + glyph_width > text_left) {
+                        int fg, bg;
+
+                        if (col == cursor_pos && (dialog->cursor_blink & 8)) {
+                            fg = DIALOG_TEXT_HIGHLIGHT;
+                            bg = DIALOG_BG_HIGHLIGHT;
+                        } else if (col < len && select_start != -1 && col >= select_start && col < select_end) {
+                            fg = DIALOG_TEXT_HIGHLIGHT;
+                            bg = DIALOG_BG_INVERTED;
+                        } else {
+                            fg = DIALOG_TEXT_NORMAL;
+                            bg = DIALOG_BG_NORMAL;
+                        }
+
+                        if (bg != DIALOG_BG_NORMAL)
+                            overlay_draw_rectfill(text_x, text_y, text_x + glyph_width - 1, text_y + GLYPH_HEIGHT - 1, bg);
+                        if (col == len)
+                            break;
+                        overlay_draw_char((uint8_t)str[col], text_x, text_y, fg);
+                    }
+                    text_x += glyph_width;
                 }
+
+                overlay_clip_set(old_clip_x, old_clip_y, old_clip_w, old_clip_h);
             }
             break;
         }
@@ -552,6 +611,213 @@ static bool move_to_prev_control(p8_dialog_t *dialog, bool quick_mode)
     return prev >= 0;
 }
 
+/* --- Input box helper functions (modeled after p8_editor_code.c) --- */
+
+/* Generic delete_text function: deletes [start_col, end_col) from buffer.
+ * Moves cursor back if it's after the deleted range, otherwise leaves it. */
+static void delete_text(p8_inputbox_t *inputbox, int start_col, int end_col, int *text_len)
+{
+    assert(start_col >= 0 && start_col <= *text_len);
+    assert(end_col >= start_col && end_col <= *text_len);
+
+    if (start_col == end_col) return;
+
+    /* Delete the text */
+    memmove(inputbox->buffer + start_col, inputbox->buffer + end_col, *text_len - end_col + 1);
+
+    /* Update text length */
+    *text_len -= (end_col - start_col);
+
+    /* Move cursor back if it's after the deleted range */
+    if (inputbox->cursor_pos > end_col) {
+        inputbox->cursor_pos -= (end_col - start_col);
+    } else if (inputbox->cursor_pos > start_col) {
+        inputbox->cursor_pos = start_col;
+    }
+}
+
+static void clear_selection(p8_inputbox_t *inputbox)
+{
+    inputbox->select_start = -1;
+    inputbox->select_end = -1;
+    inputbox->select_anchor = -1;
+}
+
+/* Delete selection from buffer.
+ * Returns true if a selection was deleted, false otherwise. */
+static bool delete_selection(p8_inputbox_t *inputbox, int *text_len)
+{
+    if (inputbox->select_start == inputbox->select_end) return false;
+
+    assert(inputbox->select_end > inputbox->select_start);
+
+    delete_text(inputbox, inputbox->select_start, inputbox->select_end, text_len);
+
+    clear_selection(inputbox);
+
+    return true;
+}
+
+/* Insert text at cursor position, shifting existing characters right.
+ * Cursor position is the index of the character BEFORE which to insert.
+ * After insert, cursor moves to the position after the inserted text. */
+static void insert_text(p8_inputbox_t *inputbox, const char *text, int len, int *text_len)
+{
+    if (len <= 0) return;
+
+    len = MIN(inputbox->buffer_size - *text_len, len);
+
+    /* Shift characters after cursor to make room */
+    memmove(inputbox->buffer + inputbox->cursor_pos + len, inputbox->buffer + inputbox->cursor_pos, *text_len + 1 - inputbox->cursor_pos);
+
+    memcpy(inputbox->buffer + inputbox->cursor_pos, text, len);
+
+    /* Update cursor to position after inserted text */
+    inputbox->cursor_pos += len;
+    *text_len += len;
+}
+
+/* Helper function to handle input box keypresses.
+ * Returns true if the keypress was handled, false otherwise. */
+static bool handle_input_box_keypress(p8_dialog_t *dialog,
+                                      p8_inputbox_t *inputbox,
+                                      unsigned scancode, uint8_t keypress, unsigned keymod,
+                                      p8_dialog_action_t *result)
+{
+    bool handled = false;
+    int text_len = strlen(inputbox->buffer);
+
+    // Handle Ctrl+X - cut selection
+    if (scancode == SCANCODE_X && (keymod & KMOD_CTRL)) {
+        // Copy selection to clipboard
+        if (inputbox->select_end != inputbox->select_start) {
+            assert(inputbox->select_end > inputbox->select_start);
+            assert(inputbox->select_end <= text_len);
+            int clip_len = inputbox->select_end - inputbox->select_start;
+            char *clip_text = malloc(clip_len + 1);
+            if (clip_text) {
+                memcpy(clip_text, inputbox->buffer + inputbox->select_start, clip_len + 1);
+                p8_clipboard_set(clip_text);
+                free(clip_text);
+            }
+        }
+
+        // Delete selection
+        delete_selection(inputbox, &text_len);
+
+        handled = true;
+    }
+    // Handle Ctrl+C - copy selection
+    else if (scancode == SCANCODE_C && (keymod & KMOD_CTRL)) {
+        // Copy selection to clipboard
+        if (inputbox->select_end != inputbox->select_start) {
+            assert(inputbox->select_end > inputbox->select_start);
+            assert(inputbox->select_end <= text_len);
+            int clip_len = inputbox->select_end - inputbox->select_start;
+            char *clip_text = malloc(clip_len + 1);
+            if (clip_text) {
+                memcpy(clip_text, inputbox->buffer + inputbox->select_start, clip_len + 1);;
+                p8_clipboard_set(clip_text);
+                free(clip_text);
+            }
+        }
+        handled = true;
+    }
+    // Handle Ctrl+V - paste clipboard
+    else if (scancode == SCANCODE_V && (keymod & KMOD_CTRL)) {
+        // If there's a selection, delete it first
+        if (inputbox->select_start != inputbox->select_end)
+            delete_selection(inputbox, &text_len);
+
+        char *clipboard_text = p8_clipboard_get();
+        if (clipboard_text && *clipboard_text) {
+            int clipboard_len = strlen(clipboard_text);
+            insert_text(inputbox,
+                        clipboard_text, clipboard_len,
+                        &text_len);
+            free(clipboard_text);
+        }
+
+        handled = true;
+    }
+    // Handle printable characters (without Ctrl modifier)
+    if ((keypress >= 32 && keypress <= 126) && !(keymod & KMOD_CTRL)) {
+        // If there's a selection, delete it first
+        if (inputbox->select_start != inputbox->select_end)
+            delete_selection(inputbox, &text_len);
+
+        insert_text(inputbox, (char *)&keypress, 1, &text_len);
+
+        handled = true;
+    }
+    // Handle backspace - delete backward
+    else if (keypress == 8) {
+        // If there's a selection, delete it
+        if (inputbox->select_start != inputbox->select_end)
+            delete_selection(inputbox, &text_len);
+        else if (inputbox->cursor_pos > 0)
+            delete_text(inputbox, inputbox->cursor_pos - 1, inputbox->cursor_pos, &text_len);
+        handled = true;
+    }
+    // Handle Delete (Del) - delete forward
+    else if (scancode == SCANCODE_DEL) {
+        // If there's a selection, delete it
+         if (inputbox->select_start != inputbox->select_end)
+            delete_selection(inputbox, &text_len);
+        else if (inputbox->cursor_pos < text_len)
+            delete_text(inputbox, inputbox->cursor_pos, inputbox->cursor_pos + 1, &text_len);
+        handled = true;
+    }
+    // Handle arrow keys with shift for selection
+    else if (scancode == SCANCODE_LEFT || scancode == SCANCODE_RIGHT ||
+             scancode == SCANCODE_HOME || scancode == SCANCODE_END) {
+        // Handle arrow keys
+        bool shift = (keymod & KMOD_SHIFT) != 0;
+
+        // If shift and no anchor, set anchor
+        if (shift && inputbox->select_anchor == -1) {
+            inputbox->select_anchor = inputbox->cursor_pos;
+        }
+
+        switch (scancode) {
+            case SCANCODE_LEFT:
+                if (inputbox->cursor_pos > 0) {
+                    inputbox->cursor_pos--;
+                }
+                break;
+            case SCANCODE_RIGHT:
+                if (inputbox->cursor_pos < text_len) {
+                    inputbox->cursor_pos++;
+                }
+                break;
+            case SCANCODE_HOME:
+                inputbox->cursor_pos = 0;
+                break;
+            case SCANCODE_END:
+                inputbox->cursor_pos = text_len;
+                break;
+        }
+
+        // If shift, update selection; else clear selection
+        if (shift) {
+            // Extend selection from anchor to current cursor position
+            if (inputbox->cursor_pos <= inputbox->select_anchor) {
+                inputbox->select_start = inputbox->cursor_pos;
+                inputbox->select_end = inputbox->select_anchor;
+            } else {
+                inputbox->select_start = inputbox->select_anchor;
+                inputbox->select_end = inputbox->cursor_pos;
+            }
+        } else {
+            // Clear selection
+            clear_selection(inputbox);
+        }
+        handled = true;
+    }
+    inputbox_ensure_cursor_visible(dialog, inputbox);
+    return handled;
+}
+
 /* Process dialog input and update state */
 p8_dialog_action_t p8_dialog_update(p8_dialog_t *dialog)
 {
@@ -566,118 +832,30 @@ p8_dialog_action_t p8_dialog_update(p8_dialog_t *dialog)
 
     if (dialog->focused_control >= 0) {
         // Handle input mode (for input boxes)
-        if (dialog->controls[dialog->focused_control].type == DIALOG_INPUTBOX) {
+        if (dialog->controls && dialog->focused_control < dialog->control_count &&
+            dialog->controls[dialog->focused_control].type == DIALOG_INPUTBOX) {
             p8_dialog_control_t *control = &dialog->controls[dialog->focused_control];
 
             unsigned scancode;
             uint8_t keypress;
             unsigned keymod;
+            bool consumed = false;
 
+            // Handle input box keypresses
             while (p8_get_next_keypress(&scancode, &keypress, &keymod)) {
-                // Handle printable characters (without Ctrl modifier)
-                if ((keypress >= 32 && keypress <= 126) && !(keymod & KMOD_CTRL)) {
-                    int text_len = strlen(control->data.inputbox.buffer);
-                    int cursor_pos = control->data.inputbox.cursor_pos;
-                    if (text_len < control->data.inputbox.buffer_size - 1) {
-                        // Shift characters after cursor to make room
-                        if (cursor_pos < text_len) {
-                            memmove(control->data.inputbox.buffer + cursor_pos + 1,
-                                    control->data.inputbox.buffer + cursor_pos,
-                                    text_len - cursor_pos + 1);
-                        }
-                        control->data.inputbox.buffer[cursor_pos] = keypress;
-                        control->data.inputbox.cursor_pos++;
-                    }
-                    return result;
-                }
-                // Handle Ctrl+V - paste clipboard
-                else if (keypress == 'v' && (keymod & KMOD_CTRL)) {
-                    char *clipboard_text = p8_clipboard_get();
-                    if (clipboard_text && *clipboard_text) {
-                        int text_len = strlen(control->data.inputbox.buffer);
-                        int clipboard_len = strlen(clipboard_text);
-                        int cursor_pos = control->data.inputbox.cursor_pos;
-                        int new_len = text_len + clipboard_len;
-                        if (new_len < control->data.inputbox.buffer_size - 1) {
-                            // Shift characters after cursor to make room
-                            if (cursor_pos < text_len) {
-                                memmove(control->data.inputbox.buffer + cursor_pos + clipboard_len,
-                                        control->data.inputbox.buffer + cursor_pos,
-                                        text_len - cursor_pos + 1);
-                            }
-                            // Insert clipboard text at cursor position
-                            memcpy(control->data.inputbox.buffer + cursor_pos,
-                                   clipboard_text, clipboard_len);
-                            control->data.inputbox.buffer[new_len] = '\0';
-                            control->data.inputbox.cursor_pos += clipboard_len;
-                        }
-                        free(clipboard_text);
-                    }
-                    return result;
-                }
-                // Handle Home
-                else if (scancode == SCANCODE_HOME) {
-                    control->data.inputbox.cursor_pos = 0;
-                    return result;
-                }
-                // Handle End
-                else if (scancode == SCANCODE_END) {
-                    control->data.inputbox.cursor_pos = strlen(control->data.inputbox.buffer);
-                    return result;
-                }
-                // Handle Return
-                else if (keypress == 13) {
+                if (keypress == 13) {
                     if (!move_to_next_control(dialog, quick_mode)) {
                         // No more controls, accept the dialog
                         result.type = DIALOG_RESULT_ACCEPTED;
                     }
-                    return result;
-                }
-                // Handle backspace - delete backward
-                else if (keypress == 8) {
-                    int cursor_pos = control->data.inputbox.cursor_pos;
-                    if (cursor_pos > 0) {
-                        int text_len = strlen(control->data.inputbox.buffer);
-                        // Shift characters after cursor backward
-                        if (cursor_pos < text_len) {
-                            memmove(control->data.inputbox.buffer + cursor_pos - 1,
-                                    control->data.inputbox.buffer + cursor_pos,
-                                    text_len - cursor_pos + 1);
-                        }
-                        control->data.inputbox.buffer[text_len - 1] = '\0';
-                        control->data.inputbox.cursor_pos--;
-                    }
-                    return result;
-                }
-                // Handle Delete (Del) - delete forward
-                else if (scancode == SCANCODE_DEL) {
-                    int cursor_pos = control->data.inputbox.cursor_pos;
-                    int text_len = strlen(control->data.inputbox.buffer);
-                    if (cursor_pos < text_len) {
-                        // Shift characters after cursor backward
-                        memmove(control->data.inputbox.buffer + cursor_pos,
-                                control->data.inputbox.buffer + cursor_pos + 1,
-                                text_len - cursor_pos);
-                        control->data.inputbox.buffer[text_len - 1] = '\0';
-                    }
-                    return result;
+                    consumed = true;
+                } else {
+                    consumed = handle_input_box_keypress(dialog, &control->data.inputbox,
+                        scancode, keypress, keymod, &result) || consumed;
                 }
             }
-
-            // Handle button presses in input mode (cursor navigation with arrows)
-            if (buttons & BUTTON_MASK_LEFT) {
-                if (control->data.inputbox.cursor_pos > 0) {
-                    control->data.inputbox.cursor_pos--;
-                }
+            if (consumed)
                 return result;
-            }
-            if (buttons & BUTTON_MASK_RIGHT) {
-                int text_len = strlen(control->data.inputbox.buffer);
-                if (control->data.inputbox.cursor_pos < text_len) {
-                    control->data.inputbox.cursor_pos++;
-                }
-                return result;
-            }
         } else {
             // Action buttons
             p8_dialog_control_t *control = &dialog->controls[dialog->focused_control];

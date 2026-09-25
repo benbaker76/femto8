@@ -227,6 +227,9 @@ void p8_reset_input()
         }
         m_button_first_repeat[p] = 1;
     }
+    // Reset key queue
+    m_key_queue_read_index = 0;
+    m_key_queue_write_index = 0;
 }
 
 void p8_update_input()
