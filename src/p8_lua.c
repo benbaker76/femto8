@@ -1806,7 +1806,7 @@ int printh(lua_State *L)
     if (!str) str = "";
 
     if (filename && strcmp(filename, "@clip") == 0) {
-        strtcpy(m_clipboard, str, sizeof(m_clipboard));
+        p8_clipboard_set(str);
         lua_pushboolean(L, 1);
         return 1;
     }
@@ -1860,7 +1860,15 @@ int lua_stat(lua_State *L)
         lua_pushinteger(L, 0);
         break;
     case STAT_CLIPBOARD:
-        lua_pushstring(L, m_clipboard);
+        {
+            char *clip_text = p8_clipboard_get();
+            if (clip_text) {
+                lua_pushstring(L, clip_text);
+                free(clip_text);
+            } else {
+                lua_pushstring(L, "");
+            }
+        }
         break;
     case STAT_VERSION:
         lua_pushnumber(L, fix32_from_double(0.43));

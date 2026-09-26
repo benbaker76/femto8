@@ -9,6 +9,7 @@
 #include "p8_input.h"
 #include "p8_overlay_helper.h"
 #include "scancodes.h"
+#include <stdlib.h>
 #include <string.h>
 #include <ctype.h>
 
@@ -591,9 +592,10 @@ p8_dialog_action_t p8_dialog_update(p8_dialog_t *dialog)
                 }
                 // Handle Ctrl+V - paste clipboard
                 else if (keypress == 'v' && (keymod & KMOD_CTRL)) {
-                    if (control->data.inputbox.clipboard && *control->data.inputbox.clipboard) {
+                    char *clipboard_text = p8_clipboard_get();
+                    if (clipboard_text && *clipboard_text) {
                         int text_len = strlen(control->data.inputbox.buffer);
-                        int clipboard_len = strlen(control->data.inputbox.clipboard);
+                        int clipboard_len = strlen(clipboard_text);
                         int cursor_pos = control->data.inputbox.cursor_pos;
                         int new_len = text_len + clipboard_len;
                         if (new_len < control->data.inputbox.buffer_size - 1) {
@@ -605,13 +607,11 @@ p8_dialog_action_t p8_dialog_update(p8_dialog_t *dialog)
                             }
                             // Insert clipboard text at cursor position
                             memcpy(control->data.inputbox.buffer + cursor_pos,
-                                    control->data.inputbox.clipboard,
-                                    clipboard_len);
+                                   clipboard_text, clipboard_len);
                             control->data.inputbox.buffer[new_len] = '\0';
                             control->data.inputbox.cursor_pos += clipboard_len;
                         }
-                        // Clear clipboard after paste
-                        control->data.inputbox.clipboard = NULL;
+                        free(clipboard_text);
                     }
                     return result;
                 }

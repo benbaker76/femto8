@@ -267,6 +267,10 @@ extern char m_param_string[256];
 
 extern bool m_load_available;
 
+/* Clipboard functions */
+void p8_clipboard_set(const char *text);
+char *p8_clipboard_get(void);
+
 void __attribute__ ((noreturn)) p8_abort();
 void p8_check_for_next_frame(void);
 void p8_check_for_pause(void);
