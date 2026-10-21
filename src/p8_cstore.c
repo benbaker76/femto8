@@ -167,8 +167,10 @@ int write_cart_p8(const char *path, const char *lua_script, const uint8_t *memor
     return 0;
 
 error:
-    int saved_errno = errno;
-    fclose(f);
-    errno = saved_errno;
+    {
+        int saved_errno = errno;
+        fclose(f);
+        errno = saved_errno;
+    }
     return -1;
 }
