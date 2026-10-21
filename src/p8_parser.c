@@ -209,10 +209,9 @@ static int process_includes(char *lua_script_out, const char *lua_script, const 
             const char *end_p = p;
             while (*end_p) {
                 if (*end_p == ']') {
-                    int end_equals = 0;
                     const char *eq_p = end_p + 1;
                     while (*eq_p == '=')
-                        { end_equals++; eq_p++; }
+                        eq_p++;
                     if (*eq_p == ']') {
                         in_multiline_comment = false;
                         p = eq_p + 1;
