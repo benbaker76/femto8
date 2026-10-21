@@ -42,6 +42,23 @@ static inline void overlay_clip_get(int *x, int *y, int *w, int *h)
     *h = overlay_clip_y1 - overlay_clip_y0;
 }
 
+static inline void overlay_clip_intersect(int x, int y, int w, int h)
+{
+    int new_x0 = MAX(overlay_clip_x0, x);
+    int new_y0 = MAX(overlay_clip_y0, y);
+    int new_x1 = MIN(overlay_clip_x1, x + w);
+    int new_y1 = MIN(overlay_clip_y1, y + h);
+
+    // Ensure valid clip region: x0 <= x1 and y0 <= y1
+    if (new_x0 > new_x1) new_x0 = new_x1;
+    if (new_y0 > new_y1) new_y0 = new_y1;
+
+    overlay_clip_x0 = new_x0;
+    overlay_clip_y0 = new_y0;
+    overlay_clip_x1 = new_x1;
+    overlay_clip_y1 = new_y1;
+}
+
 static inline void overlay_draw_hline(int x0, int x1, int y, int col)
 {
     if (y < overlay_clip_y0 || y >= overlay_clip_y1)

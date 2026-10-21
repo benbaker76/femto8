@@ -8,6 +8,8 @@
 #include "p8_emu.h"
 #include "p8_input.h"
 #include "p8_overlay_helper.h"
+#include "scancodes.h"
+#include <stdlib.h>
 #include <string.h>
 #include <ctype.h>
 
@@ -59,26 +61,76 @@ static int get_control_height(const p8_dialog_control_t *control)
 /* Helper function to check if dialog is in quick mode */
 static bool is_quick_dialog_mode(const p8_dialog_t *dialog)
 {
-    int selectable_count = 0;
-    int listbox_or_inputbox_count = 0;
-    int buttonbar_count = 0;
+    /* Quick mode is enabled only if ALL selectable controls have O/X behavior
+     * that either accepts/cancels the dialog or is ignored (no state change).
+     *
+     * For quick mode to be safe:
+     * - Button 1/O must either accept or be ignored
+     * - Button 2/X must either cancel or be ignored
+     *
+     * BUTTONBAR is safe because it explicitly handles O/X for accept/cancel.
+     * LISTBOX is safe only if it's the last selectable control (O then accepts).
+     * INPUTBOX is safe because O/X (button presses) are ignored in input mode
+     *   (keyboard Z/X are typed as characters, not processed as buttons).
+     * Other controls have O/X behavior that conflicts with quick mode.
+     */
 
     for (int i = 0; i < dialog->control_count; i++) {
         if (dialog->controls[i].selectable) {
-            selectable_count++;
-            if (dialog->controls[i].type == DIALOG_LISTBOX ||
-                dialog->controls[i].type == DIALOG_INPUTBOX)
-                listbox_or_inputbox_count++;
-            if (dialog->controls[i].type == DIALOG_BUTTONBAR)
-                buttonbar_count++;
+            switch (dialog->controls[i].type) {
+                case DIALOG_BUTTONBAR:
+                    /* OK: O on sub-button 0 accepts, sub-button 1 cancels;
+                     * X is ignored in non-quick mode */
+                    break;
+                case DIALOG_LISTBOX: {
+                    /* OK only if this is the last selectable control
+                     * (O then accepts instead of navigating) */
+                    int last_selectable_idx = -1;
+                    for (int i = 0; i < dialog->control_count; i++) {
+                        if (dialog->controls[i].selectable) {
+                            last_selectable_idx = i;
+                        }
+                    }
+                    if (i != last_selectable_idx) {
+                        return false;
+                    }
+                    break;
+                }
+                case DIALOG_INPUTBOX:
+                    /* OK: O/X button presses are ignored in input mode
+                     * (keyboard Z/X are typed as characters, not processed as buttons) */
+                    break;
+                default:
+                    /* All other controls have O/X behavior that conflicts with quick mode:
+                     * - CHECKBOX: O toggles (not accept/ignore)
+                     * - BUTTON/MENUITEM: O triggers action (not accept/ignore)
+                     */
+                    return false;
+            }
         }
     }
 
-    if (selectable_count == buttonbar_count + listbox_or_inputbox_count &&
-        buttonbar_count == 1 && listbox_or_inputbox_count <= 1)
-        return true;
+    return true;
+}
 
-    return false;
+/** Ensure the cursor of an inputbox is always visible. */
+static int get_content_width(p8_dialog_t *dialog)
+{
+    return dialog->draw_border ? dialog->width - CONTROL_PADDING_X * 2 : dialog->width;
+}
+
+static void inputbox_ensure_cursor_visible(p8_dialog_t *dialog, p8_inputbox_t *inputbox)
+{
+    int content_width = get_content_width(dialog);
+    int visible_width = content_width - 6;
+    int cursor_x = overlay_get_text_width_len(inputbox->buffer, inputbox->cursor_pos);
+    int text_width = overlay_get_text_width_len(inputbox->buffer, inputbox->buffer_size);
+    if (cursor_x < inputbox->scroll_pos + GLYPH_WIDTH * 4)
+        inputbox->scroll_pos = MAX(cursor_x - GLYPH_WIDTH * 4, 0);
+    if (cursor_x >= inputbox->scroll_pos + visible_width - GLYPH_WIDTH * 4)
+        inputbox->scroll_pos = MAX(cursor_x - visible_width + GLYPH_WIDTH * 4, 0);
+    if (inputbox->scroll_pos > text_width + GLYPH_WIDTH - visible_width)
+        inputbox->scroll_pos = MAX(text_width + GLYPH_WIDTH- visible_width, 0);
 }
 
 /* Initialize dialog structure */
@@ -166,6 +218,19 @@ void p8_dialog_init(p8_dialog_t *dialog,
         }
     }
 
+    // Set initial input box cursor position
+    for (int i = 0; i < count; i++) {
+        if (controls[i].type == DIALOG_INPUTBOX && controls[i].data.inputbox.buffer) {
+            controls[i].data.inputbox.cursor_pos = strlen(controls[i].data.inputbox.buffer);
+            // Select all text initially (for easy replacement)
+            controls[i].data.inputbox.select_start = 0;
+            controls[i].data.inputbox.select_end = controls[i].data.inputbox.cursor_pos;
+            controls[i].data.inputbox.select_anchor = -1;
+            controls[i].data.inputbox.scroll_pos = INT_MAX >> 1;
+            inputbox_ensure_cursor_visible(dialog, &controls[i].data.inputbox);
+        }
+    }
+
     dialog->focused_subcontrol = 0;
     dialog->cursor_blink = 0;
 }
@@ -235,15 +300,51 @@ static void draw_control(const p8_dialog_t *dialog, int control_idx, int x, int 
             // Draw background
             overlay_draw_rectfill(x + 2, y + 1, x + width - 3, y + GLYPH_HEIGHT + 2, DIALOG_BG_NORMAL);
 
-            // Draw text
+            // Draw text with selection
             if (control->data.inputbox.buffer) {
-                overlay_draw_simple_text(control->data.inputbox.buffer, x + 3, y + 3, DIALOG_TEXT_NORMAL);
+                int cursor_pos = control->data.inputbox.cursor_pos;
+                int select_start = control->data.inputbox.select_start;
+                int select_end = control->data.inputbox.select_end;
+                int scroll_pos = control->data.inputbox.scroll_pos;
 
-                // Draw cursor if in input mode
-                if (focused && (dialog->cursor_blink & 8)) {
-                    int cursor_x = x + 3 + overlay_get_text_width(control->data.inputbox.buffer);
-                    overlay_draw_vline(cursor_x, y + 3, y + GLYPH_HEIGHT + 1, DIALOG_TEXT_NORMAL);
+                int text_left = x + 3;
+                int text_right = x + width - 6; // inclusive
+                int text_x = text_left - scroll_pos;
+                int text_y = y + 3;
+                const char *str = control->data.inputbox.buffer;
+                int len = strlen(str);
+
+                int old_clip_x, old_clip_y, old_clip_w, old_clip_h;
+                overlay_clip_get(&old_clip_x, &old_clip_y, &old_clip_w, &old_clip_h);
+                overlay_clip_intersect(text_left, text_y, text_right, text_y + GLYPH_HEIGHT - 1);
+
+                // Draw each character with proper background handling
+                for (int col = 0; col <= len; col++) {
+                    int glyph_width = ((uint8_t)str[col] >= 0x80) ? GLYPH_WIDTH * 2 : GLYPH_WIDTH;
+                    if (text_x <= text_right && text_x + glyph_width > text_left) {
+                        int fg, bg;
+
+                        if (col == cursor_pos && (dialog->cursor_blink & 8)) {
+                            fg = DIALOG_TEXT_HIGHLIGHT;
+                            bg = DIALOG_BG_HIGHLIGHT;
+                        } else if (col < len && select_start != -1 && col >= select_start && col < select_end) {
+                            fg = DIALOG_TEXT_HIGHLIGHT;
+                            bg = DIALOG_BG_INVERTED;
+                        } else {
+                            fg = DIALOG_TEXT_NORMAL;
+                            bg = DIALOG_BG_NORMAL;
+                        }
+
+                        if (bg != DIALOG_BG_NORMAL)
+                            overlay_draw_rectfill(text_x, text_y, text_x + glyph_width - 1, text_y + GLYPH_HEIGHT - 1, bg);
+                        if (col == len)
+                            break;
+                        overlay_draw_char((uint8_t)str[col], text_x, text_y, fg);
+                    }
+                    text_x += glyph_width;
                 }
+
+                overlay_clip_set(old_clip_x, old_clip_y, old_clip_w, old_clip_h);
             }
             break;
         }
@@ -276,7 +377,7 @@ static void draw_control(const p8_dialog_t *dialog, int control_idx, int x, int 
                     break;
             }
 
-            if (!quick_mode && focused) {
+            if (focused) {
                 // Highlight the focused button
                 if (dialog->focused_subcontrol == 0 && left_text) {
                     int text_width = overlay_get_text_width(left_text);
@@ -291,14 +392,14 @@ static void draw_control(const p8_dialog_t *dialog, int control_idx, int x, int 
 
             int text_x = x + 1;
             if (left_text) {
-                int text_color = (!quick_mode && focused && dialog->focused_subcontrol == 0) ?
+                int text_color = (focused && dialog->focused_subcontrol == 0) ?
                                 DIALOG_TEXT_HIGHLIGHT : DIALOG_TEXT_NORMAL;
                 overlay_draw_simple_text(left_text, text_x, y + 2, text_color);
                 text_x += overlay_get_text_width(left_text) + 4;
             }
 
             if (right_text) {
-                int text_color = (!quick_mode && focused && dialog->focused_subcontrol == 1) ?
+                int text_color = (focused && dialog->focused_subcontrol == 1) ?
                                 DIALOG_TEXT_HIGHLIGHT : DIALOG_TEXT_NORMAL;
                 overlay_draw_simple_text(right_text, text_x, y + 2, text_color);
             }
@@ -330,8 +431,10 @@ static void draw_control(const p8_dialog_t *dialog, int control_idx, int x, int 
                 scroll_offset = (selected_idx + 1) * (GLYPH_HEIGHT + 1) - content_height;
 
             // Clamp scroll
-            if (scroll_offset > (control->data.listbox.item_count * (GLYPH_HEIGHT + 1)) - content_height)
-                scroll_offset = (control->data.listbox.item_count * (GLYPH_HEIGHT + 1)) - content_height;
+            int max_offset = (control->data.listbox.item_count * (GLYPH_HEIGHT + 1)) - content_height;
+            if (max_offset < 0) max_offset = 0;
+            if (scroll_offset > max_offset)
+                scroll_offset = max_offset;
             if (scroll_offset < 0)
                 scroll_offset = 0;
 
@@ -340,11 +443,11 @@ static void draw_control(const p8_dialog_t *dialog, int control_idx, int x, int 
 
             int text_offset = control->data.listbox.draw_border ? 3 : 1;
             int first_visible_line = scroll_offset / (GLYPH_HEIGHT + 1);
-            int last_visible_lne = (scroll_offset + list_height + GLYPH_HEIGHT - 2) / (GLYPH_HEIGHT + 1);
+            int last_visible_line = (scroll_offset + list_height + GLYPH_HEIGHT - 2) / (GLYPH_HEIGHT + 1);
 
             overlay_clip_set(x + item_offset_x, y + item_offset_y, width - item_offset_x * 2, list_height - item_offset_y * 2);
 
-            for (int i = first_visible_line; i < last_visible_lne && i < control->data.listbox.item_count; i++) {
+            for (int i = first_visible_line; i < last_visible_line && i < control->data.listbox.item_count; i++) {
                 int item_y = y + item_offset_y + 1 + i * (GLYPH_HEIGHT + 1) - scroll_offset;
                 bool is_selected = (i == selected_idx);
 
@@ -508,6 +611,213 @@ static bool move_to_prev_control(p8_dialog_t *dialog, bool quick_mode)
     return prev >= 0;
 }
 
+/* --- Input box helper functions (modeled after p8_editor_code.c) --- */
+
+/* Generic delete_text function: deletes [start_col, end_col) from buffer.
+ * Moves cursor back if it's after the deleted range, otherwise leaves it. */
+static void delete_text(p8_inputbox_t *inputbox, int start_col, int end_col, int *text_len)
+{
+    assert(start_col >= 0 && start_col <= *text_len);
+    assert(end_col >= start_col && end_col <= *text_len);
+
+    if (start_col == end_col) return;
+
+    /* Delete the text */
+    memmove(inputbox->buffer + start_col, inputbox->buffer + end_col, *text_len - end_col + 1);
+
+    /* Update text length */
+    *text_len -= (end_col - start_col);
+
+    /* Move cursor back if it's after the deleted range */
+    if (inputbox->cursor_pos > end_col) {
+        inputbox->cursor_pos -= (end_col - start_col);
+    } else if (inputbox->cursor_pos > start_col) {
+        inputbox->cursor_pos = start_col;
+    }
+}
+
+static void clear_selection(p8_inputbox_t *inputbox)
+{
+    inputbox->select_start = -1;
+    inputbox->select_end = -1;
+    inputbox->select_anchor = -1;
+}
+
+/* Delete selection from buffer.
+ * Returns true if a selection was deleted, false otherwise. */
+static bool delete_selection(p8_inputbox_t *inputbox, int *text_len)
+{
+    if (inputbox->select_start == inputbox->select_end) return false;
+
+    assert(inputbox->select_end > inputbox->select_start);
+
+    delete_text(inputbox, inputbox->select_start, inputbox->select_end, text_len);
+
+    clear_selection(inputbox);
+
+    return true;
+}
+
+/* Insert text at cursor position, shifting existing characters right.
+ * Cursor position is the index of the character BEFORE which to insert.
+ * After insert, cursor moves to the position after the inserted text. */
+static void insert_text(p8_inputbox_t *inputbox, const char *text, int len, int *text_len)
+{
+    if (len <= 0) return;
+
+    len = MIN(inputbox->buffer_size - *text_len, len);
+
+    /* Shift characters after cursor to make room */
+    memmove(inputbox->buffer + inputbox->cursor_pos + len, inputbox->buffer + inputbox->cursor_pos, *text_len + 1 - inputbox->cursor_pos);
+
+    memcpy(inputbox->buffer + inputbox->cursor_pos, text, len);
+
+    /* Update cursor to position after inserted text */
+    inputbox->cursor_pos += len;
+    *text_len += len;
+}
+
+/* Helper function to handle input box keypresses.
+ * Returns true if the keypress was handled, false otherwise. */
+static bool handle_input_box_keypress(p8_dialog_t *dialog,
+                                      p8_inputbox_t *inputbox,
+                                      unsigned scancode, uint8_t keypress, unsigned keymod,
+                                      p8_dialog_action_t *result)
+{
+    bool handled = false;
+    int text_len = strlen(inputbox->buffer);
+
+    // Handle Ctrl+X - cut selection
+    if (scancode == SCANCODE_X && (keymod & KMOD_CTRL)) {
+        // Copy selection to clipboard
+        if (inputbox->select_end != inputbox->select_start) {
+            assert(inputbox->select_end > inputbox->select_start);
+            assert(inputbox->select_end <= text_len);
+            int clip_len = inputbox->select_end - inputbox->select_start;
+            char *clip_text = malloc(clip_len + 1);
+            if (clip_text) {
+                memcpy(clip_text, inputbox->buffer + inputbox->select_start, clip_len + 1);
+                p8_clipboard_set(clip_text);
+                free(clip_text);
+            }
+        }
+
+        // Delete selection
+        delete_selection(inputbox, &text_len);
+
+        handled = true;
+    }
+    // Handle Ctrl+C - copy selection
+    else if (scancode == SCANCODE_C && (keymod & KMOD_CTRL)) {
+        // Copy selection to clipboard
+        if (inputbox->select_end != inputbox->select_start) {
+            assert(inputbox->select_end > inputbox->select_start);
+            assert(inputbox->select_end <= text_len);
+            int clip_len = inputbox->select_end - inputbox->select_start;
+            char *clip_text = malloc(clip_len + 1);
+            if (clip_text) {
+                memcpy(clip_text, inputbox->buffer + inputbox->select_start, clip_len + 1);;
+                p8_clipboard_set(clip_text);
+                free(clip_text);
+            }
+        }
+        handled = true;
+    }
+    // Handle Ctrl+V - paste clipboard
+    else if (scancode == SCANCODE_V && (keymod & KMOD_CTRL)) {
+        // If there's a selection, delete it first
+        if (inputbox->select_start != inputbox->select_end)
+            delete_selection(inputbox, &text_len);
+
+        char *clipboard_text = p8_clipboard_get();
+        if (clipboard_text && *clipboard_text) {
+            int clipboard_len = strlen(clipboard_text);
+            insert_text(inputbox,
+                        clipboard_text, clipboard_len,
+                        &text_len);
+            free(clipboard_text);
+        }
+
+        handled = true;
+    }
+    // Handle printable characters (without Ctrl modifier)
+    if ((keypress >= 32 && keypress <= 126) && !(keymod & KMOD_CTRL)) {
+        // If there's a selection, delete it first
+        if (inputbox->select_start != inputbox->select_end)
+            delete_selection(inputbox, &text_len);
+
+        insert_text(inputbox, (char *)&keypress, 1, &text_len);
+
+        handled = true;
+    }
+    // Handle backspace - delete backward
+    else if (keypress == 8) {
+        // If there's a selection, delete it
+        if (inputbox->select_start != inputbox->select_end)
+            delete_selection(inputbox, &text_len);
+        else if (inputbox->cursor_pos > 0)
+            delete_text(inputbox, inputbox->cursor_pos - 1, inputbox->cursor_pos, &text_len);
+        handled = true;
+    }
+    // Handle Delete (Del) - delete forward
+    else if (scancode == SCANCODE_DEL) {
+        // If there's a selection, delete it
+         if (inputbox->select_start != inputbox->select_end)
+            delete_selection(inputbox, &text_len);
+        else if (inputbox->cursor_pos < text_len)
+            delete_text(inputbox, inputbox->cursor_pos, inputbox->cursor_pos + 1, &text_len);
+        handled = true;
+    }
+    // Handle arrow keys with shift for selection
+    else if (scancode == SCANCODE_LEFT || scancode == SCANCODE_RIGHT ||
+             scancode == SCANCODE_HOME || scancode == SCANCODE_END) {
+        // Handle arrow keys
+        bool shift = (keymod & KMOD_SHIFT) != 0;
+
+        // If shift and no anchor, set anchor
+        if (shift && inputbox->select_anchor == -1) {
+            inputbox->select_anchor = inputbox->cursor_pos;
+        }
+
+        switch (scancode) {
+            case SCANCODE_LEFT:
+                if (inputbox->cursor_pos > 0) {
+                    inputbox->cursor_pos--;
+                }
+                break;
+            case SCANCODE_RIGHT:
+                if (inputbox->cursor_pos < text_len) {
+                    inputbox->cursor_pos++;
+                }
+                break;
+            case SCANCODE_HOME:
+                inputbox->cursor_pos = 0;
+                break;
+            case SCANCODE_END:
+                inputbox->cursor_pos = text_len;
+                break;
+        }
+
+        // If shift, update selection; else clear selection
+        if (shift) {
+            // Extend selection from anchor to current cursor position
+            if (inputbox->cursor_pos <= inputbox->select_anchor) {
+                inputbox->select_start = inputbox->cursor_pos;
+                inputbox->select_end = inputbox->select_anchor;
+            } else {
+                inputbox->select_start = inputbox->select_anchor;
+                inputbox->select_end = inputbox->cursor_pos;
+            }
+        } else {
+            // Clear selection
+            clear_selection(inputbox);
+        }
+        handled = true;
+    }
+    inputbox_ensure_cursor_visible(dialog, inputbox);
+    return handled;
+}
+
 /* Process dialog input and update state */
 p8_dialog_action_t p8_dialog_update(p8_dialog_t *dialog)
 {
@@ -522,38 +832,30 @@ p8_dialog_action_t p8_dialog_update(p8_dialog_t *dialog)
 
     if (dialog->focused_control >= 0) {
         // Handle input mode (for input boxes)
-        if (dialog->controls[dialog->focused_control].type == DIALOG_INPUTBOX) {
+        if (dialog->controls && dialog->focused_control < dialog->control_count &&
+            dialog->controls[dialog->focused_control].type == DIALOG_INPUTBOX) {
             p8_dialog_control_t *control = &dialog->controls[dialog->focused_control];
 
+            unsigned scancode;
             uint8_t keypress;
-            while (p8_get_next_keypress(NULL, &keypress, NULL)) {
-                // Handle Return
+            unsigned keymod;
+            bool consumed = false;
+
+            // Handle input box keypresses
+            while (p8_get_next_keypress(&scancode, &keypress, &keymod)) {
                 if (keypress == 13) {
                     if (!move_to_next_control(dialog, quick_mode)) {
                         // No more controls, accept the dialog
                         result.type = DIALOG_RESULT_ACCEPTED;
                     }
-
-                    return result;
-                }
-                // Handle printable characters
-                else if (keypress >= 32 && keypress <= 126) {
-                    int len = strlen(control->data.inputbox.buffer);
-                    if (len < control->data.inputbox.buffer_size - 1) {
-                        control->data.inputbox.buffer[len] = keypress;
-                        control->data.inputbox.buffer[len + 1] = '\0';
-                    }
-                    return result;
-                }
-                // Handle backspace
-                else if (keypress == 8) {
-                    int len = strlen(control->data.inputbox.buffer);
-                    if (len > 0) {
-                        control->data.inputbox.buffer[len - 1] = '\0';
-                    }
-                    return result;
+                    consumed = true;
+                } else {
+                    consumed = handle_input_box_keypress(dialog, &control->data.inputbox,
+                        scancode, keypress, keymod, &result) || consumed;
                 }
             }
+            if (consumed)
+                return result;
         } else {
             // Action buttons
             p8_dialog_control_t *control = &dialog->controls[dialog->focused_control];
@@ -580,19 +882,22 @@ p8_dialog_action_t p8_dialog_update(p8_dialog_t *dialog)
                         }
                         break;
 
-                    case DIALOG_BUTTONBAR:
-                        if (!quick_mode) {
-                            // Activate the focused button
-                            p8_dialog_control_t *buttonbar = &dialog->controls[dialog->focused_control];
-                            if (buttonbar->data.buttonbar.type == BUTTONBAR_CANCEL_ONLY) {
-                                result.type = DIALOG_RESULT_CANCELLED;
-                            } else if (dialog->focused_subcontrol == 0) {
-                                result.type = DIALOG_RESULT_ACCEPTED;
-                            } else {
-                                result.type = DIALOG_RESULT_CANCELLED;
-                            }
+                    case DIALOG_BUTTONBAR: {
+                        // Activate the focused button
+                        p8_dialog_control_t *buttonbar = &dialog->controls[dialog->focused_control];
+                        if (buttonbar->data.buttonbar.type == BUTTONBAR_CANCEL_ONLY) {
+                            result.type = DIALOG_RESULT_CANCELLED;
+                        } else if (dialog->focused_subcontrol == 0) {
+                            result.type = DIALOG_RESULT_ACCEPTED;
+                        } else {
+                            result.type = DIALOG_RESULT_CANCELLED;
+                        }
+                        // Return early if we've processed a button press
+                        if (buttons & (BUTTON_MASK_ACTION1 | BUTTON_MASK_ACTION2 | BUTTON_MASK_RETURN)) {
+                            return result;
                         }
                         break;
+                    }
 
                     default:
                         break;
@@ -601,8 +906,10 @@ p8_dialog_action_t p8_dialog_update(p8_dialog_t *dialog)
         }
     }
 
-    // Handle Return / (Button 1 / Space in quick mode) (before checking focused control)
-    if ((quick_mode && (buttons & (BUTTON_MASK_RETURN | BUTTON_MASK_ACTION1 | BUTTON_MASK_SPACE)))) {
+    // Handle Return / (Button 1 / Space in quick mode)
+    if ((quick_mode && (buttons & (BUTTON_MASK_RETURN | BUTTON_MASK_ACTION1 | BUTTON_MASK_SPACE))) &&
+               !(dialog->focused_control >= 0 &&
+                 dialog->controls[dialog->focused_control].type == DIALOG_BUTTONBAR)) {
         result.type = DIALOG_RESULT_ACCEPTED;
         return result;
     }
@@ -627,7 +934,7 @@ p8_dialog_action_t p8_dialog_update(p8_dialog_t *dialog)
             }
 
             // Move to previous selectable control
-            move_to_prev_control(dialog, quick_mode);
+            move_to_prev_control(dialog, false);
         }
     }
 
@@ -644,7 +951,7 @@ p8_dialog_action_t p8_dialog_update(p8_dialog_t *dialog)
             }
 
             // Move to next selectable control
-            move_to_next_control(dialog, quick_mode);
+            move_to_next_control(dialog, false);
         }
     }
 
@@ -710,10 +1017,10 @@ p8_dialog_action_t p8_dialog_update(p8_dialog_t *dialog)
 
     // LEFT/RIGHT navigate to previous/next control
     if (buttons & BUTTON_MASK_LEFT) {
-        move_to_prev_control(dialog, quick_mode);
+        move_to_prev_control(dialog, false);
     }
     if (buttons & BUTTON_MASK_RIGHT) {
-        move_to_next_control(dialog, quick_mode);
+        move_to_next_control(dialog, false);
     }
 
     return result;
@@ -756,7 +1063,10 @@ void p8_dialog_set_showing(p8_dialog_t *dialog, bool showing)
     (void)dialog;
     if (!showing) {
         if (m_dialog_nest_count > 0) {
+            /* Verify the dialog is at the top of the stack */
             assert(m_dialog_stack[m_dialog_nest_count - 1] == dialog);
+            if (m_dialog_stack[m_dialog_nest_count - 1] != dialog)
+                return;  /* Stack is corrupted */
             m_dialog_nest_count--;
             m_dialog_stack[m_dialog_nest_count] = NULL;
         }
@@ -766,6 +1076,8 @@ void p8_dialog_set_showing(p8_dialog_t *dialog, bool showing)
         p8_flip();
     } else if (showing) {
         assert(m_dialog_nest_count < MAX_DIALOG_NESTING);
+        if (m_dialog_nest_count >= MAX_DIALOG_NESTING)
+            return;  /* Dialog nesting limit exceeded */
         m_dialog_stack[m_dialog_nest_count] = dialog;
         m_dialog_nest_count++;
     }

@@ -157,14 +157,81 @@ static int process_includes(char *lua_script_out, const char *lua_script, const 
     size_t length = 0;
     char *result = lua_script_out;
 
+    // Track comment state
+    bool in_multiline_comment = false;
     const char *p = lua_script;
     while (*p) {
+        // If not in a multi-line comment, check for comment starts
+        if (!in_multiline_comment) {
+            // Check for multi-line comment first: --[[ or --[=[ etc.
+            // Multi-line comments start with -- followed by [, optionally with = signs
+            if (*p == '-' && *(p + 1) == '-') {
+                const char *check_p = p + 2;
+                // Skip any = signs
+                while (*check_p == '=')
+                    check_p++;
+                // If next char is [, it's a multi-line comment
+                if (*check_p == '[') {
+                    // Find the closing ]]
+                    const char *end_p = check_p + 1;
+                    int num_equals = check_p - (p + 2);  // Count = signs
+                    while (*end_p) {
+                        // Check for ]] or ]=] or ]==] etc.
+                        if (*end_p == ']') {
+                            int end_equals = 0;
+                            const char *eq_p = end_p + 1;
+                            while (*eq_p == '=')
+                                { end_equals++; eq_p++; }
+                            if (*eq_p == ']' && end_equals == num_equals) {
+                                p = eq_p + 1;
+                                break;
+                            }
+                        }
+                        end_p++;
+                    }
+                    if (*end_p == '\0') {
+                        // No closing found, skip to end
+                        p = end_p;
+                    }
+                    continue;
+                }
+                // Otherwise it's a single-line comment: skip to end of line
+                const char *eol = strchr(p, '\n');
+                if (eol) {
+                    p = eol + 1;
+                    continue;
+                } else {
+                    break; // End of input
+                }
+            }
+        } else {
+            // We're inside a multi-line comment, look for ]]
+            const char *end_p = p;
+            while (*end_p) {
+                if (*end_p == ']') {
+                    int end_equals = 0;
+                    const char *eq_p = end_p + 1;
+                    while (*eq_p == '=')
+                        { end_equals++; eq_p++; }
+                    if (*eq_p == ']') {
+                        in_multiline_comment = false;
+                        p = eq_p + 1;
+                        break;
+                    }
+                }
+                end_p++;
+            }
+            if (*end_p == '\0')
+                p = end_p;
+            continue;
+        }
+
         // Find end of current line
         const char *eol = strchr(p, '\n');
         int line_len = eol ? (int)(eol - p) : (int)strlen(p);
 
-        // Check for #include at start of line
-        if (strncmp(p, "#include ", 9) == 0) {
+        // Check for #include at start of line (only if not in comment)
+        if (!in_multiline_comment && strncmp(p, "#include ", 9) == 0) {
             // Extract filename (skip "#include ")
             const char *fname_start = p + 9;
             int fname_len = line_len - 9;
@@ -263,7 +330,7 @@ int parse_cart_file(const char *file_name, uint8_t *memory, uint8_t *file_buffer
         return -1;
     }
 
-    if (fread(m_file_buffer, 1, file_size, file) != (size_t)file_size) {
+    if (fread(file_buffer, 1, file_size, file) != (size_t)file_size) {
         fprintf(stderr, "Error reading file: %s\n", file_name);
         fclose(file);
         return -1;
@@ -271,10 +338,10 @@ int parse_cart_file(const char *file_name, uint8_t *memory, uint8_t *file_buffer
 
     fclose(file);
 
-    m_file_buffer[file_size] = '\0';
+    file_buffer[file_size] = '\0';
 
     const char *lua_script = NULL;
-    if (parse_cart_ram0(file_name, m_file_buffer, (int)file_size, memory, decompression_buffer, &lua_script, label_image) != 0)
+    if (parse_cart_ram0(file_name, file_buffer, (int)file_size, memory, decompression_buffer, &lua_script, label_image) != 0)
         return -1;
 
     // lua_script either points into file_buffer or decompression_buffer
@@ -325,7 +392,17 @@ static void convert_utf8_to_p8scii(uint8_t *buffer, size_t len)
                 *write_ptr++ = (uint8_t)p8_index;
                 read_ptr += symbol_length;
             } else {
-                *write_ptr++ = *read_ptr++;
+                // Skip the entire UTF-8 sequence (1-4 bytes)
+                // Determine sequence length from first byte
+                if ((*read_ptr & 0xF8) == 0xF0) {
+                    read_ptr += 4;  // 4-byte sequence
+                } else if ((*read_ptr & 0xF0) == 0xE0) {
+                    read_ptr += 3;  // 3-byte sequence
+                } else if ((*read_ptr & 0xE0) == 0xC0) {
+                    read_ptr += 2;  // 2-byte sequence
+                } else {
+                    read_ptr++;  // Invalid UTF-8, skip one byte
+                }
             }
         } else {
             *write_ptr++ = *read_ptr++;
@@ -335,7 +412,7 @@ static void convert_utf8_to_p8scii(uint8_t *buffer, size_t len)
     *write_ptr = '\0';
 }
 
-void hex_to_bytes(uint8_t *memory, char *str, int str_len, int *write_length)
+void hex_to_bytes(uint8_t *memory, int mem_len, char *str, int str_len, int *write_length)
 {
     *write_length = 0;
 
@@ -348,7 +425,7 @@ void hex_to_bytes(uint8_t *memory, char *str, int str_len, int *write_length)
     int read_offset = 0;
     int write_offset = 0;
 
-    while (read_offset < str_len)
+    while (read_offset < str_len && write_offset < mem_len)
     {
         if (!isxdigit(str[read_offset]))
         {
@@ -365,7 +442,7 @@ void hex_to_bytes(uint8_t *memory, char *str, int str_len, int *write_length)
     *write_length = write_offset;
 }
 
-void read_sfx(uint8_t *dest, uint8_t *src, int read_length, int *write_length)
+void read_sfx(uint8_t *dest, int dest_length, uint8_t *src, int read_length, int *write_length)
 {
     int read_offset = 0;
     int write_offset = 0;
@@ -404,12 +481,18 @@ void read_sfx(uint8_t *dest, uint8_t *src, int read_length, int *write_length)
                              ((note2_waveform > 7 ? note2_waveform - 8 : note2_waveform) << 6) |
                              note2_pitch;
 
+            if (write_offset + 4 > dest_length)
+                break;
+
             dest[write_offset++] = note1;
             dest[write_offset++] = note1 >> 8;
             dest[write_offset++] = note2;
             dest[write_offset++] = note2 >> 8;
         }
 
+        if (write_offset + 4 > dest_length) {
+            break;
+        }
         dest[write_offset++] = byte_0; // Editor Mode
         dest[write_offset++] = byte_1; // Speed
         dest[write_offset++] = byte_2; // Loop Start
@@ -419,12 +502,11 @@ void read_sfx(uint8_t *dest, uint8_t *src, int read_length, int *write_length)
     *write_length = write_offset;
 }
 
-void read_music(uint8_t *dest, uint8_t *src, int read_length, int *write_length)
+void read_music(uint8_t *dest, int dest_length, uint8_t *src, int read_length, int *write_length)
 {
     int read_offset = 0;
     int write_offset = 0;
-
-    while (read_offset < read_length)
+    while (read_offset < read_length && write_offset + 4 <= dest_length)
     {
         uint8_t flags_byte = src[read_offset++];
         uint8_t effect_id1 = src[read_offset++];
@@ -444,7 +526,7 @@ void read_music(uint8_t *dest, uint8_t *src, int read_length, int *write_length)
 
 static int parse_p8_ram(const char *file_name, uint8_t *buffer, int size, uint8_t *memory, uint8_t *decompression_buffer, const char **lua_script, uint8_t *label_image)
 {
-    static uint8_t tmpbuf[180];
+    uint8_t tmpbuf[180];
     char *line;
     char *rest = (char *)buffer;
     int lua_start = 0, lua_end = 0;
@@ -453,6 +535,8 @@ static int parse_p8_ram(const char *file_name, uint8_t *buffer, int size, uint8_
     int write_offset = 0;
     int read_length = 0;
     int write_length = 0;
+    int music_length = 0;
+    bool in_header = true;
     bool seen_ident = false;
 
     if (lua_script)
@@ -471,7 +555,7 @@ static int parse_p8_ram(const char *file_name, uint8_t *buffer, int size, uint8_
 
         file_offset += line_length;
 
-        for (int i = P8TYPE_IDENT; i < P8TYPE_COUNT; i++)
+        for (int i = in_header ? P8TYPE_IDENT : P8TYPE_LUA; i < P8TYPE_COUNT; i++)
         {
             if (strncmp(line, m_p8_name[i], strlen(m_p8_name[i])) == 0)
             {
@@ -484,6 +568,8 @@ static int parse_p8_ram(const char *file_name, uint8_t *buffer, int size, uint8_
 
         if (token_found)
         {
+            if (p8_type >= P8TYPE_LUA)
+                in_header = false;
             if (p8_type == P8TYPE_LUA)
             {
                 lua_start = file_offset;
@@ -509,7 +595,7 @@ static int parse_p8_ram(const char *file_name, uint8_t *buffer, int size, uint8_
         case P8TYPE_MAP:
         {
             uint8_t *write_mem = memory + m_p8_mem_offset[p8_type] + write_offset;
-            hex_to_bytes(write_mem, line, line_length-1, &write_length);
+            hex_to_bytes(write_mem, memory + MEMORY_SIZE - write_mem, line, line_length-1, &write_length);
 
             write_offset += write_length;
             break;
@@ -535,10 +621,12 @@ static int parse_p8_ram(const char *file_name, uint8_t *buffer, int size, uint8_
         {
             uint8_t *write_mem = memory + MEMORY_SFX + write_offset;
 
-            hex_to_bytes(tmpbuf, line, line_length-1, &read_length);
+            hex_to_bytes(tmpbuf, sizeof(tmpbuf),line, line_length-1, &read_length);
 
             if (read_length > 0)
-                read_sfx(write_mem, tmpbuf, read_length, &write_length);
+                read_sfx(write_mem, memory + MEMORY_SIZE - write_mem, tmpbuf, read_length, &write_length);
+            else
+                write_length = 0;
 
             write_offset += write_length;
             break;
@@ -547,12 +635,15 @@ static int parse_p8_ram(const char *file_name, uint8_t *buffer, int size, uint8_
         {
             uint8_t *write_mem = memory + MEMORY_MUSIC + write_offset;
 
-            hex_to_bytes(tmpbuf, line, line_length-1, &read_length);
+            hex_to_bytes(tmpbuf, sizeof(tmpbuf), line, line_length-1, &read_length);
 
             if (read_length > 0)
-                read_music(write_mem, tmpbuf, read_length, &write_length);
+                read_music(write_mem, memory + MEMORY_SIZE - write_mem, tmpbuf, read_length, &write_length);
+            else
+                write_length = 0;
 
             write_offset += write_length;
+            music_length += write_length;
             break;
         }
         }
@@ -569,12 +660,26 @@ static int parse_p8_ram(const char *file_name, uint8_t *buffer, int size, uint8_
     for (int i = MEMORY_SPRITES_MAP; i < MEMORY_SPRITES_MAP + MEMORY_SPRITES_MAP_SIZE; i++)
         memory[i] = NIBBLE_SWAP(memory[i]);
 
-    buffer[lua_end] = '\0';
+    /* Fill missing music patterns with 0x41 0x42 0x43 0x44 */
+    if (music_length < MEMORY_MUSIC_SIZE) {
+        uint8_t *write_mem = memory + MEMORY_MUSIC + music_length;
+        while (write_mem < memory + MEMORY_MUSIC + MEMORY_MUSIC_SIZE) {
+            *write_mem++ = 0x41;
+            *write_mem++ = 0x42;
+            *write_mem++ = 0x43;
+            *write_mem++ = 0x44;
+        }
+    }
 
-    convert_utf8_to_p8scii(&buffer[lua_start], lua_end - lua_start);
-
-    if (lua_script && lua_start)
-        *lua_script = (const char *) &buffer[lua_start];
+    // Bounds check for lua_start and lua_end
+    if (lua_start > 0 && lua_start < size && lua_end >= lua_start && lua_end <= size) {
+        buffer[lua_end] = '\0';
+        convert_utf8_to_p8scii(&buffer[lua_start], lua_end - lua_start);
+        if (lua_script)
+            *lua_script = (const char *) &buffer[lua_start];
+    } else if (lua_script) {
+        *lua_script = NULL;
+    }
 
     return 0;
 }

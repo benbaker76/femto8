@@ -176,9 +176,13 @@ OP_GETUPVAL,/*	A B	R(A) := UpValue[B]				*/
 OP_GETTABUP,/*	A B C	R(A) := UpValue[B][RK(C)]			*/
 OP_GETTABLE,/*	A B C	R(A) := R(B)[RK(C)]				*/
 
+OP_GETGLOBALTABLE,/*	A	B R(A) := registry[LUA_RIDX_GLOBALS][RK(B)]		*/
+
 OP_SETTABUP,/*	A B C	UpValue[A][RK(B)] := RK(C)			*/
 OP_SETUPVAL,/*	A B	UpValue[B] := R(A)				*/
 OP_SETTABLE,/*	A B C	R(A)[RK(B)] := RK(C)				*/
+
+OP_SETGLOBALTABLE,/*	A B	registry[LUA_RIDX_GLOBALS][RK(B)] := R(A)	*/
 
 OP_NEWTABLE,/*	A B C	R(A) := {} (size = B,C)				*/
 

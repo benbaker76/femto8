@@ -876,6 +876,37 @@ function test_box_drawing()
     end)
 end
 
+function test_return()
+    test_case("width return", function()
+        local w = print("a")
+        check_eq(w, 4)
+    end)
+
+    test_case("height return", function()
+        local w,h = print("a")
+        check_eq(w, 4)
+        check_eq(h, 6)
+    end)
+
+    test_case("multi-line", function()
+        local w,h = print("a\nb")
+        check_eq(w, 4)
+        check_eq(h, 12)
+    end)
+
+    test_case("ragged line", function()
+        local w,h = print("a\nbbb\nc")
+        check_eq(w, 12)
+        check_eq(h, 18)
+    end)
+
+    test_case("ragged line with offset", function()
+        local w,h = print("a\nbbb\nc", 30, 40)
+        check_eq(w, 42)
+        check_eq(h, 58)
+    end)
+end
+
 test_suite("basic_control_codes", test_basic_control_codes)
 test_suite("color_control", test_color_control)
 test_suite("cursor_control", test_cursor_control)
@@ -891,5 +922,6 @@ test_suite("combined_features", test_combined_features)
 test_suite("error_handling", test_error_handling)
 test_suite("bubble_text", test_bubble_text)
 test_suite("box_drawing", test_box_drawing)
+test_suite("return", test_return)
 
 summary()

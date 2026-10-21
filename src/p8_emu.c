@@ -59,7 +59,8 @@ static inline int color_index(uint8_t c)
 }
 
 static int p8_init_lcd(void);
-static int p8_main_loop();
+static int p8_main_loop(void);
+static void p8_reset_cart_and_screen(void);
 
 uint8_t *m_memory = NULL;
 uint8_t *m_cart_memory = NULL;
@@ -73,6 +74,8 @@ char    *m_temp_lua_script  = NULL;
 unsigned m_fps = 30;
 unsigned m_actual_fps = 0;
 unsigned m_frames = 0;
+bool m_no_frame_delay = false;
+bool m_no_frame_skip = false;
 
 p8_clock_t m_start_time;
 
@@ -81,10 +84,14 @@ static bool restart;
 static bool cart_running = false;
 static bool lua_running = false;
 static bool quit_requested = false;
+static bool in_main_loop = false;
 
 char m_current_cart_dir[PATH_MAX];
 char m_current_cart_file_name[PATH_MAX];
+char m_real_current_cart_file_name[PATH_MAX];
 char m_breadcrumb[256];
+char m_breadcrumb_cart_file_name[PATH_MAX];
+char m_bbs_cart_id[256];
 char m_param_string[256];
 char m_clipboard[1024];
 
@@ -173,20 +180,40 @@ int p8_init()
     m_window = SDL_CreateWindow("femto-8", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
                                SCREEN_WIDTH, SCREEN_HEIGHT, SDL_WINDOW_SHOWN);
     if (!m_window) {
-        printf("Error creating SDL window.\n");
+        fprintf(stderr, "Error creating SDL window.\n");
         return 1;
     }
     m_renderer = SDL_CreateRenderer(m_window, -1, SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
+    if (!m_renderer)
+        m_renderer = SDL_CreateRenderer(m_window, -1, 0);
     if (!m_renderer) {
         SDL_DestroyWindow(m_window);
         m_window = NULL;
-        printf("Error creating SDL renderer.\n");
+        fprintf(stderr, "Error creating SDL renderer.\n");
         return 1;
     }
 
     /* Texture at native P8 resolution; we'll update it from the output surface. */
-    m_texture = SDL_CreateTexture(m_renderer, SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STREAMING, P8_WIDTH, P8_HEIGHT);
     m_output = SDL_CreateRGBSurfaceWithFormat(0, P8_WIDTH, P8_HEIGHT, 32, SDL_PIXELFORMAT_ARGB8888);
+    if (!m_output) {
+        SDL_DestroyRenderer(m_renderer);
+        m_renderer = NULL;
+        SDL_DestroyWindow(m_window);
+        m_window = NULL;
+        fprintf(stderr, "Error creating SDL output surface.\n");
+        return 1;
+    }
+    m_texture = SDL_CreateTexture(m_renderer, SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STREAMING, P8_WIDTH, P8_HEIGHT);
+    if (!m_texture) {
+        SDL_FreeSurface(m_output);
+        m_output = NULL;
+        SDL_DestroyRenderer(m_renderer);
+        m_renderer = NULL;
+        SDL_DestroyWindow(m_window);
+        m_window = NULL;
+        fprintf(stderr, "Error creating SDL texture.\n");
+        return 1;
+    }
     m_format = m_output->format;
 
     SDL_SetWindowTitle(m_window, "femto-8");
@@ -216,6 +243,14 @@ int p8_init()
         free(m_decompression_buffer);
         free(m_lua_script);
         free(m_temp_lua_script);
+        m_memory = NULL;
+        m_cart_memory = NULL;
+        m_temp_cart_memory = NULL;
+        m_overlay_memory = NULL;
+        m_file_buffer = NULL;
+        m_decompression_buffer = NULL;
+        m_lua_script = NULL;
+        m_temp_lua_script = NULL;
         return 1;
     }
 
@@ -223,6 +258,9 @@ int p8_init()
     memset(m_cart_memory, 0, CART_MEMORY_SIZE);
     memset(m_overlay_memory, (OVERLAY_TRANSPARENT_COLOR << 4) | OVERLAY_TRANSPARENT_COLOR, MEMORY_SCREEN_SIZE);
     m_lua_script[0] = '\0';
+    m_real_current_cart_file_name[0] = '\0';
+    m_breadcrumb_cart_file_name[0] = '\0';
+    m_breadcrumb[0] = '\0';
 
 #ifdef ENABLE_AUDIO
     audio_init();
@@ -279,18 +317,35 @@ int p8_load(const char *file_name, const char *param, const char *bbs_cart_id, c
     p8_show_io_icon(true);
 
     printf("Loading %s\n", file_name);
-    if (parse_cart_file(file_name, m_cart_memory, m_file_buffer, m_decompression_buffer, m_lua_script, NULL) != 0) {
+    memset(m_temp_cart_memory, 0, CART_MEMORY_SIZE);
+    if (parse_cart_file(file_name, m_temp_cart_memory, m_file_buffer, m_decompression_buffer, m_lua_script, NULL) != 0) {
         p8_show_io_icon(false);
         return -1;
     }
 
+    memcpy(m_cart_memory, m_temp_cart_memory, CART_MEMORY_SIZE);
     strtcpy(m_param_string, param ? param : "", sizeof(m_param_string));
     strtcpy(m_breadcrumb, breadcrumb ? breadcrumb : "", sizeof(m_breadcrumb));
+    strtcpy(m_breadcrumb_cart_file_name, m_real_current_cart_file_name, sizeof(m_breadcrumb_cart_file_name));
 
-    strtcpy(m_current_cart_file_name, file_name, sizeof(m_current_cart_file_name));
-    strtcpy(m_current_cart_dir, ".", sizeof(m_current_cart_dir));
+    strtcpy(m_real_current_cart_file_name, file_name, sizeof(m_real_current_cart_file_name));
+    if (bbs_cart_id) {
+        m_current_cart_file_name[0] = '\0';
+    } else {
+        strtcpy(m_current_cart_file_name, file_name, sizeof(m_current_cart_file_name));
+        const char *last_slash = strrchr(file_name, '/');
+        if (last_slash) {
+            size_t dir_len = last_slash - file_name;
+            if (dir_len >= sizeof(m_current_cart_dir))
+                dir_len = sizeof(m_current_cart_dir) - 1;
+            memcpy(m_current_cart_dir, file_name, dir_len);
+            m_current_cart_dir[dir_len] = '\0';
+        } else {
+            strtcpy(m_current_cart_dir, ".", sizeof(m_current_cart_dir));
+        }
+    }
 
-    if (cart_running)
+    if (!cart_running)
         p8_reset_cart();
 
     p8_show_io_icon(false);
@@ -322,18 +377,21 @@ int p8_run(void)
         // should not be reachable
         abort();
     }
-    assert(!cart_running);
 
     if (setjmp(jmpbuf_restart)) {
         cart_running = false;
-        if (!restart)
+        if (!restart) {
+            p8_reset_cart_and_screen();
             return 0;
+        }
+        restart = false;
     }
-    restart = false;
+    assert(!lua_running && !cart_running);
 
-    p8_reset_cart();
+    p8_reset_cart_and_screen();
 
     cart_running = true;
+    m_start_time = p8_clock();
 
     int ret = lua_init_script(m_current_cart_file_name, m_lua_script);
     if (ret != 0) {
@@ -359,14 +417,19 @@ int p8_run(void)
 
     cart_running = false;
 
-    p8_reset_cart();
+    p8_reset_cart_and_screen();
 
     return 0;
 }
 
 int p8_shutdown()
 {
+    if (!m_initialized)
+        return 0;
+
+#ifdef ENABLE_AUDIO
     audio_close();
+#endif
 
     lua_shutdown_api();
 
@@ -793,9 +856,12 @@ void p8_flip()
     unsigned elapsed_time = p8_elapsed_time();
     const unsigned target_frame_time = 1000 / m_fps;
     int sleep_time = target_frame_time - elapsed_time;
-    if (sleep_time < 0)
+    if (sleep_time < 0 || m_no_frame_delay)
         sleep_time = 0;
-    m_actual_fps = 1000 / (elapsed_time + sleep_time);
+    if (elapsed_time + sleep_time > 0)
+        m_actual_fps = 1000 / (elapsed_time + sleep_time);
+    else
+        m_actual_fps = 9999;
 
     if (sleep_time > 0)
         p8_sleep(sleep_time);
@@ -805,28 +871,46 @@ void p8_flip()
     p8_post_flip();
 }
 
+void p8_check_for_next_frame()
+{
+    unsigned elapsed_time = p8_elapsed_time();
+    const unsigned target_frame_time = 1000 / m_fps;
+    int remaining_time = target_frame_time - elapsed_time;
+    if (remaining_time < 0) {
+        if (in_main_loop)
+            p8_check_for_pause();
+        else
+            p8_flip();
+    }
+}
+
 static int p8_main_loop()
 {
     int time_debt = 0;
     unsigned updates_since_last_flip = 0;
 
+    in_main_loop = true;
     for (;;)
     {
         const int target_frame_time = 1000 / m_fps;
 
         int ret = lua_update();
-        if (ret != 0)
+        if (ret != 0) {
+            in_main_loop = false;
             return ret;
+        }
         updates_since_last_flip++;
 
         unsigned elapsed = p8_elapsed_time();
 
         time_debt += elapsed;
 
-        if (time_debt < target_frame_time || updates_since_last_flip >= m_fps) {
+        if (time_debt < target_frame_time || updates_since_last_flip >= m_fps || m_no_frame_skip) {
             ret = lua_draw();
-            if (ret != 0)
+            if (ret != 0) {
+                in_main_loop = false;
                 return ret;
+            }
             time_debt += p8_elapsed_time() - elapsed;
 
             p8_flip();
@@ -924,10 +1008,14 @@ void p8_reset(void)
 
 static void p8_common_reset_cart()
 {
-    assert(!cart_running);
     p8_close_cartdata();
-    lua_shutdown_api();
-    lua_load_api();
+#ifdef ENABLE_AUDIO
+    audio_stop();
+#endif
+    if (!lua_running) {
+        lua_shutdown_api();
+        lua_load_api();
+    }
     p8_reset();
     m_frames = 0;
     p8_reset_input();
@@ -938,6 +1026,7 @@ void p8_new_cart(void)
 {
     assert(!cart_running);
     m_current_cart_file_name[0] = '\0';
+    m_real_current_cart_file_name[0] = '\0';
     memset(m_cart_memory, 0, CART_MEMORY_SIZE);
     memset(m_memory, 0, CART_MEMORY_SIZE);
     p8_common_reset_cart();
@@ -945,9 +1034,16 @@ void p8_new_cart(void)
 
 void p8_reset_cart(void)
 {
-    assert(!cart_running);
     memcpy(m_memory, m_cart_memory, CART_MEMORY_SIZE);
     p8_common_reset_cart();
+}
+
+static void p8_reset_cart_and_screen(void)
+{
+    p8_reset_cart();
+    memset(m_memory + MEMORY_SCREEN, 0, MEMORY_SCREEN_SIZE);
+    m_memory[MEMORY_CURSOR] = 0;
+    m_memory[MEMORY_CURSOR + 1] = 0;
 }
 
 void __attribute__ ((noreturn)) p8_abort()
@@ -982,43 +1078,66 @@ bool p8_is_quit_requested(void)
 
 int p8_make_full_path(char *ret, int ret_size, const char *dir_path, const char *file_name)
 {
-    if (!ret || !dir_path || !file_name) {
+    if (!ret || !dir_path || !file_name || ret_size < 3) {
         errno = EINVAL;
         return -1;
     }
 
-    size_t dir_len = strlen(dir_path);
-    size_t file_len = strlen(file_name);
-    if (dir_len > PATH_MAX || file_len > PATH_MAX || dir_len + 1 + file_len > PATH_MAX)
-        return -1;
-
     if (strcmp(file_name, "..") == 0) {
-        strcpy(ret, dir_path);
-        char *slash = strrchr(ret, '/');
-        if (!slash)
-            slash = strrchr(ret, '\\');
-        if (slash) {
-            if (slash[1] == '\0' && ret[1] == ':' && slash==ret+2) {
+        if (strcmp(dir_path, ".") == 0) {
+            ret[0] = '.';
+            ret[1] = '.';
+            ret[2] = '\0';
+        } else {
+            char *slash = strrchr(dir_path, '/');
+            if (!slash)
+                slash = strrchr(dir_path, '\\');
+            if ((slash && strcmp(slash, "..") == 0) ||
+                (!slash && strcmp(dir_path, "..") == 0)) {
+                int written = snprintf(ret, ret_size, "%s/%s", dir_path, file_name);
+                if (written < 0 || (size_t)written >= (size_t)ret_size)
+                    return -1;
+            } else if (slash && slash[1] == '\0' && dir_path[1] == ':' && slash==dir_path+2) {
                 // If going up a directory from the root of a drive,
                 // go up to the list of drives rather than the current
                 // directory of the drive.
                 // i.e. "C:\" -> "" rather than "C:\" -> "C:"
                 ret[0] = '\0';
-            } else if (ret[1] == ':' && slash==ret+2) {
+            } else if (slash && dir_path[1] == ':' && slash==dir_path+2) {
                 // If going up to the root of the drive don't erase
                 // the trailing slash.
-                slash[1] = '\0';
+                if (slash - dir_path + 2 > (size_t)ret_size) {
+                    errno = ENAMETOOLONG;
+                    return -1;
+                }
+                memcpy(ret, dir_path, slash + 1 - dir_path);
+                ret[slash + 1 - dir_path] = '\0';
+            } else if (slash && slash==dir_path) {
+                ret[0] = '/';
+                ret[1] = '\0';
+            } else if (slash) {
+                // Go up one directory
+                if (slash - dir_path + 1 > (size_t)ret_size) {
+                    errno = ENAMETOOLONG;
+                    return -1;
+                }
+                memcpy(ret, dir_path, slash - dir_path);
+                ret[slash - dir_path] = '\0';
+            } else if (dir_path[0] == '\0') {
+                ret[0] = '\0';
             } else {
-                slash[0] = '\0';
+                ret[0] = '.';
+                ret[1] = '\0';
             }
         }
+    } else if (dir_path[0] == '\0' || strcmp(dir_path, ".") == 0) {
+        if (strtcpy(ret, file_name, ret_size) == -1)
+            return -1;
     } else {
-        strcpy(ret, dir_path);
-        if (dir_len > 0 &&
-            ret[dir_len - 1] != '/' &&
-            ret[dir_len - 1] != '\\')
-            strcat(ret, "/");
-        strcat(ret, file_name);
+        // Build full path with dir/file
+        int written = snprintf(ret, ret_size, "%s/%s", dir_path, file_name);
+        if (written < 0 || (size_t)written >= (size_t)ret_size)
+            return -1;
     }
     return 0;
 }
@@ -1112,21 +1231,101 @@ void p8_show_io_icon(bool show)
     p8_flip();
 }
 
+/* Wraps text into multiple lines, breaking at spaces when possible.
+ * Returns the number of lines (1 to max_lines).
+ * Each output line is null-terminated.
+ * output_lines is assumed to be: char output_lines[max_lines][max_chars_per_line+1]
+ */
+int wrap_text(const char *text, int max_lines, int max_chars_per_line, char *output_lines)
+{
+    int text_len = (int)strlen(text);
+    int output_line_count = 0;
+    int text_pos = 0;
+
+    /* Handle empty string case */
+    if (text_len == 0) {
+        output_lines[0] = '\0';
+        return 1;
+    }
+
+    while (text_pos < text_len && output_line_count < max_lines) {
+        char *line = output_lines + (output_line_count * (max_chars_per_line + 1));
+        int line_len = 0;
+        int space_pos = -1;
+
+        /* Find where to break: look for space within max_chars_per_line */
+        while (text_pos + line_len < text_len && line_len < max_chars_per_line) {
+            if (text[text_pos + line_len] == ' ') {
+                space_pos = line_len;
+            }
+            line_len++;
+        }
+
+        /* If text needs more lines than max_lines, truncate */
+        if (output_line_count >= max_lines - 1 && text_pos + line_len < text_len) {
+            /* Copy remaining text truncated to max_chars_per_line */
+            int copy_len = max_chars_per_line;
+            if (copy_len > text_len - text_pos)
+                copy_len = text_len - text_pos;
+            memcpy(line, text + text_pos, copy_len);
+            line[copy_len] = '\0';
+            output_line_count++;
+            break;
+        }
+
+        /* If we reached end of text */
+        if (text_pos + line_len >= text_len) {
+            int copy_len = text_len - text_pos;
+            memcpy(line, text + text_pos, copy_len);
+            line[copy_len] = '\0';
+            output_line_count++;
+            break;
+        }
+
+        /* We hit max_chars_per_line boundary */
+        if (space_pos >= 0) {
+            /* Break at last space */
+            memcpy(line, text + text_pos, space_pos);
+            line[space_pos] = '\0';
+            /* Skip the space */
+            text_pos += space_pos + 1;
+        } else {
+            /* Force break after max_chars_per_line */
+            memcpy(line, text + text_pos, max_chars_per_line);
+            line[max_chars_per_line] = '\0';
+            text_pos += max_chars_per_line;
+        }
+
+        output_line_count++;
+    }
+
+    return output_line_count;
+}
+
 void p8_show_error_dialog(const char **lines, int line_count, p8_error_severity_t severity)
 {
     assert(line_count <= 4);
 
-    int control_count = line_count + 2;
-    p8_dialog_control_t controls[6];
+    char wrapped_lines[16][29];
+    p8_dialog_control_t controls[18];
+    int control_count = 0;
 
-    /* Add label controls for each line */
+    /* Add label controls for each line, wrapping if necessary */
     for (int i = 0; i < line_count; i++) {
-        controls[i] = (p8_dialog_control_t)DIALOG_LABEL(lines[i]);
+        if (!lines[i][0])
+            continue;
+        fprintf(stderr, "%s\n", lines[i]);
+
+        int num_wrapped = wrap_text(lines[i], 16 - control_count, 28, &wrapped_lines[control_count][0]);
+        for (int j = 0; j < num_wrapped; j++) {
+            controls[control_count] = (p8_dialog_control_t)DIALOG_LABEL(wrapped_lines[control_count]);
+            control_count++;
+        }
     }
 
     /* Add spacing and button bar */
-    controls[line_count] = (p8_dialog_control_t)DIALOG_SPACING();
-    controls[line_count + 1] = (p8_dialog_control_t)DIALOG_BUTTONBAR_OK_ONLY();
+    controls[control_count++] = (p8_dialog_control_t)DIALOG_SPACING();
+    controls[control_count++] = (p8_dialog_control_t)DIALOG_BUTTONBAR_OK_ONLY();
 
     p8_dialog_t error_dialog;
     const char *title = (severity == P8_ERROR_WARNING) ? "warning" : "error";
@@ -1157,12 +1356,44 @@ void p8_show_lua_error_dialog(void)
 {
     const char *err_type;
     char err_msg[256];
+    char position[33];
+    int lineno = 0;
     err_msg[0] = '\0';
-    lua_get_error(&err_type, err_msg, sizeof(err_msg), NULL, NULL);
+    lua_get_error(&err_type, err_msg, sizeof(err_msg), NULL, &lineno);
+    snprintf(position, sizeof(position), "at line %d", lineno);
 
     const char *lines[] = {
         err_type ? err_type : "",
-        err_msg
+        err_msg,
+        position
     };
-    p8_show_error_dialog(lines, 2, P8_ERROR_ERROR);
+    p8_show_error_dialog(lines, 3, P8_ERROR_ERROR);
+}
+
+
+/* Clipboard functions */
+void p8_clipboard_set(const char *text)
+{
+#if defined(SDL)
+    SDL_SetClipboardText(text);
+#else
+    strtcpy(m_clipboard, text, sizeof(m_clipboard));
+#endif
+}
+
+char *p8_clipboard_get(void)
+{
+    char *text;
+#if defined(SDL)
+    char *clip_text = SDL_GetClipboardText();
+    if (clip_text) {
+        text = strdup(clip_text);
+        SDL_free(clip_text);
+    } else {
+        text = strdup("");
+    }
+#else
+    text = strdup(m_clipboard);
+#endif
+    return text;
 }

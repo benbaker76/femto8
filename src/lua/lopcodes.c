@@ -23,9 +23,11 @@ LUAI_DDEF const char *const luaP_opnames[NUM_OPCODES+1] = {
   "GETUPVAL",
   "GETTABUP",
   "GETTABLE",
+  "GETGLOBALTABLE",
   "SETTABUP",
   "SETUPVAL",
   "SETTABLE",
+  "SETGLOBALTABLE",
   "NEWTABLE",
   "SELF",
   "ADD",
@@ -84,9 +86,11 @@ LUAI_DDEF const lu_byte luaP_opmodes[NUM_OPCODES] = {
  ,opmode(0, 1, OpArgU, OpArgN, iABC)		/* OP_GETUPVAL */
  ,opmode(0, 1, OpArgU, OpArgK, iABC)		/* OP_GETTABUP */
  ,opmode(0, 1, OpArgR, OpArgK, iABC)		/* OP_GETTABLE */
+ ,opmode(0, 1, OpArgK, OpArgN, iABC)		/* OP_GETGLOBALTABLE */
  ,opmode(0, 0, OpArgK, OpArgK, iABC)		/* OP_SETTABUP */
  ,opmode(0, 0, OpArgU, OpArgN, iABC)		/* OP_SETUPVAL */
  ,opmode(0, 0, OpArgK, OpArgK, iABC)		/* OP_SETTABLE */
+ ,opmode(0, 0, OpArgK, OpArgN, iABC)		/* OP_SETGLOBALTABLE */
  ,opmode(0, 1, OpArgU, OpArgU, iABC)		/* OP_NEWTABLE */
  ,opmode(0, 1, OpArgR, OpArgK, iABC)		/* OP_SELF */
  ,opmode(0, 1, OpArgK, OpArgK, iABC)		/* OP_ADD */

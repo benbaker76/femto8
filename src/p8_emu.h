@@ -202,9 +202,9 @@
 
 #define OVERLAY_TRANSPARENT_COLOR 0
 
-#define FILE_BUFFER_SIZE          (128 * 1024)
-#define DECOMPRESSION_BUFFER_SIZE (128 * 1024)
-#define LUA_SCRIPT_SIZE           (128 * 1024)
+#define FILE_BUFFER_SIZE          (96 * 1024)
+#define DECOMPRESSION_BUFFER_SIZE (96 * 1024)
+#define LUA_SCRIPT_SIZE           (96 * 1024)
 
 enum
 {
@@ -235,6 +235,8 @@ typedef enum {
 extern unsigned m_fps;
 extern unsigned m_actual_fps;
 extern unsigned m_frames;
+extern bool m_no_frame_delay;
+extern bool m_no_frame_skip;
 
 #ifdef OS_FREERTOS
 typedef long p8_clock_t;
@@ -258,13 +260,19 @@ extern char *m_font;
 extern char m_current_cart_dir[PATH_MAX];
 extern char m_current_cart_file_name[PATH_MAX];
 extern char m_breadcrumb[256];
+extern char m_breadcrumb_cart_file_name[PATH_MAX];
+extern char m_bbs_cart_id[256];
 extern char m_clipboard[1024];
 extern char m_param_string[256];
 
 extern bool m_load_available;
 
+/* Clipboard functions */
+void p8_clipboard_set(const char *text);
+char *p8_clipboard_get(void);
+
 void __attribute__ ((noreturn)) p8_abort();
-void p8_quit();
+void p8_check_for_next_frame(void);
 void p8_check_for_pause(void);
 p8_clock_t p8_clock(void);
 unsigned p8_clock_ms(p8_clock_t clocks);
@@ -285,6 +293,7 @@ int p8_make_full_path(char *ret, int ret_size, const char *dir_path, const char 
 void p8_new_cart(void);
 bool p8_open_cartdata(const char *id);
 void p8_pump_events(void);
+void p8_quit(void);
 int p8_shutdown(void);
 void p8_render();
 void p8_reset_cart(void);
@@ -295,6 +304,7 @@ void __attribute__ ((noreturn)) p8_restart();
 void p8_seed_rng_state(uint32_t seed);
 void p8_set_skip_main_loop_if_no_callbacks(bool skip);
 void p8_show_error_dialog(const char **lines, int line_count, p8_error_severity_t severity);
+
 void p8_show_io_icon(bool show);
 void p8_show_lua_error_dialog(void);
 void p8_show_version_dialog(void);

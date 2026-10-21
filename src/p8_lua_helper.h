@@ -222,13 +222,15 @@ static inline void draw_ovalfill_segment(int xc, int yc, int x, int y, int r, in
 
 static inline bool fillp_invert_enabled(int color)
 {
-    return (m_memory[MEMORY_COLOR_FILLP] & 0x3) == 0x3 && (color & 0x1800) == 0x1800;
+    return (m_memory[MEMORY_COLOR_FILLP] & 0x2) == 0x2 && (color & 0x1800) == 0x1800;
 }
 
 static inline bool point_in_oval(int x, int y, int xc, int yc, int xr, int yr)
 {
-    if (xr <= 0 || yr <= 0)
+    if (xr < 0 || yr < 0)
         return false;
+    else if (xr == 0 || yr == 0)
+        return x - xc == 0 && y - yc == 0;
 
     int dx = x - xc;
     int dy = y - yc;
@@ -240,17 +242,22 @@ static inline bool point_in_oval(int x, int y, int xc, int yc, int xr, int yr)
 static inline void draw_ovalfill_mask(int xc, int yc, int xr, int yr, int col, int fillp, int mask)
 {
     int r = MAX(xr, yr);
-    if (r <= 0)
+    if (r == 0 && !fillp_invert_enabled(col)) {
+        pixel_set(xc, yc, col, fillp, DRAWTYPE_GRAPHIC);
         return;
+    } else if (r < 0) {
+        return;
+    }
     if (!fillp_invert_enabled(col) && is_bbox_offscreen(xc - xr, yc - yr, xc + xr, yc + yr)) return;
 
     if (fillp_invert_enabled(col)) {
-        int left = xc - xr;
-        int top = yc - yr;
-        int right = xc + xr;
-        int bottom = yc + yr;
-        for (int y = top; y <= bottom; y++) {
-            for (int x = left; x <= right; x++) {
+        int cx, cy;
+        camera_get(&cx, &cy);
+        int clip_x0, clip_y0, clip_x1, clip_y1;
+        clip_get(&clip_x0, &clip_y0, &clip_x1, &clip_y1);
+
+        for (int y = clip_y0+cx; y < clip_y1+cy; y++) {
+            for (int x = clip_x0+cx; x < clip_x1+cy; x++) {
                 if (!point_in_oval(x, y, xc, yc, xr, yr))
                     pixel_set(x, y, col, fillp, DRAWTYPE_GRAPHIC);
             }
@@ -312,10 +319,10 @@ static inline void draw_rectfill(int x0, int y0, int x1, int y1, int col, int fi
         int clip_x0, clip_y0, clip_x1, clip_y1;
         clip_get(&clip_x0, &clip_y0, &clip_x1, &clip_y1);
 
-        for (int y = clip_y0; y < clip_y1; y++) {
-            for (int x = clip_x0; x < clip_x1; x++) {
+        for (int y = clip_y0+cx; y < clip_y1+cy; y++) {
+            for (int x = clip_x0+cx; x < clip_x1+cy; x++) {
                 if (!point_in_rect(x, y, x0, y0, x1, y1))
-                    pixel_set(x + cx, y + cy, col, fillp, DRAWTYPE_GRAPHIC);
+                    pixel_set(x, y, col, fillp, DRAWTYPE_GRAPHIC);
             }
         }
         return;
@@ -530,23 +537,24 @@ static inline int gfx_addr_remap(int location)
 
 static inline uint8_t gfx_addr_get(int x, int y, uint8_t *memory, int location, int size)
 {
-    if (x < 0 || y < 0 || x > P8_WIDTH || y > P8_HEIGHT)
+    if (x < 0 || y < 0 || x >= P8_WIDTH || y >= P8_HEIGHT)
         return 0;
-    int offset = gfx_addr_remap(location) + (x >> 1) + y * 64;
+    int offset = location + (x >> 1) + y * 64;
 
     return IS_EVEN(x) ? memory[offset] & 0xF : memory[offset] >> 4;
 }
 
 static inline uint8_t gfx_get(int x, int y, int location, int size)
 {
-    if (x < 0 || y < 0 || x > P8_WIDTH || y > P8_HEIGHT)
+    if (x < 0 || y < 0 || x >= P8_WIDTH || y >= P8_HEIGHT)
         return 0;
+    location = gfx_addr_remap(location);
     return gfx_addr_get(x, y, m_memory, location, size);
 }
 
 static inline void gfx_set(int x, int y, int location, int size, int col)
 {
-    if (x < 0 || y < 0 || x > P8_WIDTH || y > P8_HEIGHT)
+    if (x < 0 || y < 0 || x >= P8_WIDTH || y >= P8_HEIGHT)
         return;
 
     int offset = gfx_addr_remap(location) + (x >> 1) + y * 64;
@@ -609,10 +617,19 @@ static inline void clip_set(int x, int y, int w, int h)
 {
     int x1 = x + w;
     int y1 = y + h;
+
+    // Clamp to valid screen bounds [0, P8_WIDTH] x [0, P8_HEIGHT]
+    if (x < 0) x = 0;
+    if (y < 0) y = 0;
+    if (x > P8_WIDTH) x = P8_WIDTH;
+    if (y > P8_HEIGHT) y = P8_HEIGHT;
     if (x1 < 0) x1 = 0;
     if (y1 < 0) y1 = 0;
-    m_memory[MEMORY_CLIPRECT] = x;
-    m_memory[MEMORY_CLIPRECT + 1] = y;
+    if (x1 > P8_WIDTH) x1 = P8_WIDTH;
+    if (y1 > P8_HEIGHT) y1 = P8_HEIGHT;
+
+    m_memory[MEMORY_CLIPRECT] = (uint8_t)x;
+    m_memory[MEMORY_CLIPRECT + 1] = (uint8_t)y;
     m_memory[MEMORY_CLIPRECT + 2] = (uint8_t)x1;
     m_memory[MEMORY_CLIPRECT + 3] = (uint8_t)y1;
 }

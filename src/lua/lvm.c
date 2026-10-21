@@ -642,6 +642,11 @@ void luaV_execute (lua_State *L) {
       vmcase(OP_GETTABLE,
         Protect(luaV_gettable(L, RB(i), RKC(i), ra));
       )
+      vmcase(OP_GETGLOBALTABLE,
+        Table *reg = hvalue(&G(L)->l_registry);
+        const TValue *gt = luaH_getint(reg, LUA_RIDX_GLOBALS);
+        Protect(luaV_gettable(L, gt, RKB(i), ra));
+      )
       vmcase(OP_SETTABUP,
         int a = GETARG_A(i);
         Protect(luaV_settable(L, cl->upvals[a]->v, RKB(i), RKC(i)));
@@ -653,6 +658,11 @@ void luaV_execute (lua_State *L) {
       )
       vmcase(OP_SETTABLE,
         Protect(luaV_settable(L, ra, RKB(i), RKC(i)));
+      )
+      vmcase(OP_SETGLOBALTABLE,
+        Table *reg = hvalue(&G(L)->l_registry);
+        const TValue *gt = luaH_getint(reg, LUA_RIDX_GLOBALS);
+        Protect(luaV_settable(L, gt, RKB(i), ra));
       )
       vmcase(OP_NEWTABLE,
         int b = GETARG_B(i);

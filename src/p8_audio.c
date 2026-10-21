@@ -230,6 +230,12 @@ void audio_music(int32_t index, int32_t fadems, int32_t mask)
     pthread_mutex_unlock(&m_sound_queue_mutex);
 }
 
+void audio_stop()
+{
+    audio_music(-1, 0, 0);
+    audio_sound(-1, 0, 0, 0);
+}
+
 int32_t audio_stat(int32_t index)
 {
     if (index >= 16 && index <= 19)
@@ -361,7 +367,7 @@ void update_sound_queue()
 
             if (sound->index == -1)
             {
-                if (sound->channel >= 0 && sound->channel <= CHANNEL_COUNT)
+                if (sound->channel >= 0 && sound->channel < CHANNEL_COUNT)
                     m_channels[sound->channel].sound_mode = SOUNDMODE_NONE;
                 continue;
             }
@@ -440,7 +446,10 @@ void update_sound_queue()
 
 float get_frequency(int pitch)
 {
-    return m_tone_frequencies[pitch % 12] / 2 * (1 << (pitch / 12));
+    int tone_index = pitch % 12;
+    if (tone_index < 0)
+        tone_index += 12;
+    return m_tone_frequencies[tone_index] / 2 * (1 << (pitch / 12));
 }
 
 void render_sound(int waveform, int pitch, int volume, int position, int offset, int length, int16_t *buffer)

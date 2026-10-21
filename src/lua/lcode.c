@@ -402,6 +402,11 @@ void luaK_dischargevars (FuncState *fs, expdesc *e) {
       e->k = VRELOCABLE;
       break;
     }
+    case VGLOBAL: {
+      e->u.info = luaK_codeABC(fs, OP_GETGLOBALTABLE, 0, e->u.glb.idx, 0);
+      e->k = VRELOCABLE;
+      break;
+    }
     case VVARARG:
     case VCALL: {
       luaK_setoneret(fs, e);
@@ -571,6 +576,11 @@ void luaK_storevar (FuncState *fs, expdesc *var, expdesc *ex) {
       OpCode op = (var->u.ind.vt == VLOCAL) ? OP_SETTABLE : OP_SETTABUP;
       int e = luaK_exp2RK(fs, ex);
       luaK_codeABC(fs, op, var->u.ind.t, var->u.ind.idx, e);
+      break;
+    }
+    case VGLOBAL: {
+      int e = luaK_exp2RK(fs, ex);
+      luaK_codeABC(fs, OP_SETGLOBALTABLE, e, var->u.glb.idx, 0);
       break;
     }
     default: {

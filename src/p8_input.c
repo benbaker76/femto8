@@ -130,9 +130,9 @@ bool p8_get_next_keypress(unsigned *scancode, uint8_t *keychar, unsigned *mod)
        return false;
     }
 
-    *scancode = m_key_queue_buffer[m_key_queue_read_index].scancode;
-    *keychar = m_key_queue_buffer[m_key_queue_read_index].ch;
-    *mod = m_key_queue_buffer[m_key_queue_read_index].keymod;
+    if (scancode) *scancode = m_key_queue_buffer[m_key_queue_read_index].scancode;
+    if (keychar) *keychar = m_key_queue_buffer[m_key_queue_read_index].ch;
+    if (mod) *mod = m_key_queue_buffer[m_key_queue_read_index].keymod;
     m_key_queue_read_index = (m_key_queue_read_index + 1) % MAX_KEY_EVENTS;
     return true;
 }
@@ -227,6 +227,9 @@ void p8_reset_input()
         }
         m_button_first_repeat[p] = 1;
     }
+    // Reset key queue
+    m_key_queue_read_index = 0;
+    m_key_queue_write_index = 0;
 }
 
 void p8_update_input()

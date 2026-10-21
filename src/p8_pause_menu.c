@@ -76,6 +76,8 @@ static bool call_menuitem_callback(int lua_callback_ref, int button)
 {
     if (lua_callback_ref == LUA_NOREF || !L)
         return false;
+    if (!lua_checkstack(L, 3))
+        return false;
     lua_rawgeti(L, LUA_REGISTRYINDEX, lua_callback_ref);
     lua_pushinteger(L, button);
     bool stay_open = false;
@@ -104,6 +106,8 @@ void p8_show_pause_menu(void)
     bool should_pause_audio = m_memory[MEMORY_AUDIO_PAUSE] != 2;
     if (should_pause_audio)
         audio_pause();
+
+    p8_update_input();
 
     // Build dynamic controls array:
     // "continue" + up to 5 custom items + "restart" + "show version" + "controls" + "quit"
@@ -152,18 +156,22 @@ void p8_show_pause_menu(void)
                 action_id < CUSTOM_MENUITEM_ACTION_BASE + MAX_CUSTOM_MENUITEMS) {
                 // Custom menu item: translate button_mask to PICO-8 button bitmask
                 int idx = action_id - CUSTOM_MENUITEM_ACTION_BASE;
-                int button;
-                if (result.button_mask & BUTTON_MASK_LEFT)
-                    button = 1;
-                else if (result.button_mask & BUTTON_MASK_RIGHT)
-                    button = 2;
-                else
-                    button = 112; // Selected: O + X + Pause bits combined
 
-                bool stay = call_menuitem_callback(
-                    m_custom_menuitems[idx].lua_callback_ref, button);
-                if (stay)
-                    continue; // Keep menu open
+                // Verify idx is in bounds
+                if (idx >= 0 && idx < MAX_CUSTOM_MENUITEMS) {
+                    int button;
+                    if (result.button_mask & BUTTON_MASK_LEFT)
+                        button = 1;
+                    else if (result.button_mask & BUTTON_MASK_RIGHT)
+                        button = 2;
+                    else
+                        button = 112; // Selected: O + X + Pause bits combined
+
+                    bool stay = call_menuitem_callback(
+                        m_custom_menuitems[idx].lua_callback_ref, button);
+                    if (stay)
+                        continue; // Keep menu open
+                }
                 break;
             }
             break;

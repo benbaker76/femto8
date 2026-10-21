@@ -17,7 +17,13 @@ except ImportError:
 
 
 def extract_lua_from_p8(filename):
-    """Extract Lua code section from a .p8 file."""
+    """Extract Lua code section from a .p8 file.
+
+    Returns: (lua_code, line_offset) where line_offset is the number of lines
+    in the file before the __lua__ section.
+    """
+    import re
+
     content = None
     used_latin1 = False
     for encoding in ['utf-8', 'latin-1']:
@@ -32,16 +38,20 @@ def extract_lua_from_p8(filename):
 
     lua_start = content.find('__lua__')
     if lua_start == -1:
-        return None
+        return None, 0
 
-    lua_start = content.find('\n', lua_start) + 1
-    lua_end = content.find('\n__', lua_start)
-    if lua_end == -1:
-        lua_end = len(content)
+    # Count lines before the lua section
+    lua_start_pos = content.find('\n', lua_start) + 1
+    line_offset = content[:lua_start_pos].count('\n')
 
-    lua_code = content[lua_start:lua_end]
+    # Match section markers like __section__ at start of line (e.g., __gfx__, __map__)
+    # These are at the start of a line, start with __, have lowercase letters/numbers, end with __
+    lua_end_match = re.search(r'\n__[a-z][a-z0-9]*__\n?', content[lua_start_pos:])
+    lua_end = lua_start_pos + lua_end_match.start() if lua_end_match else len(content)
 
-    return lua_code
+    lua_code = content[lua_start_pos:lua_end]
+
+    return lua_code, line_offset
 
 
 def extract_full_p8(filename):
@@ -60,20 +70,19 @@ def extract_full_p8(filename):
 
     lua_start = content.find('__lua__')
     if lua_start == -1:
-        return None, None, None
+        return None, None, None, 0
+
+    lua_start_pos = content.find('\n', lua_start) + 1
+    line_offset = content[:lua_start_pos].count('\n')
 
     header = content[:lua_start]
-    lua_marker_end = content.find('\n', lua_start) + 1
-    lua_end = content.find('\n__', lua_marker_end)
+    lua_end_match = re.search(r'\n__[a-z][a-z0-9]*__\n?', content[lua_start_pos:])
+    lua_end = lua_start_pos + lua_end_match.start() if lua_end_match else len(content)
 
-    if lua_end == -1:
-        lua_code = content[lua_marker_end:]
-        other_sections = ""
-    else:
-        lua_code = content[lua_marker_end:lua_end]
-        other_sections = content[lua_end:]
+    lua_code = content[lua_start_pos:lua_end]
+    other_sections = content[lua_end:]
 
-    return header + "__lua__\n", lua_code, other_sections
+    return header + "__lua__\n", lua_code, other_sections, line_offset
 
 
 def extract_full_p8png(filename):
@@ -92,20 +101,24 @@ def extract_full_p8png(filename):
             if os.path.exists(png_to_p8):
                 subprocess.run([png_to_p8, filename, tmp_name], check=True,
                              capture_output=True)
-                result = extract_full_p8(tmp_name)
+                header, lua_code, other_sections, line_offset = extract_full_p8(tmp_name)
                 os.unlink(tmp_name)
-                return result
+                return header, lua_code, other_sections, line_offset
         except:
             if os.path.exists(tmp_name):
                 os.unlink(tmp_name)
     except:
         pass
 
-    return None, None, None
+    return None, None, None, 0
 
 
 def extract_lua_from_p8png(filename):
-    """Extract Lua code from a .p8.png file by reading it as a .p8 cart."""
+    """Extract Lua code from a .p8.png file by reading it as a .p8 cart.
+
+    Returns: (lua_code, line_offset) where line_offset is the number of lines
+    in the p8 file before the __lua__ section.
+    """
     try:
         import subprocess
         import tempfile
@@ -120,16 +133,16 @@ def extract_lua_from_p8png(filename):
             if os.path.exists(png_to_p8):
                 subprocess.run([png_to_p8, filename, tmp_name], check=True,
                              capture_output=True)
-                lua_code = extract_lua_from_p8(tmp_name)
+                lua_code, line_offset = extract_lua_from_p8(tmp_name)
                 os.unlink(tmp_name)
-                return lua_code
+                return lua_code, line_offset
         except:
             if os.path.exists(tmp_name):
                 os.unlink(tmp_name)
     except:
         pass
 
-    return None
+    return None, 0
 
 
 def load_grammar():
@@ -203,61 +216,128 @@ def expand_shorthand_one_line_if_while(code):
     """
     out_lines = []
     for line in code.splitlines():
+        # Process the line looking for shorthand if/while patterns
+        result = []
+        i = 0
         stripped = line.lstrip()
         indent = line[: len(line) - len(stripped)]
-        low = stripped.lower()
 
-        for keyword in ('if', 'while'):
-            klen = len(keyword)
-            # keyword must be followed by a non-identifier character
-            if not (low.startswith(keyword) and
-                    len(stripped) > klen and
-                    not (stripped[klen].isalnum() or stripped[klen] == '_')):
-                continue
+        while i < len(stripped):
+            # Look for 'if' or 'while' at position i
+            found = None
+            for keyword in ('if', 'while'):
+                if (stripped[i:i+len(keyword)].lower() == keyword and
+                    len(stripped) > i + len(keyword) and
+                    not (stripped[i + len(keyword)].isalnum() or stripped[i + len(keyword)] == '_')):
+                    found = keyword
+                    break
 
-            after_kw = stripped[klen:].lstrip()
-            if not after_kw.startswith('('):
-                break
+            if found:
+                kw_end = i + len(found)
+                # after_kw is the stripped version starting from kw_end
+                after_kw = stripped[kw_end:].lstrip()
+                # paren_pos is the position of '(' in the original stripped string
+                # Since after_kw = stripped[kw_end:].lstrip(), the position of '(' is:
+                # kw_end + (number of chars skipped by lstrip)
+                # = kw_end + (len(stripped[kw_end:]) - len(after_kw))
+                # = kw_end + (len(stripped) - kw_end - len(after_kw))
+                # = len(stripped) - len(after_kw)
+                paren_pos = kw_end + (len(stripped) - kw_end - len(after_kw))
 
-            # position of '(' in the stripped string
-            paren_pos = len(stripped) - len(after_kw)
-            close = _find_matching_paren(stripped, paren_pos)
-            if close < 0:
-                break
+                if after_kw.startswith('('):
+                    close = _find_matching_paren(stripped, paren_pos)
+                    if close >= 0:
+                        cond = stripped[paren_pos + 1: close]
+                        body_start = close + 1
+                        body = stripped[body_start:].lstrip()
 
-            cond = stripped[paren_pos + 1: close]
-            body = stripped[close + 1:].lstrip()
+                        body_low = body.lower()
+                        # Skip if already has then/do
+                        if not (found == 'if' and (body_low.startswith('then') or body_low.startswith('do'))) and \
+                           not (found == 'while' and body_low.startswith('do')) and\
+                           not body_low.startswith('or') and not body_low.startswith('and'):
+                            # Check if this looks like a binary operator continuation
+                            if not (body and body[0] in '=<>!~+*/%^&|.\\'):
+                                # This is a shorthand form - expand it
+                                cond = _lower_keywords_in_cond(cond)
+                                joiner = 'then' if found == 'if' else 'do'
 
-            body_low = body.lower()
-            if keyword == 'if' and (body_low.startswith('then') or
-                                    body_low.startswith('do')):
-                break
-            if keyword == 'while' and body_low.startswith('do'):
-                break
-            # If the character after the closing paren looks like a binary
-            # operator continuation, this is NOT shorthand — the parens just
-            # group part of the condition expression.
-            if body and body[0] in '=<>!~+*/%^&|.\\':
-                break
+                                # The body continues until we find a keyword that starts
+                                # a new top-level statement. In Pico-8 shorthand, the body
+                                # is a single statement, but multiple if/while can be chained.
+                                # We need to find where the body ends by looking for:
+                                # - 'end' - closes a block
+                                # - 'elseif' - part of if chain
+                                # - 'else' - part of if chain
+                                # We do NOT stop at 'if' or 'while' because they're part of the body
+                                body_end = len(body)
+                                i_body = 0
+                                depth = 0
+                                else_count = 0
+                                if_count = 0
+                                while i_body < len(body):
+                                    c = body[i_body]
+                                    if c == '(':
+                                        depth += 1
+                                    elif c == ')':
+                                        depth -= 1
+                                    elif depth == 0:
+                                        # Check for keywords that end the current block
+                                        rest = body[i_body:].lower()
+                                        if (rest.startswith('else') and
+                                            len(rest) > len('else') and
+                                            (not (rest[len('else')].isalnum() or rest[len('else')] == '_'))):
+                                            print(f'rest: {rest} {rest.startswith("else")}')
+                                            else_count += 1
+                                            if else_count > if_count + 1:
+                                                # Found a block terminator - body ends before this
+                                                body_end = i_body
+                                                break
+                                        elif (rest.startswith('if') and
+                                            len(rest) > len('if') and
+                                            (not (rest[len('if')].isalnum() or rest[len('if')] == '_'))):
+                                            if_count += 1
+                                        if body_end < len(body):
+                                            break
+                                    i_body += 1
 
-            cond = _lower_keywords_in_cond(cond)
-            joiner = 'then' if keyword == 'if' else 'do'
-            # Split body into code + trailing line-comment so the closing
-            # 'end' is not swallowed inside the comment.
-            body_code, body_comment = _split_comment(body)
-            body_code = body_code.rstrip()
-            if body_comment:
-                line = f"{indent}{keyword} {cond} {joiner} {body_code} end {body_comment}"
-            else:
-                line = f"{indent}{keyword} {cond} {joiner} {body_code} end"
-            break
+                                body_code_raw = body[:body_end]
+                                body_comment_start = body_code_raw.find('--')
+                                if body_comment_start >= 0:
+                                    body_code = body_code_raw[:body_comment_start].rstrip()
+                                    body_comment = body_code_raw[body_comment_start:]
+                                else:
+                                    body_code = body_code_raw.rstrip()
+                                    body_comment = ''
 
-        out_lines.append(line)
+                                if body_comment:
+                                    expansion = f"{found} {cond} {joiner} {body_code} end {body_comment}"
+                                elif i_body == len(body):
+                                    expansion = f"{found} {cond} {joiner} {body_code} end"
+                                else:
+                                    expansion = f"{found} {cond} {joiner} {body_code} end "
+
+                                # Recursively expand any nested if/while in the body
+                                expanded_expansion = expand_shorthand_one_line_if_while(expansion)
+
+                                # The expansion replaces everything from the keyword to the end of body
+                                # body is body_raw.lstrip(), so we need to find where body_raw starts
+                                body_start_raw = kw_end + (len(stripped) - kw_end - len(body))
+                                # Skip past the entire if/while construct (including the body)
+                                # to avoid re-processing the body characters
+                                i = body_start_raw + len(body_code) + (1 + len(body_comment) if body_comment else 0)
+                                result.append(expanded_expansion)
+                                continue
+
+            result.append(stripped[i])
+            i += 1
+
+        out_lines.append(indent + ''.join(result))
 
     return '\n'.join(out_lines) + ('\n' if code.endswith('\n') else '')
 
 
-def prettify_lua(code):
+def prettify_lua(code, line_offset=0):
     """Pretty print Lua code using Lark parser."""
     grammar = load_grammar()
     if grammar is None:
@@ -272,7 +352,16 @@ def prettify_lua(code):
         tree = parser.parse(code)
         return format_tree(tree, 0)
     except Exception as e:
-        print(f"Error: Parse error: {e}", file=sys.stderr)
+        # Adjust line numbers in error message to match original file
+        error_str = str(e)
+        if line_offset > 0:
+            import re
+            # Match patterns like "line 5, column 10" or "at line 5, column 10"
+            def adjust_line(match):
+                line_num = int(match.group(1))
+                return f"line {line_num + line_offset}"
+            error_str = re.sub(r'line (\d+)', adjust_line, error_str)
+        print(f"Error: Parse error: {error_str}", file=sys.stderr)
         sys.exit(1)
 
 
@@ -563,20 +652,21 @@ def main():
     header = None
     other_sections = None
     lua_code = None
+    line_offset = 0
 
     if input_file.endswith('.p8.png'):
         if preserve_sections:
-            header, lua_code, other_sections = extract_full_p8png(input_file)
+            header, lua_code, other_sections, line_offset = extract_full_p8png(input_file)
         else:
-            lua_code = extract_lua_from_p8png(input_file)
+            lua_code, line_offset = extract_lua_from_p8png(input_file)
         if lua_code is None:
             print(f"Error: Could not extract Lua code from {input_file}")
             sys.exit(1)
     elif input_file.endswith('.p8'):
         if preserve_sections:
-            header, lua_code, other_sections = extract_full_p8(input_file)
+            header, lua_code, other_sections, line_offset = extract_full_p8(input_file)
         else:
-            lua_code = extract_lua_from_p8(input_file)
+            lua_code, line_offset = extract_lua_from_p8(input_file)
         if lua_code is None:
             print(f"Error: Could not find __lua__ section in {input_file}")
             sys.exit(1)
@@ -584,12 +674,12 @@ def main():
         with open(input_file, 'r', encoding='utf-8', errors='ignore') as f:
             lua_code = f.read()
     else:
-        lua_code = extract_lua_from_p8(input_file)
+        lua_code, line_offset = extract_lua_from_p8(input_file)
         if lua_code is None:
             with open(input_file, 'r', encoding='utf-8', errors='ignore') as f:
                 lua_code = f.read()
 
-    pretty_code = prettify_lua(lua_code)
+    pretty_code = prettify_lua(lua_code, line_offset=line_offset)
 
     with open(output_file, 'w', encoding='utf-8') as f:
         if preserve_sections:
